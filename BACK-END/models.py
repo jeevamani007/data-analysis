@@ -135,6 +135,10 @@ class DatabaseProfile(BaseModel):
     # Transaction Analysis (Fuzzy Logic)
     transaction_analysis: Optional[Dict[str, Any]] = Field(None, description="Detailed transaction analysis results")
 
+    # Healthcare Analysis (for healthcare domains)
+    healthcare_analysis: Optional[Dict[str, Any]] = Field(None, description="Healthcare visit and department analysis results")
+
+
 
 class UploadResponse(BaseModel):
     """Response after file upload"""
