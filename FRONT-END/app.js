@@ -649,7 +649,7 @@ function showHealthcareAnalysisResults(profile) {
             html += `
                 <div style="flex-shrink: 0; text-align: center; position: relative;">
                     <div 
-                        onclick="showHealthcareDateDetails(${idx})"
+                        onclick="window.healthcareIsAppointmentMode=false; showHealthcareDateDetails(${idx})"
                         style="
                             width: 80px; 
                             height: 80px; 
@@ -793,6 +793,7 @@ function showHealthcareAnalysisResults(profile) {
     window.showHealthcareApptDateDetails = function (index) {
         window.healthcareTimelineData = window.healthcareAppointmentTimelineData || [];
         window.healthcareSelectedDateIndex = null; // reset toggle for appt stream
+        window.healthcareIsAppointmentMode = true;
         showHealthcareDateDetails(index);
     };
 }
@@ -802,6 +803,8 @@ window.showHealthcareDateDetails = function (dateIndex) {
     const container = document.getElementById('date-details-container');
     const content = document.getElementById('date-details-content');
     if (!container || !content) return;
+
+    const isAppointment = window.healthcareIsAppointmentMode === true;
 
     // Toggle behaviour: same date click → hide panel
     const prevSelected = window.healthcareSelectedDateIndex;
@@ -843,7 +846,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
         ">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
                 <h2 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">
-                    📅 ${dateInfo.date}
+                    📅 ${dateInfo.date} ${isAppointment ? '(Appointments)' : '(Visits)'}
                 </h2>
                 <button 
                     onclick="showHealthcareDateDetails(window.healthcareSelectedDateIndex);"
@@ -854,12 +857,12 @@ window.showHealthcareDateDetails = function (dateIndex) {
             </div>
             
             <p style="color: var(--text-primary); margin-bottom: 0.9rem; font-size: 0.85rem;">
-                <strong>${dateInfo.visit_count}</strong> patients visited on this date. We group them into Morning, Afternoon, Evening and Night based on their visit time.
+                <strong>${dateInfo.visit_count}</strong> ${isAppointment ? 'appointment(s) are recorded for this date.' : 'patients visited on this date.'} We group times into Morning, Afternoon, Evening and Night so it is easy to read.
             </p>
             
             <!-- TIME SLOTS -->
             <section style="margin-bottom: 1.1rem;">
-                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary);">⏰ Visit Times (Time Slots)</h3>
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary);">⏰ ${isAppointment ? 'Appointment Times' : 'Visit Times'} (Time Slots)</h3>
                 <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.8rem;">
                     Morning = 5–12, Afternoon = 12–17, Evening = 17–21, Night = 21–5.
                 </p>
@@ -901,6 +904,33 @@ window.showHealthcareDateDetails = function (dateIndex) {
                 </div>
             </section>
 
+            <!-- STAY SUMMARY (for admitted/discharged patients) -->
+    `;
+
+    const stay = dateInfo.stay_summary || null;
+    if (stay && (stay.admissions || stay.discharges || (typeof stay.average_stay_days === 'number'))) {
+        const admissions = stay.admissions || 0;
+        const discharges = stay.discharges || 0;
+        const avgStay = typeof stay.average_stay_days === 'number' ? `${stay.average_stay_days} day(s)` : 'N/A';
+        const maxStay = typeof stay.max_stay_days === 'number' ? `${stay.max_stay_days} day(s)` : null;
+        const minStay = typeof stay.min_stay_days === 'number' ? `${stay.min_stay_days} day(s)` : null;
+        html += `
+            <section style="margin-bottom: 1.1rem;">
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary);">🏥 Stay Duration (Admit &amp; Discharge)</h3>
+                <p style="color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.4rem;">
+                    <strong>${admissions}</strong> patient(s) were admitted on this date and <strong>${discharges}</strong> patient(s) were discharged.
+                </p>
+                <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.2rem;">
+                    Average stay: <strong>${avgStay}</strong>${maxStay !== null ? ` · Longest stay: <strong>${maxStay}</strong>` : ''}${minStay !== null ? ` · Shortest stay: <strong>${minStay}</strong>` : ''}.
+                </p>
+                <p style="color: var(--text-muted); font-size: 0.8rem;">
+                    We calculate stay length from <code>admission_date_time</code> to <code>discharge_date_time</code> for each patient, then compute average and range in days so you can quickly see how long patients stayed in the hospital.
+                </p>
+            </section>
+        `;
+    }
+
+    html += `
             <!-- GENDER BREAKDOWN -->
             <section style="margin-bottom: 1.1rem;">
                 <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">👥 Male / Female</h3>
@@ -939,7 +969,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
             
             <!-- VISIT / APPOINTMENT LIST WITH TIME -->
             <section style="margin-bottom: 1.1rem;">
-                <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">🕒 Each Appointment (Time & Slot)</h3>
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">🕒 Each ${isAppointment ? 'Appointment' : 'Visit'} (Time & Slot)</h3>
     `;
 
     const visits = (dateInfo.visits || []).slice(0, 60);
