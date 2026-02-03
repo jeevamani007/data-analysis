@@ -1,621 +1,619 @@
 """
-Healthcare Data Analyzer
-Analyzes healthcare datasets to extract time slot patterns, department statistics,
-diagnosis trends, and age group distributions.
+Healthcare Analyzer - For Healthcare domain only.
+Finds date/timestamp columns per table (excluding date of birth), sorts all data ascending,
+and produces a diagram-ready timeline format: Start ----|----|---- End.
+Column purposes and data flow explanations are inferred from observed column names and data patterns (no hardcoding).
 """
 
 import pandas as pd
-import numpy as np
-from typing import List, Dict, Any, Optional
-from datetime import datetime, time
+from typing import Dict, Any, List, Tuple, Optional
+from models import TableAnalysis
+import re
+
+
+# Columns to EXCLUDE - these are date of birth, not event dates
+DOB_EXCLUDE_KEYWORDS = [
+    'dob', 'date_of_birth', 'birth_date', 'birthdate', 'birth',
+    'dateofbirth', 'patient_dob', 'birth_day'
+]
 
 
 class HealthcareAnalyzer:
-    """Analyzes healthcare data for patient visits, departments, and diagnoses."""
-    
+    """
+    Analyzes healthcare tables: finds date/timestamp columns (excluding DOB),
+    sorts each table ascending, merges into one timeline for diagram UI.
+    """
+
     def __init__(self):
-        self.patient_col_keywords = ['patient', 'patient_id', 'patientid']
-        self.visit_date_keywords = ['visit_date', 'visitdate', 'admission_date', 'appointment_date', 'registration_date', 'date']
-        # More specific datetime hints for dedicated appointment tables
-        self.appointment_date_keywords = ['appointment_date_time', 'appointment_datetime', 'appt_datetime', 'appt_date']
-        self.department_keywords = ['department', 'dept', 'specialty', 'ward']
-        self.diagnosis_keywords = ['diagnosis', 'disease', 'reason', 'reason_for_visit', 'complaint']
-        self.age_keywords = ['age', 'patient_age']
-        self.gender_keywords = ['gender', 'sex']
-    
-    def _fuzzy_find_column(self, df: pd.DataFrame, keywords: List[str]) -> Optional[str]:
-        """Find a column that matches any of the keywords (case-insensitive)."""
-        cols_lower = {col.lower(): col for col in df.columns}
-        for keyword in keywords:
-            if keyword in cols_lower:
-                return cols_lower[keyword]
-            # Partial match
-            for col_lower, col_original in cols_lower.items():
-                if keyword in col_lower:
-                    return col_original
+        self.date_keywords = [
+            'date', 'time', 'timestamp', 'created', 'admission', 'discharge',
+            'reg_date', 'appt_date', 'donation_date', 'visit', 'appointment',
+            'recorded', 'scheduled', 'admitted', 'discharged'
+        ]
+
+    def _is_dob_column(self, col_name: str) -> bool:
+        """Return True if column is date of birth (exclude from analysis)."""
+        col_lower = col_name.lower().replace('_', '').replace(' ', '')
+        for kw in DOB_EXCLUDE_KEYWORDS:
+            if kw.replace('_', '') in col_lower or col_lower in kw.replace('_', ''):
+                return True
+        return False
+
+    def _find_date_timestamp_columns(self, df: pd.DataFrame) -> List[Tuple[str, Optional[str]]]:
+        """
+        Find (date_col, time_col) for the table.
+        Returns list of (date_col, time_col or None). Uses first valid pair.
+        Excludes DOB columns.
+        """
+        candidates = []
+        for col in df.columns:
+            if self._is_dob_column(col):
+                continue
+            col_lower = col.lower()
+            if any(k in col_lower for k in self.date_keywords):
+                # Check if parseable as datetime
+                try:
+                    sample = df[col].dropna().head(10)
+                    if len(sample) == 0:
+                        continue
+                    parsed = pd.to_datetime(sample, errors='coerce')
+                    if parsed.notna().sum() >= len(sample) * 0.5:
+                        candidates.append(col)
+                except Exception:
+                    pass
+
+        # Also try columns with date-like names that parse as datetime (fallback)
+        existing_cols = {c for c in candidates}
+        for col in df.columns:
+            if self._is_dob_column(col) or col in existing_cols:
+                continue
+            col_lower = col.lower()
+            if not any(k in col_lower for k in ['date', 'time', 'timestamp', 'created', 'admission', 'discharge', 'reg', 'appt', 'donation', 'visit', 'recorded', 'scheduled']):
+                continue
+            try:
+                sample = df[col].dropna().head(20)
+                if len(sample) < 5:
+                    continue
+                parsed = pd.to_datetime(sample, errors='coerce')
+                if parsed.notna().sum() / len(sample) >= 0.5:
+                    sample_str = sample.astype(str)
+                    if sample_str.str.match(r'^\d{1,3}$').all() and sample_str.str.len().max() <= 3:
+                        continue
+                    candidates.append(col)
+            except Exception:
+                pass
+
+        if not candidates:
+            return []
+
+        # Pick primary date column - prefer combined date+time, or date + separate time
+        col = candidates[0]
+        sample_val = df[col].dropna().iloc[0] if len(df) > 0 else None
+        if sample_val is not None:
+            parsed = pd.to_datetime(sample_val, errors='coerce')
+            if pd.notna(parsed):
+                # Has time component?
+                if parsed.hour != 0 or parsed.minute != 0 or parsed.second != 0:
+                    return [(col, None)]
+        # Look for separate time column
+        for c2 in df.columns:
+            if c2 == col or self._is_dob_column(c2):
+                continue
+            if 'time' in c2.lower() and 'date' not in c2.lower() and 'stamp' not in c2.lower():
+                return [(col, c2)]
+        return [(col, None)]
+
+    def _infer_column_purpose(self, col_name: str, series: pd.Series) -> Dict[str, Any]:
+        """
+        Infer healthcare column purpose from observed column name and data. Pattern-based, no hardcoded columns.
+        Returns: { purpose, work_explanation, null_explanation } for admission, appointment, discharge, lab, etc.
+        """
+        col_lower = col_name.lower().replace('-', '_')
+        tokens = re.split(r'[_\s]+', col_lower)
+
+        null_count = series.isna().sum()
+        total = len(series)
+        null_pct = (null_count / total * 100) if total > 0 else 0
+        non_null = series.dropna()
+        sample_vals = non_null.head(5).astype(str).tolist() if len(non_null) > 0 else []
+
+        purpose = None
+        work_explanation = None
+
+        # Healthcare-purpose patterns (observed from column name)
+        if tokens[-1] == 'id' or col_lower.endswith('_id'):
+            base = '_'.join(tokens[:-1]) if len(tokens) > 1 else 'record'
+            purpose = f"{base.replace('_', ' ').title()} identifier"
+        elif 'admission' in col_lower or 'admit' in col_lower:
+            if 'date' in tokens or 'time' in tokens:
+                purpose = "Patient admission date/time"
+                work_explanation = "When patient was admitted"
+            else:
+                purpose = "Admission identifier"
+        elif 'discharge' in col_lower:
+            if 'date' in tokens or 'time' in tokens:
+                purpose = "Patient discharge date/time"
+                work_explanation = "When patient was discharged"
+            else:
+                purpose = "Discharge information"
+        elif 'appt' in col_lower or 'appointment' in col_lower:
+            if 'date' in tokens or 'time' in tokens:
+                purpose = "Patient appointment date/time"
+                work_explanation = "When appointment was scheduled"
+            else:
+                purpose = "Appointment identifier"
+        elif 'reg' in col_lower or 'registration' in col_lower or 'visit' in col_lower:
+            if 'date' in tokens or 'time' in tokens:
+                purpose = "Patient visit/registration date/time"
+                work_explanation = "When patient registered or visited"
+            else:
+                purpose = "Registration identifier"
+        elif 'donation' in col_lower:
+            if 'date' in tokens:
+                purpose = "Blood donation date"
+                work_explanation = "When donation was made"
+            else:
+                purpose = "Donation information"
+        elif 'lab' in col_lower or 'test' in col_lower or 'report' in col_lower or 'result' in col_lower:
+            purpose = "Lab test or report"
+            work_explanation = "Test result or report value"
+        elif 'date' in tokens or col_lower.endswith('_date'):
+            idx = next((i for i, t in enumerate(tokens) if t == 'date'), -1)
+            prefix = ' '.join(tokens[:idx]).replace('_', ' ').title() if idx > 0 else 'Event'
+            purpose = f"{prefix} date" if prefix else "Date"
+        elif 'time' in tokens or col_lower.endswith('_time'):
+            idx = next((i for i, t in enumerate(tokens) if t == 'time'), -1)
+            prefix = ' '.join(tokens[:idx]).replace('_', ' ').title() if idx > 0 else 'Event'
+            purpose = f"{prefix} time" if prefix else "Time"
+        elif 'reason' in tokens or 'diagnosis' in tokens or 'symptom' in tokens:
+            purpose = "Reason for visit or diagnosis"
+            work_explanation = "Why patient came or condition"
+        elif 'ward' in tokens or 'dept' in tokens or 'department' in tokens:
+            purpose = "Department or care unit"
+            work_explanation = "Where patient was treated"
+        elif 'slot' in tokens:
+            purpose = "Time slot"
+            work_explanation = "Morning/Afternoon/Evening session"
+        elif 'patient' in tokens:
+            purpose = "Patient identifier"
+            work_explanation = "Links to patient record"
+        elif 'volume' in col_lower or 'ml' in col_lower:
+            purpose = "Quantity or volume"
+            work_explanation = "Amount (e.g. blood volume)"
+        elif 'blood' in col_lower and 'group' in col_lower:
+            purpose = "Blood type"
+        elif 'name' in tokens:
+            purpose = "Name"
+        elif 'status' in tokens or 'result' in tokens:
+            purpose = "Status or outcome"
+        else:
+            purpose = col_name.replace('_', ' ').title()
+
+        return {
+            "purpose": purpose,
+            "work_explanation": work_explanation,
+            "null_pct": float(round(null_pct, 1)),
+            "null_explanation": "Not recorded or missing" if null_pct > 0 else None,
+        }
+
+    def _build_work_summary(self, table_name: str, raw_record: Dict, column_purposes: Dict, file_name: str = "") -> str:
+        """
+        Build one-line healthcare work explanation from observed columns. Infers type from column names.
+        """
+        tbl_lower = table_name.lower()
+        file_lower = (file_name or "").lower()
+        cols_lower = " ".join(c.lower() for c in raw_record.keys())
+        parts = []
+        patient_id = ward = reason = ''
+        for col, val in raw_record.items():
+            if not val or str(val).strip() == '':
+                continue
+            col_lower = col.lower()
+            purp = (column_purposes.get(col) or {}).get('purpose', '').lower()
+            if ('patient' in col_lower and ('id' in col_lower or col_lower.endswith('_id'))) or (purp and 'patient' in purp and 'identifier' in purp):
+                patient_id = str(val)
+            elif 'ward' in col_lower or 'dept' in col_lower or 'department' in col_lower or 'care unit' in purp:
+                ward = str(val)
+            elif 'reason' in col_lower or 'diagnosis' in col_lower or 'symptom' in col_lower or 'reason' in purp:
+                reason = str(val)
+        is_reg = 'reg' in tbl_lower or 'registration' in tbl_lower or 'visit' in tbl_lower or 'reg_' in cols_lower or 'reg_date' in cols_lower
+        is_appt = 'appt' in tbl_lower or 'appointment' in tbl_lower or 'appt_' in cols_lower or 'appt_date' in cols_lower
+        is_adm = 'adm' in tbl_lower or 'admission' in tbl_lower or 'admission' in cols_lower
+        is_discharge = 'discharge' in tbl_lower or 'discharge' in cols_lower
+        is_donation = 'donation' in tbl_lower or 'donation' in cols_lower
+        is_lab = 'lab' in tbl_lower or 'test' in tbl_lower or 'report' in tbl_lower or 'lab' in cols_lower or 'test' in cols_lower or 'report' in cols_lower
+
+        if is_reg:
+            if patient_id:
+                parts.append(f"Patient {patient_id} registered")
+            if ward:
+                parts.append(f"at {ward}")
+        elif is_appt:
+            if patient_id:
+                parts.append(f"Patient {patient_id} appointment")
+            if reason:
+                parts.append(f"for {reason}")
+            if ward:
+                parts.append(f"at {ward}")
+        elif is_adm:
+            if patient_id:
+                parts.append(f"Patient {patient_id} admitted")
+            if ward:
+                parts.append(f"to {ward}")
+        elif is_discharge:
+            if patient_id:
+                parts.append(f"Patient {patient_id} discharged")
+            if ward:
+                parts.append(f"from {ward}")
+        elif is_donation:
+            if patient_id:
+                parts.append(f"Blood donation by patient {patient_id}")
+        elif is_lab:
+            if patient_id:
+                parts.append(f"Lab/test report for patient {patient_id}")
+            else:
+                parts.append("Lab or test record")
+        else:
+            if patient_id:
+                parts.append(f"Record for patient {patient_id}")
+            if ward:
+                parts.append(f"at {ward}")
+        return " ".join(parts).strip() or "Healthcare record"
+
+    def _find_admission_discharge_columns(self, df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
+        """Find admission and discharge date columns by name pattern. Returns (admission_col, discharge_col)."""
+        adm_col = dis_col = None
+        for col in df.columns:
+            cl = col.lower()
+            if 'admission' in cl or 'admit' in cl:
+                if 'date' in cl or 'time' in cl or 'stamp' in cl:
+                    adm_col = col
+            elif 'discharge' in cl:
+                if 'date' in cl or 'time' in cl or 'stamp' in cl:
+                    dis_col = col
+        return (adm_col, dis_col)
+
+    def _find_appointment_column(self, df: pd.DataFrame) -> Optional[str]:
+        """Find appointment date column by name pattern."""
+        for col in df.columns:
+            cl = col.lower()
+            if ('appt' in cl or 'appointment' in cl) and ('date' in cl or 'time' in cl or 'stamp' in cl):
+                return col
         return None
 
-    @staticmethod
-    def _to_str_safe(value: Any) -> str:
-        """Safely convert a value to string for JSON-friendly output."""
+    def _get_patient_id_from_record(self, raw_record: Dict, column_purposes: Dict) -> Optional[str]:
+        """Extract patient ID from record using observed column patterns."""
+        for col, val in raw_record.items():
+            if not val or str(val).strip() == '':
+                continue
+            col_lower = col.lower()
+            purp = (column_purposes.get(col) or {}).get('purpose', '').lower()
+            if ('patient' in col_lower and ('id' in col_lower or col_lower.endswith('_id'))) or (purp and 'patient' in purp and 'identifier' in purp):
+                return str(val).strip()
+        return None
+
+    def _calculate_stay_duration_explanation(
+        self,
+        admit_val: Any,
+        discharge_val: Any,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Calculate stay duration between admission and discharge.
+        Returns dict with days, hours, discharge_time, explanation.
+        """
+        if admit_val is None or discharge_val is None:
+            return None
+        admit_str = str(admit_val).strip()
+        discharge_str = str(discharge_val).strip()
+        if not admit_str or not discharge_str or admit_str.lower() in ('nan', 'none', 'null') or discharge_str.lower() in ('nan', 'none', 'null'):
+            return None
         try:
-            if value is None or (isinstance(value, float) and pd.isna(value)):
-                return ''
+            admit_dt = pd.to_datetime(admit_val, errors='coerce')
+            discharge_dt = pd.to_datetime(discharge_val, errors='coerce')
+            if pd.isna(admit_dt) or pd.isna(discharge_dt):
+                return None
+            if discharge_dt < admit_dt:
+                return None
+            delta = discharge_dt - admit_dt
+            total_seconds = delta.total_seconds()
+            days = int(total_seconds // 86400)
+            hours = int((total_seconds % 86400) // 3600)
+            minutes = int((total_seconds % 3600) // 60)
+            admit_time_str = admit_dt.strftime('%H:%M') if (admit_dt.hour or admit_dt.minute) else admit_dt.strftime('%Y-%m-%d')
+            discharge_time_str = discharge_dt.strftime('%H:%M') if (discharge_dt.hour or discharge_dt.minute) else discharge_dt.strftime('%Y-%m-%d')
+            discharge_full = discharge_dt.strftime('%Y-%m-%d %H:%M') if (discharge_dt.hour or discharge_dt.minute) else discharge_dt.strftime('%Y-%m-%d')
+            parts = []
+            if days > 0:
+                parts.append(f"{days} day{'s' if days != 1 else ''}")
+            if hours > 0:
+                parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+            if minutes > 0 and days == 0:
+                parts.append(f"{minutes} min")
+            duration_text = ", ".join(parts) if parts else "same day"
+            explanation = (
+                f"Admitted at {admit_time_str}, discharged at {discharge_time_str}. "
+                f"Stay duration: {duration_text}."
+            )
+            if days >= 30:
+                months = days // 30
+                explanation += f" (~{months} month{'s' if months != 1 else ''})"
+            return {
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+                "discharge_time": discharge_full,
+                "discharge_time_short": discharge_time_str,
+                "admission_time": admit_dt.strftime('%Y-%m-%d %H:%M') if (admit_dt.hour or admit_dt.minute) else admit_dt.strftime('%Y-%m-%d'),
+                "duration_text": duration_text,
+                "explanation": explanation,
+            }
         except Exception:
-            pass
-        return str(value)
-    
-    def analyze_cluster(self, tables: List[Any], dataframes: Dict[str, pd.DataFrame], relationships: List[Any]) -> Dict[str, Any]:
+            return None
+
+    def _calculate_appointment_admission_gap(
+        self,
+        appt_dt: pd.Timestamp,
+        adm_dt: pd.Timestamp,
+        threshold_hours: float = 2.0,
+    ) -> Optional[Dict[str, Any]]:
         """
-        Analyze healthcare data cluster.
-        
-        Returns:
-            Dictionary with time slot analysis, department stats, diagnosis patterns, and date timeline
+        If admission - appointment > threshold hours, return hospital delay explanation.
         """
-        # Find the best visit/registration table and (optionally) a separate appointment table
-        visit_df = None
-        visit_table_name = None
-        best_visit_score = -1
+        if pd.isna(appt_dt) or pd.isna(adm_dt):
+            return None
+        if adm_dt <= appt_dt:
+            return None
+        gap = adm_dt - appt_dt
+        gap_hours = gap.total_seconds() / 3600
+        if gap_hours <= threshold_hours:
+            return None
+        hours = int(gap_hours)
+        minutes = int((gap_hours - hours) * 60)
+        duration_parts = []
+        if hours > 0:
+            duration_parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+        if minutes > 0:
+            duration_parts.append(f"{minutes} min")
+        duration_text = " ".join(duration_parts)
+        return {
+            "is_hospital_delay": True,
+            "gap_hours": round(gap_hours, 2),
+            "gap_duration": duration_text,
+            "appointment_time": appt_dt.strftime('%Y-%m-%d %H:%M'),
+            "admission_time": adm_dt.strftime('%Y-%m-%d %H:%M'),
+            "explanation": (
+                f"Hospital delay: Patient waited {duration_text} from appointment ({appt_dt.strftime('%H:%M')}) "
+                f"to admission ({adm_dt.strftime('%H:%M')}). Gap exceeds 2 hours."
+            ),
+        }
 
-        appointment_df = None
-        appointment_table_name = None
-        best_appointment_score = -1
-        patient_df = None
-        patient_table_name = None
-        
-        for table_name, df in dataframes.items():
-            name_l = table_name.lower()
+    def _add_appointment_admission_gap_analysis(self, all_records: List[Dict[str, Any]]) -> None:
+        """
+        For each admission record, find matching appointment. If gap > 2 hours, mark as hospital delay.
+        """
+        appts_by_patient: Dict[str, List[Tuple[str, pd.Timestamp]]] = {}
+        for r in all_records:
+            pid = r.get('_patient_id')
+            appt_dt = r.get('_appointment_datetime')
+            if pid and appt_dt is not None and pd.notna(appt_dt):
+                date_key = appt_dt.strftime('%Y-%m-%d')
+                if pid not in appts_by_patient:
+                    appts_by_patient[pid] = []
+                appts_by_patient[pid].append((date_key, appt_dt))
 
-            # Look for generic visit/registration indicators
-            has_visit_date = self._fuzzy_find_column(df, self.visit_date_keywords) is not None
-            has_department = self._fuzzy_find_column(df, self.department_keywords) is not None
-            has_diagnosis = self._fuzzy_find_column(df, self.diagnosis_keywords) is not None
-
-            # Check if this table looks like a dedicated appointment table by its columns
-            appointment_date_col_candidate = None
-            for col in df.columns:
-                col_l = col.lower()
-                if 'appointment' in col_l and ('date' in col_l or 'time' in col_l or 'datetime' in col_l):
-                    appointment_date_col_candidate = col
+        for r in all_records:
+            adm_dt = r.get('_admission_datetime')
+            if adm_dt is None or pd.isna(adm_dt):
+                continue
+            pid = r.get('_patient_id')
+            if not pid or pid not in appts_by_patient:
+                continue
+            adm_date = adm_dt.strftime('%Y-%m-%d')
+            for date_key, appt_dt in appts_by_patient[pid]:
+                if date_key == adm_date:
+                    gap_result = self._calculate_appointment_admission_gap(appt_dt, adm_dt)
+                    if gap_result:
+                        r['hospital_delay'] = gap_result
                     break
 
-            is_appointment_like = ('appointment' in name_l) or (appointment_date_col_candidate is not None)
+    def _explain_value(self, value: Any, purpose_info: Dict, col_name: str) -> str:
+        """Generate explanation for a single value based on observed patterns."""
+        if value is None or (isinstance(value, float) and pd.isna(value)) or str(value).strip() == '':
+            return purpose_info.get("null_explanation") or "Empty or not recorded"
+        val_str = str(value).strip()
+        if val_str.lower() in ('nan', 'none', 'null', 'na', 'n/a'):
+            return "Not recorded or missing"
+        return val_str
 
-            # Choose visit/registration table ONLY from non-appointment-like tables
-            if has_visit_date and (has_department or has_diagnosis) and not is_appointment_like:
-                # Score this candidate: prefer tables that have both department and diagnosis
-                score = 1  # base: has_visit_date
-                if has_department:
-                    score += 1
-                if has_diagnosis:
-                    score += 1
-                if any(k in name_l for k in ['visit', 'opd', 'admission', 'registration']):
-                    score += 1
+    def _extract_datetime(self, row, date_col: str, time_col: Optional[str], df: pd.DataFrame) -> Optional[pd.Timestamp]:
+        """Extract combined datetime from row."""
+        try:
+            date_val = row.get(date_col, row[date_col]) if date_col in row.index else None
+            if pd.isna(date_val):
+                return None
+            dt = pd.to_datetime(date_val, errors='coerce')
+            if pd.isna(dt):
+                return None
+            if time_col and time_col in row.index:
+                t_val = row[time_col]
+                if pd.notna(t_val):
+                    if isinstance(t_val, str) and ':' in t_val:
+                        from datetime import datetime
+                        parts = str(date_val).split()[0] if hasattr(date_val, 'split') else str(dt.date())
+                        combined = f"{parts} {t_val}"
+                        dt = pd.to_datetime(combined, errors='coerce')
+            return dt
+        except Exception:
+            return None
 
-                if score > best_visit_score:
-                    best_visit_score = score
-                    visit_df = df
-                    visit_table_name = table_name
-
-            # Look for a dedicated appointment table (column contains 'appointment' + date/time)
-            if appointment_date_col_candidate is not None:
-                appt_score = 1  # has appointment datetime
-                if self._fuzzy_find_column(df, self.patient_col_keywords) is not None:
-                    appt_score += 1
-                if has_department:
-                    appt_score += 1
-                if has_diagnosis:
-                    appt_score += 1
-                if 'appointment' in name_l:
-                    appt_score += 1
-
-                if appt_score > best_appointment_score:
-                    best_appointment_score = appt_score
-                    appointment_df = df
-                    appointment_table_name = table_name
-            
-            # Look for patient table
-            has_age = self._fuzzy_find_column(df, self.age_keywords) is not None
-            has_patient_id = self._fuzzy_find_column(df, self.patient_col_keywords) is not None
-            if has_patient_id and has_age:
-                patient_df = df
-                patient_table_name = table_name
-        
-        if visit_df is None and appointment_df is None:
-            return {'success': False, 'error': 'No visit/appointment data found'}
-        
-        # Detect columns for the main visit/registration timeline
-        date_col = self._fuzzy_find_column(visit_df, self.visit_date_keywords)
-        dept_col = self._fuzzy_find_column(visit_df, self.department_keywords)
-        diag_col = self._fuzzy_find_column(visit_df, self.diagnosis_keywords)
-        patient_id_col = self._fuzzy_find_column(visit_df, self.patient_col_keywords)
-
-        # Extra appointment-related timestamps (if present)
-        admission_col = None
-        discharge_col = None
-        if date_col:
-            for col in visit_df.columns:
-                col_l = col.lower()
-                if admission_col is None and 'admission' in col_l:
-                    admission_col = col
-                if discharge_col is None and ('discharge' in col_l or 'checkout' in col_l or 'discharge_date' in col_l):
-                    discharge_col = col
-        
-        # Merge with patient data if available
-        analysis_df = visit_df.copy()
-        if patient_df is not None and patient_id_col:
-            patient_id_col_patient = self._fuzzy_find_column(patient_df, self.patient_col_keywords)
-            if patient_id_col_patient:
-                analysis_df = analysis_df.merge(patient_df, left_on=patient_id_col, right_on=patient_id_col_patient, how='left', suffixes=('', '_patient'))
-        
-        age_col = self._fuzzy_find_column(analysis_df, self.age_keywords)
-        gender_col = self._fuzzy_find_column(analysis_df, self.gender_keywords)
-        
-        result = {
-            'success': True,
-            'visit_table': visit_table_name,
-            'appointment_table': appointment_table_name,
-            'patient_table': patient_table_name,
-            'total_visits': len(analysis_df)
-        }
-        
-        # 1. Time Slot Analysis & per-date registration/visit timeline
-        if date_col:
-            result['time_slot_analysis'] = self._analyze_time_slots(analysis_df, date_col, dept_col, diag_col, age_col)
-            result['date_timeline'] = self._create_date_timeline(
-                analysis_df,
-                date_col=date_col,
-                dept_col=dept_col,
-                diag_col=diag_col,
-                age_col=age_col,
-                gender_col=gender_col,
-                patient_id_col=patient_id_col,
-                admission_col=admission_col,
-                discharge_col=discharge_col,
-                is_appointment=False,
-            )
-
-        # 1b. Separate Appointment Timeline (if a dedicated appointment table exists)
-        if appointment_df is not None:
-            appt_date_col = self._fuzzy_find_column(appointment_df, self.appointment_date_keywords) or \
-                            self._fuzzy_find_column(appointment_df, self.visit_date_keywords)
-            if appt_date_col:
-                appt_dept_col = self._fuzzy_find_column(appointment_df, self.department_keywords)
-                appt_diag_col = self._fuzzy_find_column(appointment_df, self.diagnosis_keywords)
-                appt_patient_id_col = self._fuzzy_find_column(appointment_df, self.patient_col_keywords)
-                appt_age_col = self._fuzzy_find_column(appointment_df, self.age_keywords)
-                appt_gender_col = self._fuzzy_find_column(appointment_df, self.gender_keywords)
-
-                appt_admission_col = None
-                appt_discharge_col = None
-                for col in appointment_df.columns:
-                    col_l = col.lower()
-                    if appt_admission_col is None and 'admission' in col_l:
-                        appt_admission_col = col
-                    if appt_discharge_col is None and ('discharge' in col_l or 'checkout' in col_l or 'discharge_date' in col_l):
-                        appt_discharge_col = col
-
-                result['appointment_timeline'] = self._create_date_timeline(
-                    appointment_df,
-                    date_col=appt_date_col,
-                    dept_col=appt_dept_col,
-                    diag_col=appt_diag_col,
-                    age_col=appt_age_col,
-                    gender_col=appt_gender_col,
-                    patient_id_col=appt_patient_id_col,
-                    admission_col=appt_admission_col,
-                    discharge_col=appt_discharge_col,
-                    is_appointment=True,
-                )
-        
-        # 2. Department Analysis
-        if dept_col:
-            result['department_analysis'] = self._analyze_departments(analysis_df, dept_col, diag_col)
-        
-        # 3. Diagnosis Patterns
-        if diag_col:
-            result['diagnosis_analysis'] = self._analyze_diagnoses(analysis_df, diag_col, dept_col)
-        
-        # 4. Age Group Analysis
-        if age_col:
-            result['age_group_analysis'] = self._analyze_age_groups(analysis_df, age_col, diag_col)
-        
-        # 5. Weekly Trends (if enough data)
-        if date_col:
-            result['weekly_analysis'] = self._analyze_weekly_trends(analysis_df, date_col, diag_col, age_col)
-        
-        return result
-    
-    def _analyze_time_slots(self, df: pd.DataFrame, date_col: str, dept_col: Optional[str], diag_col: Optional[str], age_col: Optional[str]) -> Dict[str, Any]:
-        """Analyze visits by time slots (Morning/Afternoon/Evening/Night)."""
-        df_copy = df.copy()
-        df_copy['_parsed_datetime'] = pd.to_datetime(df_copy[date_col], errors='coerce')
-        df_copy = df_copy.dropna(subset=['_parsed_datetime'])
-        
-        def get_time_slot(dt):
-            hour = dt.hour
-            if 5 <= hour < 12:
-                return 'Morning'
-            elif 12 <= hour < 17:
-                return 'Afternoon'
-            elif 17 <= hour < 21:
-                return 'Evening'
-            else:
-                return 'Night'
-        
-        df_copy['_time_slot'] = df_copy['_parsed_datetime'].apply(get_time_slot)
-        
-        slots = {}
-        for slot_name in ['Morning', 'Afternoon', 'Evening', 'Night']:
-            slot_df = df_copy[df_copy['_time_slot'] == slot_name]
-            slot_info = {
-                'visit_count': len(slot_df),
-                'slot_name': slot_name
-            }
-            
-            if dept_col and dept_col in slot_df.columns and len(slot_df) > 0:
-                top_dept = slot_df[dept_col].value_counts().head(1)
-                if not top_dept.empty:
-                    slot_info['top_department'] = str(top_dept.index[0])
-                    slot_info['top_department_count'] = int(top_dept.values[0])
-            
-            if diag_col and diag_col in slot_df.columns and len(slot_df) > 0:
-                top_diag = slot_df[diag_col].value_counts().head(1)
-                if not top_diag.empty:
-                    slot_info['top_diagnosis'] = str(top_diag.index[0])
-                    slot_info['top_diagnosis_count'] = int(top_diag.values[0])
-            
-            slots[slot_name] = slot_info
-        
-        return {
-            'slots': slots,
-            'total_with_time': len(df_copy)
-        }
-    
-    def _create_date_timeline(
+    def _table_to_sorted_records(
         self,
         df: pd.DataFrame,
-        date_col: str,
-        dept_col: Optional[str],
-        diag_col: Optional[str],
-        age_col: Optional[str],
-        gender_col: Optional[str],
-        patient_id_col: Optional[str],
-        admission_col: Optional[str],
-        discharge_col: Optional[str],
-        is_appointment: bool,
-    ) -> Dict[str, Any]:
+        table_name: str,
+        file_name: str = ""
+    ) -> List[Dict[str, Any]]:
         """
-        Create a timeline of visits by date with drill-down details.
-        
-        For each date we also calculate Morning / Afternoon / Evening / Night
-        buckets so the frontend can show beginner‑friendly explanations like:
-        
-        📅 Date: 2026-02-01
-        🕘 Morning: 45 patients – top reason, top department
+        For one table: find date/timestamp col, sort ascending, return list of records
+        with date, time, table_name, file_name, column purposes (observed), and value explanations.
         """
-        df_copy = df.copy()
-        df_copy['_parsed_datetime'] = pd.to_datetime(df_copy[date_col], errors='coerce')
-        df_copy = df_copy.dropna(subset=['_parsed_datetime'])
-        df_copy['_date_only'] = df_copy['_parsed_datetime'].dt.strftime('%Y-%m-%d')
-        
-        if len(df_copy) == 0:
-            return {'dates': []}
-        
-        dates_sorted = sorted(df_copy['_date_only'].unique())
-        timeline = []
-        
-        for date_str in dates_sorted:
-            day_df = df_copy[df_copy['_date_only'] == date_str]
-            
-            date_info = {
-                'date': date_str,
-                'visit_count': len(day_df),
-                'timeline_type': 'appointment' if is_appointment else 'visit',
+        cols = self._find_date_timestamp_columns(df)
+        if not cols:
+            return []
+        date_col, time_col = cols[0]
+        df = df.copy()
+        df['__dt'] = pd.to_datetime(df[date_col], errors='coerce')
+        if time_col and time_col in df.columns:
+            df['__date_str'] = df[date_col].astype(str).str.split().str[0]
+            df['__time_str'] = df[time_col].astype(str)
+            df['__dt'] = pd.to_datetime(df['__date_str'] + ' ' + df['__time_str'], errors='coerce')
+            df['__dt'] = df['__dt'].fillna(pd.to_datetime(df[date_col], errors='coerce'))
+        df = df.dropna(subset=['__dt'])
+        df = df.sort_values('__dt', ascending=True)
+
+        # Observe and infer column purposes for all columns (no hardcoding)
+        skip_cols = {'__dt', '__date_str', '__time_str'}
+        data_cols = [c for c in df.columns if c not in skip_cols and not str(c).startswith('__')]
+        column_purposes = {}
+        for c in data_cols:
+            column_purposes[c] = self._infer_column_purpose(c, df[c])
+
+        adm_col, dis_col = self._find_admission_discharge_columns(df)
+        appt_col = self._find_appointment_column(df)
+
+        records = []
+        for _, row in df.iterrows():
+            dt = row['__dt']
+            raw_record = {}
+            explained_record = {}
+            data_flow_parts = []
+
+            for c in data_cols:
+                v = row.get(c)
+                is_null = v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == ''
+                val_str = '' if is_null else str(v)
+                raw_record[c] = val_str
+                purpose_info = column_purposes[c]
+                expl = self._explain_value(v, purpose_info, c)
+                explained_record[c] = expl
+                if expl and expl != "Empty or not recorded":
+                    data_flow_parts.append(f"{purpose_info['purpose']}: {expl}")
+
+            work_summary = self._build_work_summary(table_name, raw_record, column_purposes, file_name)
+
+            stay_duration = None
+            if adm_col and dis_col and adm_col in row.index and dis_col in row.index:
+                stay_duration = self._calculate_stay_duration_explanation(row[adm_col], row[dis_col])
+
+            patient_id = self._get_patient_id_from_record(raw_record, column_purposes)
+
+            rec = {
+                'table_name': table_name,
+                'file_name': file_name or f"{table_name}.csv",
+                'date': dt.strftime('%Y-%m-%d'),
+                'time': dt.strftime('%H:%M:%S') if dt.hour != 0 or dt.minute != 0 or dt.second != 0 else '',
+                'datetime_sort': dt,
+                'record': raw_record,
+                'column_purposes': column_purposes,
+                'data_flow_explanation': " | ".join(data_flow_parts) if data_flow_parts else "Record at this date/time",
+                'value_explanations': explained_record,
+                'work_summary': work_summary,
+                '_patient_id': patient_id,
+                '_event_datetime': dt,
             }
-            
-            if dept_col and dept_col in day_df.columns:
-                dept_counts = day_df[dept_col].value_counts()
-                date_info['top_department'] = str(dept_counts.index[0]) if not dept_counts.empty else 'N/A'
-                date_info['departments'] = dept_counts.head(5).to_dict()
-            
-            if diag_col and diag_col in day_df.columns:
-                diag_counts = day_df[diag_col].value_counts()
-                date_info['top_diagnosis'] = str(diag_counts.index[0]) if not diag_counts.empty else 'N/A'
-                date_info['diagnoses'] = diag_counts.head(5).to_dict()
-            
-            # Time slot breakdown for this date
-            def get_time_slot(dt):
-                hour = dt.hour
-                if 5 <= hour < 12:
-                    return 'Morning'
-                elif 12 <= hour < 17:
-                    return 'Afternoon'
-                elif 17 <= hour < 21:
-                    return 'Evening'
-                else:
-                    return 'Night'
-            
-            day_df = day_df.copy()
-            day_df['_time_slot'] = day_df['_parsed_datetime'].apply(get_time_slot)
-            time_slot_counts = day_df['_time_slot'].value_counts().to_dict()
-            date_info['time_slots'] = time_slot_counts
+            if adm_col and adm_col in row.index:
+                rec['_admission_datetime'] = pd.to_datetime(row[adm_col], errors='coerce')
+            if appt_col and appt_col in row.index:
+                rec['_appointment_datetime'] = pd.to_datetime(row[appt_col], errors='coerce')
+            if stay_duration:
+                rec['stay_duration'] = stay_duration
+            records.append(rec)
+        return records
 
-            # Rich per‑slot details for UI (no hard‑coded column names; uses detected dept/diagnosis)
-            slot_details: Dict[str, Any] = {}
-            for slot_name in ['Morning', 'Afternoon', 'Evening', 'Night']:
-                slot_df = day_df[day_df['_time_slot'] == slot_name]
-                slot_info: Dict[str, Any] = {
-                    'slot_name': slot_name,
-                    'visit_count': int(len(slot_df))
-                }
+    def analyze_cluster(
+        self,
+        tables: List[TableAnalysis],
+        dataframes: Dict[str, pd.DataFrame],
+        relationships: List[Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Analyze healthcare cluster: for each table find date/timestamp (excl. DOB),
+        sort each table ascending, merge all into one global sorted timeline.
+        Returns diagram-ready structure: Start ----|----|---- End
+        """
+        all_records: List[Dict[str, Any]] = []
+        tables_summary = []
 
-                if dept_col and dept_col in slot_df.columns and len(slot_df) > 0:
-                    slot_dept_counts = slot_df[dept_col].value_counts()
-                    if not slot_dept_counts.empty:
-                        slot_info['top_department'] = str(slot_dept_counts.index[0])
-                        slot_info['top_department_count'] = int(slot_dept_counts.values[0])
+        for table in tables:
+            table_name = table.table_name
+            file_name = getattr(table, 'file_name', '') or f"{table_name}.csv"
+            df = dataframes.get(table_name)
+            if df is None or df.empty:
+                continue
+            records = self._table_to_sorted_records(df, table_name, file_name)
+            if not records:
+                continue
+            all_records.extend(records)
+            # Column purposes observed for this table (first record has them)
+            col_purposes = records[0].get('column_purposes', {}) if records else {}
+            tables_summary.append({
+                'table_name': table_name,
+                'file_name': file_name,
+                'row_count': len(records),
+                'date_column': self._find_date_timestamp_columns(df)[0][0] if self._find_date_timestamp_columns(df) else None,
+                'first_date': records[0]['date'],
+                'last_date': records[-1]['date'],
+                'column_purposes': col_purposes,
+            })
 
-                if diag_col and diag_col in slot_df.columns and len(slot_df) > 0:
-                    slot_diag_counts = slot_df[diag_col].value_counts()
-                    if not slot_diag_counts.empty:
-                        slot_info['top_diagnosis'] = str(slot_diag_counts.index[0])
-                        slot_info['top_diagnosis_count'] = int(slot_diag_counts.values[0])
-
-                slot_details[slot_name] = slot_info
-
-            date_info['slot_details'] = slot_details
-
-            # Gender breakdown (Male / Female / Other) for this date if a gender column exists
-            if gender_col and gender_col in day_df.columns:
-                gender_series = day_df[gender_col].astype(str).str.strip().str.lower()
-                male_mask = gender_series.isin(['m', 'male', 'man', 'boy'])
-                female_mask = gender_series.isin(['f', 'female', 'woman', 'girl'])
-                male_count = int(male_mask.sum())
-                female_count = int(female_mask.sum())
-                other_count = int(len(gender_series) - male_count - female_count)
-                date_info['gender_breakdown'] = {
-                    'male': male_count,
-                    'female': female_count,
-                    'other': other_count
-                }
-
-            # Per-visit / per-appointment timeline for this date with exact time and slot name
-            stay_durations: List[float] = []
-            admissions_count = 0
-            discharges_count = 0
-            visits = []
-            for _, row in day_df.sort_values('_parsed_datetime').iterrows():
-                dt_val = row['_parsed_datetime']
-                if pd.isna(dt_val):
-                    continue
-                slot_name = get_time_slot(dt_val)
-                visit_entry: Dict[str, Any] = {
-                    'time': dt_val.strftime('%H:%M'),
-                    'time_slot': slot_name
-                }
-
-                # Linked patient ID (appointment owner) if available
-                patient_id_val = None
-                if patient_id_col and patient_id_col in day_df.columns:
-                    patient_id_val = self._to_str_safe(row.get(patient_id_col))
-                    visit_entry['patient_id'] = patient_id_val
-                if dept_col and dept_col in day_df.columns:
-                    visit_entry['department'] = self._to_str_safe(row.get(dept_col))
-                if diag_col and diag_col in day_df.columns:
-                    visit_entry['reason'] = self._to_str_safe(row.get(diag_col))
-                if age_col and age_col in day_df.columns:
-                    try:
-                        visit_entry['age'] = int(row.get(age_col)) if pd.notna(row.get(age_col)) else None
-                    except Exception:
-                        visit_entry['age'] = self._to_str_safe(row.get(age_col))
-                if gender_col and gender_col in day_df.columns:
-                    visit_entry['gender'] = self._to_str_safe(row.get(gender_col))
-
-                # Admission / discharge timestamps, if present
-                adm_str = None
-                dis_str = None
-                if admission_col and admission_col in day_df.columns:
-                    adm_dt = pd.to_datetime(row.get(admission_col), errors='coerce')
-                    if pd.notna(adm_dt):
-                        adm_str = adm_dt.strftime('%Y-%m-%d %H:%M')
-                        visit_entry['admission_time'] = adm_str
-                        admissions_count += 1
-                if discharge_col and discharge_col in day_df.columns:
-                    dis_dt = pd.to_datetime(row.get(discharge_col), errors='coerce')
-                    if pd.notna(dis_dt):
-                        dis_str = dis_dt.strftime('%Y-%m-%d %H:%M')
-                        visit_entry['discharge_time'] = dis_str
-                        discharges_count += 1
-
-                # Length of stay in days/hours/months (if both admission and discharge available)
-                stay_days_value = None
-                stay_hours_value = None
-                stay_months_value = None
-                if 'admission_time' in visit_entry and 'discharge_time' in visit_entry:
-                    try:
-                        adm_dt_calc = pd.to_datetime(visit_entry['admission_time'])
-                        dis_dt_calc = pd.to_datetime(visit_entry['discharge_time'])
-                        if pd.notna(adm_dt_calc) and pd.notna(dis_dt_calc) and dis_dt_calc >= adm_dt_calc:
-                            delta = dis_dt_calc - adm_dt_calc
-                            total_seconds = delta.total_seconds()
-                            stay_hours_value = round(total_seconds / 3600.0, 1)
-                            stay_days_value = round(total_seconds / (24.0 * 3600.0), 2)
-                            stay_months_value = round(stay_days_value / 30.0, 2)
-                            visit_entry['stay_hours'] = stay_hours_value
-                            visit_entry['stay_days'] = stay_days_value
-                            visit_entry['stay_months'] = stay_months_value
-                            stay_durations.append(stay_days_value)
-                    except Exception:
-                        stay_days_value = None
-                        stay_hours_value = None
-                        stay_months_value = None
-
-                # Simple human explanation for UI (beginner-friendly)
-                dept_txt = self._to_str_safe(row.get(dept_col)) if (dept_col and dept_col in day_df.columns) else ''
-                reason_txt = self._to_str_safe(row.get(diag_col)) if (diag_col and diag_col in day_df.columns) else ''
-                # Build explanation sentence (different for registration vs appointment)
-                who_part = f"Patient {patient_id_val}" if patient_id_val else "A patient"
-                if is_appointment:
-                    # Appointment-focused wording
-                    action_verb = "has an appointment"
-                    if admission_col and discharge_col:
-                        context_phrase = "for hospital admission"
-                    else:
-                        context_phrase = "to see the doctor"
-                    reason_phrase = f" for {reason_txt}" if reason_txt else ""
-                    dept_phrase = f" in {dept_txt}" if dept_txt else ""
-                    explanation = (
-                        f"At {visit_entry['time']} ({slot_name}), {who_part} {action_verb}{dept_phrase}{reason_phrase}."
-                    )
-                else:
-                    # Generic visit / registration wording
-                    dept_part = f"to {dept_txt}" if dept_txt else "to the hospital"
-                    reason_part = f" for {reason_txt}" if reason_txt else ""
-                    explanation = f"At {visit_entry['time']} ({slot_name}), {who_part} came {dept_part}{reason_part}."
-                if adm_str and dis_str:
-                    explanation += f" They were admitted at {adm_str} and discharged at {dis_str}."
-                    # Choose the most user-friendly single unit for duration:
-                    # - If less than 24h: show hours
-                    # - If at least 1 day but less than ~60 days: show days
-                    # - Otherwise: show months
-                    if isinstance(stay_hours_value, (int, float)) and isinstance(stay_days_value, (int, float)) and isinstance(stay_months_value, (int, float)):
-                        if stay_hours_value < 24:
-                            explanation += f" Total stay: about {stay_hours_value} hour(s)."
-                        elif stay_days_value < 60:
-                            explanation += f" Total stay: about {stay_days_value} day(s)."
-                        else:
-                            explanation += f" Total stay: about {stay_months_value} month(s)."
-                elif adm_str and not dis_str:
-                    explanation += f" They were admitted at {adm_str} (discharge date not recorded)."
-                elif dis_str and not adm_str:
-                    explanation += f" Discharge time recorded as {dis_str} (no admission time in this file)."
-                visit_entry['explanation'] = explanation
-                visits.append(visit_entry)
-
-            date_info['visits'] = visits
-
-            # Aggregate stay metrics for the date (for UI summary)
-            if admissions_count or discharges_count or stay_durations:
-                avg_stay = round(float(sum(stay_durations) / len(stay_durations)), 2) if stay_durations else None
-                date_info['stay_summary'] = {
-                    'admissions': int(admissions_count),
-                    'discharges': int(discharges_count),
-                    'average_stay_days': avg_stay,
-                    'max_stay_days': round(float(max(stay_durations)), 2) if stay_durations else None,
-                    'min_stay_days': round(float(min(stay_durations)), 2) if stay_durations else None,
-                }
-            
-            timeline.append(date_info)
-        
-        return {
-            'dates': timeline,
-            'first_date': dates_sorted[0] if dates_sorted else None,
-            'last_date': dates_sorted[-1] if dates_sorted else None,
-            'peak_date': max(timeline, key=lambda x: x['visit_count'])['date'] if timeline else None
-        }
-    
-    def _analyze_departments(self, df: pd.DataFrame, dept_col: str, diag_col: Optional[str]) -> Dict[str, Any]:
-        """Analyze department frequency and common diagnoses per department."""
-        dept_counts = df[dept_col].value_counts()
-        total = len(df)
-        
-        top_departments = []
-        for dept, count in dept_counts.head(10).items():
-            dept_info = {
-                'department': str(dept),
-                'visit_count': int(count),
-                'percentage': round((count / total) * 100, 1)
+        if not all_records:
+            return {
+                'success': False,
+                'error': 'No date/timestamp columns found in healthcare tables (excluding date of birth).',
+                'tables_checked': [t.table_name for t in tables]
             }
-            
-            if diag_col and diag_col in df.columns:
-                dept_df = df[df[dept_col] == dept]
-                top_diag = dept_df[diag_col].value_counts().head(1)
-                if not top_diag.empty:
-                    dept_info['top_diagnosis'] = str(top_diag.index[0])
-            
-            top_departments.append(dept_info)
-        
+
+        # Sort globally by datetime ascending
+        all_records.sort(key=lambda r: r['datetime_sort'])
+
+        # Appointment–admission gap: if gap > 2 hours, mark as hospital delay
+        self._add_appointment_admission_gap_analysis(all_records)
+
+        for r in all_records:
+            del r['datetime_sort']
+            for k in list(r.keys()):
+                if k.startswith('_'):
+                    del r[k]
+
+        first_date = all_records[0]['date']
+        last_date = all_records[-1]['date']
+        first_time = all_records[0].get('time', '')
+        last_time = all_records[-1].get('time', '')
+
+        # Build diagram nodes: unique (date, time) points, each with list of records
+        diagram_nodes = []
+        seen = set()
+        for r in all_records:
+            key = (r['date'], r.get('time', ''))
+            if key not in seen:
+                seen.add(key)
+                nodes_for_key = [x for x in all_records if (x['date'], x.get('time', '')) == key]
+                diagram_nodes.append({
+                    'date': r['date'],
+                    'time': r.get('time', ''),
+                    'count': len(nodes_for_key),
+                    'records': nodes_for_key,
+                    'table_names': list(set(x['table_name'] for x in nodes_for_key))
+                })
+
         return {
-            'total_departments': int(dept_counts.nunique()),
-            'top_departments': top_departments
-        }
-    
-    def _analyze_diagnoses(self, df: pd.DataFrame, diag_col: str, dept_col: Optional[str]) -> Dict[str, Any]:
-        """Analyze diagnosis patterns."""
-        diag_counts = df[diag_col].value_counts()
-        total = len(df)
-        
-        top_diagnoses = []
-        for diag, count in diag_counts.head(10).items():
-            diag_info = {
-                'diagnosis': str(diag),
-                'visit_count': int(count),
-                'percentage': round((count / total) * 100, 1)
-            }
-            top_diagnoses.append(diag_info)
-        
-        return {
-            'total_unique_diagnoses': int(diag_counts.nunique()),
-            'top_diagnoses': top_diagnoses
-        }
-    
-    def _analyze_age_groups(self, df: pd.DataFrame, age_col: str, diag_col: Optional[str]) -> Dict[str, Any]:
-        """Analyze age group distribution."""
-        df_copy = df.copy()
-        df_copy[age_col] = pd.to_numeric(df_copy[age_col], errors='coerce')
-        df_copy = df_copy.dropna(subset=[age_col])
-        
-        def categorize_age(age):
-            if age < 18:
-                return 'Child (0-17)'
-            elif age < 60:
-                return 'Adult (18-59)'
-            else:
-                return 'Senior (60+)'
-        
-        df_copy['_age_group'] = df_copy[age_col].apply(categorize_age)
-        age_group_counts = df_copy['_age_group'].value_counts()
-        
-        groups = []
-        for group, count in age_group_counts.items():
-            group_info = {
-                'age_group': str(group),
-                'visit_count': int(count),
-                'percentage': round((count / len(df_copy)) * 100, 1)
-            }
-            
-            if diag_col and diag_col in df_copy.columns:
-                group_df = df_copy[df_copy['_age_group'] == group]
-                top_diag = group_df[diag_col].value_counts().head(1)
-                if not top_diag.empty:
-                    group_info['top_diagnosis'] = str(top_diag.index[0])
-            
-            groups.append(group_info)
-        
-        return {
-            'age_groups': groups,
-            'total_with_age': len(df_copy)
-        }
-    
-    def _analyze_weekly_trends(self, df: pd.DataFrame, date_col: str, diag_col: Optional[str], age_col: Optional[str]) -> Dict[str, Any]:
-        """Analyze weekly trends if enough data."""
-        df_copy = df.copy()
-        df_copy['_parsed_datetime'] = pd.to_datetime(df_copy[date_col], errors='coerce')
-        df_copy = df_copy.dropna(subset=['_parsed_datetime'])
-        
-        if len(df_copy) < 7:
-            return {'available': False, 'reason': 'Not enough data for weekly analysis'}
-        
-        df_copy['_week'] = df_copy['_parsed_datetime'].dt.isocalendar().week
-        df_copy['_year'] = df_copy['_parsed_datetime'].dt.year
-        df_copy['_week_year'] = df_copy['_year'].astype(str) + '-W' + df_copy['_week'].astype(str)
-        
-        weekly_counts = df_copy['_week_year'].value_counts().sort_index()
-        
-        return {
-            'available': True,
-            'total_weeks': len(weekly_counts),
-            'peak_week': str(weekly_counts.idxmax()) if not weekly_counts.empty else None,
-            'peak_week_visits': int(weekly_counts.max()) if not weekly_counts.empty else 0
+            'success': True,
+            'tables_summary': tables_summary,
+            'sorted_timeline': all_records,
+            'diagram_nodes': diagram_nodes,
+            'first_date': first_date,
+            'last_date': last_date,
+            'first_datetime': f"{first_date} {first_time}".strip(),
+            'last_datetime': f"{last_date} {last_time}".strip(),
+            'total_records': len(all_records),
+            'total_tables_with_dates': len(tables_summary),
         }
