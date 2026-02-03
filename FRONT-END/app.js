@@ -49,7 +49,7 @@ window.showOpenDateExplanation = function (index, nodeEl) {
         html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">⚠️ One customer created 2+ accounts this day: ' + multiCusts.join(', ') + '.</div>';
     }
     html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
-    creations.forEach(function(cr) {
+    creations.forEach(function (cr) {
         const cid = cr.customer_id || '?';
         const time = cr.time_str || '';
         const tod = cr.time_of_day || '';
@@ -90,7 +90,7 @@ window.showLoginDayExplanation = function (index, nodeEl) {
     }
     html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
     const multiAccs = entry.multi_login_accounts || [];
-    logins.forEach(function(lg) {
+    logins.forEach(function (lg) {
         const acc = lg.account_id || '?';
         const time = lg.time_str || lg.login_at || '—';
         const tod = lg.time_of_day || '';
@@ -131,7 +131,7 @@ window.showTxnDayExplanation = function (index, nodeEl) {
     html += '<div style="font-size: 0.95rem; color: #475569; margin-bottom: 1rem;">' + entry.transaction_count + ' transaction(s). Credits: ' + entry.credits + ', Debits: ' + entry.debits + ', Refunds: ' + entry.refunds + ', Blocked: ' + entry.declined + '. <strong>PASS: ' + (entry.pass_count || 0) + '</strong> · <strong style="color: #dc2626;">FAIL: ' + (entry.fail_count || 0) + '</strong></div>';
     if (entry.multi_user_same_day && multiAccs.length) html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">⚠️ ' + multiAccs.join(', ') + ' performed 2+ transactions on this day.</div>';
     html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
-    txns.forEach(function(t) {
+    txns.forEach(function (t) {
         const status = t.status || 'PASS';
         const statusClr = status === 'FAIL' ? '#dc2626' : '#059669';
         html += '<div style="padding: 0.85rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 1rem; color: #1e293b; line-height: 1.6;"><strong style="color: #0f172a;">Account ' + (t.account || '?') + '</strong> at <strong style="color: #f59e0b;">' + (t.time || '—') + '</strong> · ' + (t.type || '') + ' ' + (t.amount || '') + ' · Balance ' + (t.balance_before || '0') + ' → ' + (t.balance_after || '0') + '.<br><span style="display: inline-block; margin-top: 0.35rem; padding: 0.2rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; background: ' + (status === 'FAIL' ? 'rgba(220,38,38,0.12)' : 'rgba(5,150,105,0.12)') + '; color: ' + statusClr + ';">Status: ' + status + '</span> — ' + (t.status_explanation || (status === 'FAIL' ? 'Transaction declined or blocked' : 'Transaction completed successfully')) + '<br><span style="color: #475569;">' + (t.meaning || '') + '</span></div>';
@@ -382,15 +382,26 @@ function showDomainSplitView() {
         const domainData = profile.domain_analysis;
         const profileId = `profile-${index}`;
         const bankingPct = domainData?.percentages?.Banking ?? 0;
-        const isBankingHigh = bankingPct >= 60;
-        const dbLabel = isBankingHigh ? profile.database_name : `Database ${index + 1}: General / Mixed`;
+        const healthcarePct = domainData?.percentages?.Healthcare ?? 0;
+        const otherPct = domainData?.percentages?.Other ?? 0;
+
+        // Determine primary domain
+        const primaryDomain = domainData?.primary_domain || 'Other';
+        const isBanking = primaryDomain === 'Banking';
+        const isHealthcare = primaryDomain === 'Healthcare';
+
+        // Set card colors based on primary domain
+        const cardColor = isBanking ? '#0F766E' : (isHealthcare ? '#14B8A6' : '#64748B');
+        const cardLabel = isBanking ? `🏦 ${profile.database_name}` :
+            (isHealthcare ? `🏥 Healthcare Database ${index + 1}` :
+                `📊 Database ${index + 1}: General / Mixed`);
 
         if (!domainData || !domainData.chart_data) return;
 
         htmlContent += `
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 2rem; position: relative; box-shadow: var(--shadow-sm);">
-                <div style="position: absolute; top: -15px; left: 20px; background: ${isBankingHigh ? 'var(--accent-primary)' : 'var(--text-muted)'}; color: white; padding: 5px 15px; border-radius: 12px; font-weight: 600; font-size: 0.9rem;">
-                    ${dbLabel}
+                <div style="position: absolute; top: -15px; left: 20px; background: ${cardColor}; color: white; padding: 5px 15px; border-radius: 12px; font-weight: 600; font-size: 0.9rem;">
+                    ${cardLabel}
                 </div>
                 
                 <p style="color: var(--text-secondary); margin-top: 1rem; margin-bottom: 2rem; text-align: center;">
@@ -407,17 +418,31 @@ function showDomainSplitView() {
                     <div>
                         <h3 style="margin-bottom: 1.5rem; color: var(--text-muted); font-size: 1.1rem;">Domain Breakdown</h3>
                         <div style="display: flex; flex-direction: column; gap: 1rem;">
-                            <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--accent-primary-light); border-radius: 12px; border: 1px solid rgba(15, 118, 110, 0.2);">
-                                <div style="width: 24px; height: 24px; background: var(--accent-primary); border-radius: 6px;"></div>
+                            <!-- Banking -->
+                            <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: ${isBanking ? 'var(--accent-primary-light)' : 'var(--bg-page)'}; border-radius: 12px; border: 1px solid ${isBanking ? 'rgba(15, 118, 110, 0.2)' : 'var(--border)'};">
+                                <div style="width: 24px; height: 24px; background: #0F766E; border-radius: 6px;"></div>
                                 <div style="flex: 1;">
                                     <div style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">Banking Domain</div>
                                     <div style="color: var(--text-muted); font-size: 0.85rem;">Customer accounts, transactions</div>
                                 </div>
-                                <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-primary-dark);">
-                                    ${domainData.percentages.Banking}%
+                                <div style="font-size: 1.5rem; font-weight: 700; color: ${isBanking ? 'var(--accent-primary-dark)' : 'var(--text-muted)'};">
+                                    ${bankingPct}%
                                 </div>
                             </div>
 
+                            <!-- Healthcare -->
+                            <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: ${isHealthcare ? 'rgba(20, 184, 166, 0.1)' : 'var(--bg-page)'}; border-radius: 12px; border: 1px solid ${isHealthcare ? 'rgba(20, 184, 166, 0.3)' : 'var(--border)'};">
+                                <div style="width: 24px; height: 24px; background: #14B8A6; border-radius: 6px;"></div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">Healthcare Domain</div>
+                                    <div style="color: var(--text-muted); font-size: 0.85rem;">Patient records, treatments</div>
+                                </div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: ${isHealthcare ? '#14B8A6' : 'var(--text-muted)'};">
+                                    ${healthcarePct}%
+                                </div>
+                            </div>
+
+                            <!-- Other -->
                             <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--bg-page); border-radius: 12px; border: 1px solid var(--border);">
                                 <div style="width: 24px; height: 24px; background: var(--text-muted); border-radius: 6px;"></div>
                                 <div style="flex: 1;">
@@ -425,7 +450,7 @@ function showDomainSplitView() {
                                     <div style="color: var(--text-muted); font-size: 0.85rem;">Unclassified data</div>
                                 </div>
                                 <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-muted);">
-                                    ${domainData.percentages.Other}%
+                                    ${otherPct}%
                                 </div>
                             </div>
                         </div>
@@ -439,6 +464,21 @@ function showDomainSplitView() {
                                 ${profile.database_explanation || 'No explanation available.'}
                             </div>
                         </div>
+
+                        <!-- Analyze Button (Per Database) -->
+                        <div style="margin-top: 2rem;">
+                            <button 
+                                type="button" 
+                                class="btn-primary" 
+                                id="analyze-btn-${index}"
+                                onclick="startDatabaseAnalysis(${index})"
+                                style="width: 100%; padding: 1rem 2rem; font-size: 1.1rem; position: relative;">
+                                ${isBanking ? '🏦 Analyze Banking Data' : (isHealthcare ? '🏥 Analyze Healthcare Data' : '📊 Analyze Data')} →
+                            </button>
+                            <div id="analyze-status-${index}" style="margin-top: 0.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; display: none;">
+                                Processing...
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -447,9 +487,6 @@ function showDomainSplitView() {
 
     htmlContent += `
             </div>
-            <button class="btn-primary" onclick="proceedToAccountAnalysis()" style="margin-top: 3rem; padding: 1.2rem 3rem; font-size: 1.2rem;">
-                Continue to Account Analysis →
-            </button>
         </div>
     `;
 
@@ -501,6 +538,554 @@ function showDomainSplitView() {
         });
     }, 100);
 }
+
+// New function to start analysis for a specific database
+window.startDatabaseAnalysis = async function (profileIndex) {
+    const profile = analysisResults[profileIndex];
+    const btn = document.getElementById(`analyze-btn-${profileIndex}`);
+    const statusDiv = document.getElementById(`analyze-status-${profileIndex}`);
+
+    if (!profile) {
+        alert('Database profile not found');
+        return;
+    }
+
+    // Disable button and show processing state
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    btn.style.cursor = 'not-allowed';
+    statusDiv.style.display = 'block';
+    statusDiv.innerHTML = '<div class="loading-spinner" style="width: 20px; height: 20px; margin: 0 auto;"></div> Processing analysis...';
+
+    // Determine domain type
+    const domainData = profile.domain_analysis;
+    const primaryDomain = domainData?.primary_domain || 'Other';
+
+    try {
+        if (primaryDomain === 'Banking' || primaryDomain === 'General/Other') {
+            // Proceed to account analysis for banking-like data
+            await proceedToAccountAnalysis();
+        } else if (primaryDomain === 'Healthcare') {
+            // Show healthcare analysis
+            showHealthcareAnalysisResults(profile);
+        }
+    } catch (error) {
+        console.error('Analysis error:', error);
+        statusDiv.style.display = 'block';
+        statusDiv.style.color = '#ef4444';
+        statusDiv.textContent = `Error: ${error.message}`;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+    }
+};
+
+// Healthcare Analysis Results Display - SIMPLIFIED
+function showHealthcareAnalysisResults(profile) {
+    const mainContent = document.getElementById('mainContent');
+    const hcData = profile.healthcare_analysis;
+
+    if (!hcData || !hcData.success) {
+        mainContent.innerHTML = `
+            <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏥</div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #14B8A6;">Healthcare Database Detected</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                    Unable to perform detailed analysis. ${hcData?.error || 'No visit data found.'}
+                </p>
+                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+            </div>
+        `;
+        return;
+    }
+
+    const dateTimeline = hcData.date_timeline || {};
+    const dates = dateTimeline.dates || [];
+    const apptTimeline = hcData.appointment_timeline || {};
+    const apptDates = apptTimeline.dates || [];
+
+    if (dates.length === 0 && apptDates.length === 0) {
+        mainContent.innerHTML = `
+            <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏥</div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #14B8A6;">No Visit / Appointment Data</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                    No dated visits or appointments found in the healthcare data.
+                </p>
+                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+            </div>
+        `;
+        return;
+    }
+
+    let html = `
+        <div style="padding: 2rem; overflow-y: auto; height: 100%;">
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
+            
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #14B8A6;">🏥 Healthcare Visit / Appointment Analysis</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 3rem; font-size: 1.1rem;">
+                ${profile.database_name} • ${hcData.total_visits} Total Visits
+            </p>
+            
+            <!-- REGISTRATION / VISIT TIMELINE -->
+            ${dates.length ? `
+            <section style="margin-bottom: 3rem;">
+                <h2 style="font-size: 1.6rem; margin-bottom: 1rem; color: var(--text-primary);">
+                    📅 Registration / Visit Timeline
+                </h2>
+                <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem;">
+                    Click on a date to see how many patients actually visited that day, split by Morning, Afternoon, Evening and Night.
+                </p>
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 3rem 2rem;">
+                    <div style="display: flex; align-items: center; justify-content: center; overflow-x: auto; padding-bottom: 1rem; gap: 1rem;">
+            ` : ''}
+    `;
+
+    if (dates.length) {
+        dates.forEach((dateInfo, idx) => {
+            const isPeak = dateInfo.date === dateTimeline.peak_date;
+            const dateLabel = dateInfo.date.split('-').slice(1).join('/'); // MM/DD format
+
+            html += `
+                <div style="flex-shrink: 0; text-align: center; position: relative;">
+                    <div 
+                        onclick="showHealthcareDateDetails(${idx})"
+                        style="
+                            width: 80px; 
+                            height: 80px; 
+                            border-radius: 50%; 
+                            background: ${isPeak ? 'linear-gradient(135deg, #14B8A6, #0D9488)' : 'linear-gradient(135deg, #0F766E, #115E59)'}; 
+                            color: white; 
+                            display: flex; 
+                            flex-direction: column;
+                            align-items: center; 
+                            justify-content: center; 
+                            font-weight: 700; 
+                            cursor: pointer; 
+                            margin-bottom: 0.5rem; 
+                            transition: all 0.3s;
+                            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                            border: ${isPeak ? '3px solid #FDE047' : '3px solid transparent'};
+                        "
+                        onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 20px rgba(20, 184, 166, 0.4)';"
+                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 10px rgba(0,0,0,0.2)';">
+                        <div style="font-size: 1.8rem;">${dateInfo.visit_count}</div>
+                        <div style="font-size: 0.7rem; opacity: 0.9;">visits</div>
+                    </div>
+                    <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600; margin-bottom: 0.25rem;">
+                        ${dateLabel}
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">
+                        ${dateInfo.date.split('-')[0]}
+                    </div>
+                    ${isPeak ? '<div style="font-size: 0.75rem; color: #FDE047; font-weight: 700; margin-top: 0.25rem;">⭐ PEAK</div>' : ''}
+                </div>
+                
+                ${idx < dates.length - 1 ? `
+                    <div style="
+                        flex-shrink: 0; 
+                        width: 60px; 
+                        height: 3px; 
+                        background: linear-gradient(90deg, var(--accent-primary), transparent, var(--accent-primary)); 
+                        align-self: center; 
+                        margin-bottom: 2rem;
+                    "></div>
+                ` : ''}
+            `;
+        });
+
+        html += `
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    // Separate Appointment Timeline
+    if (apptDates.length) {
+        html += `
+            <section style="margin-bottom: 3rem;">
+                <h2 style="font-size: 1.6rem; margin-bottom: 1rem; color: var(--text-primary);">
+                    📅 Appointment Timeline (Only Appointment Table)
+                </h2>
+                <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem;">
+                    Each dot here comes only from your appointment table (columns like <code>appointment_date_time</code>, <code>reason_for_visit</code>). Click a date to see appointment times and reasons.
+                </p>
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 3rem 2rem;">
+                    <div style="display: flex; align-items: center; justify-content: center; overflow-x: auto; padding-bottom: 1rem; gap: 1rem;">
+        `;
+
+        apptDates.forEach((dateInfo, idx) => {
+            const isPeak = dateInfo.date === apptTimeline.peak_date;
+            const dateLabel = dateInfo.date.split('-').slice(1).join('/');
+
+            html += `
+                <div style="flex-shrink: 0; text-align: center; position: relative;">
+                    <div 
+                        onclick="showHealthcareApptDateDetails(${idx})"
+                        style="
+                            width: 80px; 
+                            height: 80px; 
+                            border-radius: 50%; 
+                            background: ${isPeak ? 'linear-gradient(135deg, #0ea5e9, #0369a1)' : 'linear-gradient(135deg, #0284c7, #0369a1)'}; 
+                            color: white; 
+                            display: flex; 
+                            flex-direction: column;
+                            align-items: center; 
+                            justify-content: center; 
+                            font-weight: 700; 
+                            cursor: pointer; 
+                            margin-bottom: 0.5rem; 
+                            transition: all 0.3s;
+                            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                            border: ${isPeak ? '3px solid #F97316' : '3px solid transparent'};
+                        "
+                        onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 20px rgba(56,189,248,0.4)';"
+                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 10px rgba(0,0,0,0.2)';">
+                        <div style="font-size: 1.8rem;">${dateInfo.visit_count}</div>
+                        <div style="font-size: 0.7rem; opacity: 0.9;">appts</div>
+                    </div>
+                    <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600; margin-bottom: 0.25rem;">
+                        ${dateLabel}
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">
+                        ${dateInfo.date.split('-')[0]}
+                    </div>
+                    ${isPeak ? '<div style="font-size: 0.75rem; color: #F97316; font-weight: 700; margin-top: 0.25rem;">⭐ PEAK</div>' : ''}
+                </div>
+                
+                ${idx < apptDates.length - 1 ? `
+                    <div style="
+                        flex-shrink: 0; 
+                        width: 60px; 
+                        height: 3px; 
+                        background: linear-gradient(90deg, #0ea5e9, transparent, #0ea5e9); 
+                        align-self: center; 
+                        margin-bottom: 2rem;
+                    "></div>
+                ` : ''}
+            `;
+        });
+
+        html += `
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    // Common date details container used by both registration and appointment timelines
+    html += `
+            <!-- DATE DETAILS SECTION (Hidden initially, shown when date is clicked) -->
+            <div id="date-details-container" style="display: none;">
+                <div id="date-details-content"></div>
+            </div>
+        </div>
+    `;
+
+    mainContent.innerHTML = html;
+
+    // Store timeline data for drill-down (both registration/visit and appointment)
+    window.healthcareTimelineData = dates;
+    window.healthcareFullData = hcData;
+    window.healthcareAppointmentTimelineData = apptDates;
+
+    window.showHealthcareApptDateDetails = function (index) {
+        window.healthcareTimelineData = window.healthcareAppointmentTimelineData || [];
+        window.healthcareSelectedDateIndex = null; // reset toggle for appt stream
+        showHealthcareDateDetails(index);
+    };
+}
+
+// Healthcare Date Details Drill-Down - SIMPLIFIED EXPLANATIONS
+window.showHealthcareDateDetails = function (dateIndex) {
+    const container = document.getElementById('date-details-container');
+    const content = document.getElementById('date-details-content');
+    if (!container || !content) return;
+
+    // Toggle behaviour: same date click → hide panel
+    const prevSelected = window.healthcareSelectedDateIndex;
+    if (prevSelected === dateIndex) {
+        container.style.display = 'none';
+        window.healthcareSelectedDateIndex = null;
+        return;
+    }
+    window.healthcareSelectedDateIndex = dateIndex;
+
+    const dateInfo = window.healthcareTimelineData[dateIndex];
+    if (!dateInfo) return;
+
+    // When healthcare explanation is opened, hide any other explanation panels (banking timelines)
+    ['open-date-explanation-panel', 'login-explanation-panel', 'txn-explanation-panel'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
+    const slotIcons = { Morning: '🌅', Afternoon: '🕑', Evening: '🌆', Night: '🌙' };
+    const slotColors = { Morning: '#F59E0B', Afternoon: '#0EA5E9', Evening: '#8B5CF6', Night: '#3B82F6' };
+
+    let html = `
+        <div style="
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 420px;
+            max-width: 92vw;
+            max-height: 70vh;
+            overflow-y: auto;
+            background: var(--bg-card);
+            border: 2px solid #14B8A6;
+            border-radius: 12px;
+            padding: 1rem 1.1rem 1.1rem;
+            box-shadow: 0 16px 40px rgba(15,23,42,0.4);
+            z-index: 60;
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
+                <h2 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">
+                    📅 ${dateInfo.date}
+                </h2>
+                <button 
+                    onclick="showHealthcareDateDetails(window.healthcareSelectedDateIndex);"
+                    class="btn-secondary"
+                    style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
+                    ✕ Hide
+                </button>
+            </div>
+            
+            <p style="color: var(--text-primary); margin-bottom: 0.9rem; font-size: 0.85rem;">
+                <strong>${dateInfo.visit_count}</strong> patients visited on this date. We group them into Morning, Afternoon, Evening and Night based on their visit time.
+            </p>
+            
+            <!-- TIME SLOTS -->
+            <section style="margin-bottom: 1.1rem;">
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary);">⏰ Visit Times (Time Slots)</h3>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.8rem;">
+                    Morning = 5–12, Afternoon = 12–17, Evening = 17–21, Night = 21–5.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 0.6rem;">
+    `;
+
+    const timeSlots = dateInfo.time_slots || {};
+    const slotDetails = dateInfo.slot_details || {};
+
+    ['Morning', 'Afternoon', 'Evening', 'Night'].forEach((slot) => {
+        const count = timeSlots[slot] || 0;
+        const icon = slotIcons[slot] || '⏰';
+        const color = slotColors[slot] || '#64748B';
+        const detail = slotDetails[slot] || {};
+        const topDept = detail.top_department || 'N/A';
+        const topReason = detail.top_diagnosis || 'N/A';
+        html += `
+            <div style="background: #f8fafc; border-left: 3px solid ${color}; border-radius: 8px; padding: 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.25rem; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 0.35rem;">
+                        <span style="font-size: 1.2rem;">${icon}</span>
+                        <span style="font-weight: 600; font-size: 0.9rem; color: ${color};">${slot}</span>
+                    </div>
+                    <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">
+                        ${count} <span style="font-size: 0.75rem; color: #64748b;">patients</span>
+                    </div>
+                </div>
+                <div style="font-size: 0.8rem; color: #475569;">
+                    <strong>Top reason:</strong> ${topReason}
+                </div>
+                <div style="font-size: 0.8rem; color: #475569;">
+                    <strong>Top department:</strong> ${topDept}
+                </div>
+            </div>
+        `;
+    });
+
+    html += `
+                </div>
+            </section>
+
+            <!-- GENDER BREAKDOWN -->
+            <section style="margin-bottom: 1.1rem;">
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">👥 Male / Female</h3>
+    `;
+
+    const gender = dateInfo.gender_breakdown || {};
+    const maleCount = gender.male ?? null;
+    const femaleCount = gender.female ?? null;
+    const otherCount = gender.other ?? null;
+
+    if (maleCount === null && femaleCount === null && otherCount === null) {
+        html += `
+                <p style="color: var(--text-muted); font-size: 0.8rem;">No gender column detected in this data.</p>
+        `;
+    } else {
+        html += `
+                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.7rem; background: #f9fafb; border-radius: 6px;">
+                        <span style="font-size: 0.85rem; color: #0f172a; font-weight: 600;">Male</span>
+                        <span style="font-size: 0.95rem; color: #2563eb; font-weight: 700;">${maleCount}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.7rem; background: #f9fafb; border-radius: 6px;">
+                        <span style="font-size: 0.85rem; color: #0f172a; font-weight: 600;">Female</span>
+                        <span style="font-size: 0.95rem; color: #ec4899; font-weight: 700;">${femaleCount}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.7rem; background: #f9fafb; border-radius: 6px;">
+                        <span style="font-size: 0.85rem; color: #0f172a; font-weight: 600;">Other / Unknown</span>
+                        <span style="font-size: 0.95rem; color: #6b7280; font-weight: 700;">${otherCount}</span>
+                    </div>
+                </div>
+        `;
+    }
+
+    html += `
+            </section>
+            
+            <!-- VISIT / APPOINTMENT LIST WITH TIME -->
+            <section style="margin-bottom: 1.1rem;">
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">🕒 Each Appointment (Time & Slot)</h3>
+    `;
+
+    const visits = (dateInfo.visits || []).slice(0, 60);
+    if (!visits.length) {
+        html += `
+                <p style="color: var(--text-muted); font-size: 0.8rem;">Only date information was available for this day (no separate time column detected).</p>
+        `;
+    } else {
+        // Detect which extra columns we actually have data for (patient, admission, discharge)
+        const hasPatient = visits.some(v => v.patient_id);
+        const hasAdmission = visits.some(v => v.admission_time);
+        const hasDischarge = visits.some(v => v.discharge_time);
+
+        html += `
+                <div style="max-height: 180px; overflow-y: auto; border-radius: 6px; border: 1px solid var(--border); background: #f9fafb;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                        <thead>
+                            <tr style="background: #e5e7eb;">
+                                ${hasPatient ? '<th style="padding: 0.4rem 0.5rem; text-align: left;">Patient</th>' : ''}
+                                <th style="padding: 0.4rem 0.5rem; text-align: left;">Time</th>
+                                <th style="padding: 0.4rem 0.5rem; text-align: left;">Slot</th>
+                                <th style="padding: 0.4rem 0.5rem; text-align: left;">Department</th>
+                                <th style="padding: 0.4rem 0.5rem; text-align: left;">Reason</th>
+                                ${hasAdmission ? '<th style="padding: 0.4rem 0.5rem; text-align: left;">Admission</th>' : ''}
+                                ${hasDischarge ? '<th style="padding: 0.4rem 0.5rem; text-align: left;">Discharge</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        visits.forEach(v => {
+            const t = v.time || '—';
+            const s = v.time_slot || '';
+            const d = v.department || '';
+            const r = v.reason || '';
+            const p = v.patient_id || '';
+            const adm = v.admission_time || '';
+            const dis = v.discharge_time || '';
+            html += `
+                            <tr style="border-top: 1px solid rgba(148,163,184,0.35);">
+                                ${hasPatient ? `<td style="padding: 0.35rem 0.5rem; color: #0f172a;">${p}</td>` : ''}
+                                <td style="padding: 0.35rem 0.5rem; font-weight: 600; color: #0f172a;">${t}</td>
+                                <td style="padding: 0.35rem 0.5rem; color: #475569;">${s}</td>
+                                <td style="padding: 0.35rem 0.5rem; color: #475569;">${d}</td>
+                                <td style="padding: 0.35rem 0.5rem; color: #475569;">${r}</td>
+                                ${hasAdmission ? `<td style="padding: 0.35rem 0.5rem; color: #475569;">${adm}</td>` : ''}
+                                ${hasDischarge ? `<td style="padding: 0.35rem 0.5rem; color: #475569;">${dis}</td>` : ''}
+                            </tr>
+            `;
+        });
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+        `;
+    }
+
+    // Friendly text explanations for each appointment/visit
+    const explainItems = visits.filter(v => v.explanation).slice(0, 25);
+    if (explainItems.length) {
+        html += `
+                <div style="margin-top: 0.7rem;">
+                    <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600; margin-bottom: 0.35rem;">Simple explanations (time-wise):</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+        `;
+        explainItems.forEach(v => {
+            const txt = v.explanation || '';
+            html += `
+                        <div style="font-size: 0.8rem; color: #475569; padding: 0.3rem 0.4rem; border-radius: 4px; background: #f8fafc;">
+                            ${txt}
+                        </div>
+            `;
+        });
+        html += `
+                    </div>
+                </div>
+        `;
+    }
+
+    html += `
+            </section>
+            
+            <!-- DEPARTMENTS -->
+            <section style="margin-bottom: 1.75rem;">
+                <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-primary);">🏥 Departments</h3>
+    `;
+
+    const depts = dateInfo.departments || {};
+    const sortedDepts = Object.entries(depts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+    if (sortedDepts.length > 0) {
+        html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem;">`;
+        sortedDepts.forEach(([dept, count]) => {
+            html += `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: var(--bg-page); border-radius: 8px;">
+                    <span style="font-weight: 500; color: var(--text-primary);">${dept}</span>
+                    <span style="font-weight: 700; font-size: 1.1rem; color: #14B8A6;">${count}</span>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    } else {
+        html += `<p style="color: var(--text-muted); font-size: 0.9rem;">No data</p>`;
+    }
+
+    html += `
+            </section>
+            
+            <!-- DIAGNOSES -->
+            <section>
+                <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-primary);">💊 Reasons for Visit</h3>
+    `;
+
+    const diagnoses = dateInfo.diagnoses || {};
+    const sortedDiagnoses = Object.entries(diagnoses).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+    if (sortedDiagnoses.length > 0) {
+        html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem;">`;
+        sortedDiagnoses.forEach(([diag, count]) => {
+            html += `
+                <div style="padding: 1rem; background: var(--bg-page); border: 1px solid var(--border); border-radius: 8px; text-align: center;">
+                    <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; font-size: 0.9rem;">
+                        ${diag}
+                    </div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: #14B8A6;">${count}</div>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    } else {
+        html += `<p style="color: var(--text-muted); font-size: 0.9rem;">No data</p>`;
+    }
+
+    html += `
+            </section>
+        </div>
+    `;
+
+    content.innerHTML = html;
+    container.style.display = 'block';
+
+    // Smooth scroll to details
+    setTimeout(() => {
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
+};
+
 
 // Account Analysis Flow - AUTO-DETECT and ANALYZE
 window.proceedToAccountAnalysis = async function () {
@@ -850,25 +1435,25 @@ function showAccountAnalysisResults(data, dateColumn, idColumn) {
             </div>
 
             <!-- Open Date Timeline: Start ----|----|---- End, click date → big explanation panel -->
-            ${(data.open_date_timeline && data.open_date_timeline.length > 0) ? (function() {
-                const daily = data.open_date_timeline;
-                window.openDateDailyData = daily;
-                const firstEntry = daily[0];
-                const lastEntry = daily[daily.length - 1];
-                const sum = data.timeline_diagram_summary || {};
-                const totalAcc = sum.total_accounts != null ? sum.total_accounts : (ageAnalysis.counts.NEW + ageAnalysis.counts.ACTIVE + ageAnalysis.counts.TRUSTED);
-                const activeAcc = sum.active_count != null ? sum.active_count : totalAcc;
-                const inactiveAcc = sum.inactive_count != null ? sum.inactive_count : (inactiveCustomers && inactiveCustomers.count) || 0;
-                const timelineBrief = (sum.timeline_brief || '').replace(/"/g, '&quot;');
-                const timelineFull = (sum.timeline_full || '').replace(/"/g, '&quot;');
-                const peakDt = sum.peak_date_time || firstEntry?.date;
-                const peakCnt = sum.peak_count != null ? sum.peak_count : (daily.find(e => e.is_peak_day) || {}).count;
-                const peakBrief = (sum.peak_brief || '').replace(/"/g, '&quot;');
-                const peakFull = (sum.peak_full || peakBrief).replace(/"/g, '&quot;');
-                const multiBrief = (sum.multi_account_brief || (data.same_day_accounts && data.same_day_accounts.brief_explanation) || '').replace(/"/g, '&quot;');
-                const multiFull = (sum.multi_account_full || (data.same_day_accounts && data.same_day_accounts.full_explanation) || '').replace(/"/g, '&quot;');
-                const multiExists = sum.multi_account_exists === true || (data.same_day_accounts && (data.same_day_accounts.total_affected || 0) > 0);
-                return `
+            ${(data.open_date_timeline && data.open_date_timeline.length > 0) ? (function () {
+            const daily = data.open_date_timeline;
+            window.openDateDailyData = daily;
+            const firstEntry = daily[0];
+            const lastEntry = daily[daily.length - 1];
+            const sum = data.timeline_diagram_summary || {};
+            const totalAcc = sum.total_accounts != null ? sum.total_accounts : (ageAnalysis.counts.NEW + ageAnalysis.counts.ACTIVE + ageAnalysis.counts.TRUSTED);
+            const activeAcc = sum.active_count != null ? sum.active_count : totalAcc;
+            const inactiveAcc = sum.inactive_count != null ? sum.inactive_count : (inactiveCustomers && inactiveCustomers.count) || 0;
+            const timelineBrief = (sum.timeline_brief || '').replace(/"/g, '&quot;');
+            const timelineFull = (sum.timeline_full || '').replace(/"/g, '&quot;');
+            const peakDt = sum.peak_date_time || firstEntry?.date;
+            const peakCnt = sum.peak_count != null ? sum.peak_count : (daily.find(e => e.is_peak_day) || {}).count;
+            const peakBrief = (sum.peak_brief || '').replace(/"/g, '&quot;');
+            const peakFull = (sum.peak_full || peakBrief).replace(/"/g, '&quot;');
+            const multiBrief = (sum.multi_account_brief || (data.same_day_accounts && data.same_day_accounts.brief_explanation) || '').replace(/"/g, '&quot;');
+            const multiFull = (sum.multi_account_full || (data.same_day_accounts && data.same_day_accounts.full_explanation) || '').replace(/"/g, '&quot;');
+            const multiExists = sum.multi_account_exists === true || (data.same_day_accounts && (data.same_day_accounts.total_affected || 0) > 0);
+            return `
             <div class="open-date-timeline-diagram timeline-line-diagram" style="background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.06)); border: 1px solid rgba(59,130,246,0.25); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem;">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
                     <h2 style="font-size: 1.4rem; color: #3b82f6;">📅 Open Date Timeline</h2>
@@ -927,16 +1512,16 @@ function showAccountAnalysisResults(data, dateColumn, idColumn) {
                 ` : ''}
             </div>
             `;
-            })() : ''}
+        })() : ''}
 
             <!-- Login Users: Start ----|----|---- End, click date → big explanation panel -->
-            ${(data.daily_login_analysis && data.daily_login_analysis.has_data && data.daily_login_analysis.daily && data.daily_login_analysis.daily.length > 0) ? (function() {
-                const dl = data.daily_login_analysis;
-                const daily = dl.daily;
-                window.loginDailyData = daily;
-                const firstDay = daily[0];
-                const lastDay = daily[daily.length - 1];
-                return `
+            ${(data.daily_login_analysis && data.daily_login_analysis.has_data && data.daily_login_analysis.daily && data.daily_login_analysis.daily.length > 0) ? (function () {
+            const dl = data.daily_login_analysis;
+            const daily = dl.daily;
+            window.loginDailyData = daily;
+            const firstDay = daily[0];
+            const lastDay = daily[daily.length - 1];
+            return `
             <div class="login-users-diagram timeline-line-diagram" style="background: linear-gradient(135deg, rgba(34,197,94,0.08), rgba(59,130,246,0.06)); border: 1px solid rgba(34,197,94,0.3); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem;">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
                     <h2 style="font-size: 1.4rem; color: #22c55e;">🔐 Login Users</h2>
@@ -993,16 +1578,16 @@ function showAccountAnalysisResults(data, dateColumn, idColumn) {
                 </div>
             </div>
             `;
-            })() : ''}
+        })() : ''}
 
             <!-- Transaction Details: Start ----|----|---- End, click date → big explanation panel below -->
-            ${(data.transaction_timeline && data.transaction_timeline.has_data && data.transaction_timeline.daily && data.transaction_timeline.daily.length > 0) ? (function() {
-                const tt = data.transaction_timeline;
-                const daily = tt.daily;
-                window.txnDailyData = daily;
-                const firstDay = daily[0];
-                const lastDay = daily[daily.length - 1];
-                return `
+            ${(data.transaction_timeline && data.transaction_timeline.has_data && data.transaction_timeline.daily && data.transaction_timeline.daily.length > 0) ? (function () {
+            const tt = data.transaction_timeline;
+            const daily = tt.daily;
+            window.txnDailyData = daily;
+            const firstDay = daily[0];
+            const lastDay = daily[daily.length - 1];
+            return `
             <div class="transaction-details-diagram timeline-line-diagram" style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(234,88,12,0.06)); border: 1px solid rgba(245,158,11,0.35); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem;">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
                     <h2 style="font-size: 1.4rem; color: #f59e0b;">💰 Transaction Details</h2>
@@ -1046,7 +1631,7 @@ function showAccountAnalysisResults(data, dateColumn, idColumn) {
                 </div>
             </div>
             `;
-            })() : ''}
+        })() : ''}
 
             <!-- Detailed Account Table -->
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;">
