@@ -1,0 +1,4 @@
+account_id,timestamp,amount,transaction_type
+101,2023-10-27 08:30:00,500,Refund
+101,2023-10-27 14:05:00,100,Debit
+101,2023-10-27 14:06:00,50000,Debit

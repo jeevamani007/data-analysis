@@ -1,0 +1,6 @@
+student_id,first_name,last_name,email,enrollment_date,gpa
+101,Alice,Wonderland,alice@school.edu,2022-09-01,3.8
+102,Bob,Builder,bob@school.edu,2022-09-01,3.2
+103,Charlie,Chocolate,charlie@school.edu,2023-01-15,3.9
+104,Dora,Explorer,dora@school.edu,2023-01-15,3.5
+105,Eve,Hacker,eve@school.edu,2021-09-01,4.0

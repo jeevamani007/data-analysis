@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banking Data Analysis Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <!-- Upload Section -->
+    <section id="uploadSection" class="section active">
+        <div class="upload-container">
+            <div class="header">
+                <h1>🏦 Banking Data Analysis Assistant</h1>
+                <p class="subtitle">Upload your CSV files to analyze customer accounts, growth trends, and inactive
+                    users</p>
+            </div>
+
+            <div id="dropZone" class="drop-zone">
+                <div class="drop-zone-content">
+                    <div class="upload-icon">📁</div>
+                    <h3>Drop CSV files here</h3>
+                    <p>or click to browse</p>
+                    <p class="hint">Upload multiple CSV files (customers, accounts, logins, transactions)</p>
+                </div>
+                <input type="file" id="fileInput" multiple accept=".csv" hidden>
+            </div>
+
+            <div id="fileList" class="file-list"></div>
+
+            <button id="analyzeBtn" class="btn-primary" style="display: none;">
+                <span>Analyze Database</span>
+                <span class="arrow">→</span>
+            </button>
+        </div>
+    </section>
+
+    <!-- Loading Section -->
+    <section id="loadingSection" class="section">
+        <div class="loading-container">
+            <h2>Analyzing Your Database...</h2>
+
+            <div class="loading-steps">
+                <div class="loading-step" id="step1">
+                    <div class="step-icon">1</div>
+                    <div class="step-content">
+                        <h3>Uploading Files</h3>
+                        <p>Transferring CSV files to server</p>
+                    </div>
+                </div>
+
+                <div class="loading-step" id="step2">
+                    <div class="step-icon">2</div>
+                    <div class="step-content">
+                        <h3>Detecting Relationships</h3>
+                        <p>Finding links between tables</p>
+                    </div>
+                </div>
+
+                <div class="loading-step" id="step3">
+                    <div class="step-icon">3</div>
+                    <div class="step-content">
+                        <h3>Classifying Domain</h3>
+                        <p>Identifying banking data patterns</p>
+                    </div>
+                </div>
+
+                <div class="loading-step" id="step4">
+                    <div class="step-icon">4</div>
+                    <div class="step-content">
+                        <h3>Analyzing Columns</h3>
+                        <p>Profiling data quality and types</p>
+                    </div>
+                </div>
+
+                <div class="loading-step" id="step5">
+                    <div class="step-icon">5</div>
+                    <div class="step-content">
+                        <h3>Generating Insights</h3>
+                        <p>Creating analysis report</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="loading-spinner"></div>
+        </div>
+    </section>
+
+    <!-- Results Section -->
+    <section id="resultsSection" class="section">
+        <div class="results-container">
+            <div id="mainContent" class="main-content">
+                <!-- Dynamic content will be inserted here -->
+            </div>
+        </div>
+    </section>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

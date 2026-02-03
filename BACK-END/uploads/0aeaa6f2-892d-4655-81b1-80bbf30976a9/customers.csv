@@ -1,0 +1,6 @@
+customer_id,name,status
+CUST01,Alice,ACTIVE
+CUST02,Bob,ACTIVE
+CUST03,Charlie,ACTIVE
+CUST04,Diana,TRUSTED
+CUST05,Edward,NEW

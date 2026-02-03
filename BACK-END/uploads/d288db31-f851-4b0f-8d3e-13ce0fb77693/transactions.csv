@@ -1,0 +1,16 @@
+transaction_id,account_id,transaction_type,amount,transaction_date,description,balance_after
+5001,1001,deposit,1000.00,2023-01-05,Initial deposit,5000.50
+5002,1002,deposit,40000.00,2023-01-06,Initial deposit,40000.00
+5003,1001,withdrawal,200.00,2023-01-10,ATM withdrawal,4800.50
+5004,1003,deposit,2500.75,2023-01-12,Initial deposit,2500.75
+5005,1005,deposit,7500.00,2023-01-15,Initial deposit,7500.00
+5006,1001,deposit,500.00,2023-01-20,Payroll deposit,5300.50
+5007,1007,deposit,2750.25,2023-02-05,Initial deposit,2750.25
+5008,1009,deposit,9000.00,2023-02-10,Initial deposit,9000.00
+5009,1002,interest,120.00,2023-03-01,Monthly interest,40120.00
+5010,1004,interest,90.00,2023-03-01,Monthly interest,30090.00
+5011,1011,deposit,3400.50,2023-03-12,Initial deposit,3400.50
+5012,1013,deposit,6700.75,2023-03-15,Initial deposit,6700.75
+5013,1015,deposit,1200.00,2023-04-20,Initial deposit,1200.00
+5014,1017,deposit,8900.25,2023-04-22,Initial deposit,8900.25
+5015,1019,deposit,4500.50,2023-05-08,Initial deposit,4500.50

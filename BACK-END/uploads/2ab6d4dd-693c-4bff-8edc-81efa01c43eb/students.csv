@@ -1,0 +1,4 @@
+loan_id,customer_id,loan_type,loan_amount,status,created_at
+LN001,CUST001,Home,1500000,Active,2026-01-15 10:05:20
+LN002,CUST003,Personal,300000,Closed,2026-01-20 14:30:00
+LN003,CUST004,Education,500000,Active,2026-01-25 16:40:15

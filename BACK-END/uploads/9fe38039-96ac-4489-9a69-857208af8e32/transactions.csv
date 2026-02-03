@@ -1,0 +1,5 @@
+account_id,transaction_type,amount,transaction_date,transaction_time,remarks
+WAL001,Credit,2000,2026-02-01,08:00,Wallet topup
+WAL001,Debit,500,2026-02-01,10:30,Coffee shop
+WAL001,Refund,200,2026-02-01,11:15,Failed scan pay
+WAL002,Credit,5000,2026-02-02,09:00,UPI transfer

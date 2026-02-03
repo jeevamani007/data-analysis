@@ -1,0 +1,5 @@
+customer_id,customer_name,kyc_status,created_at
+CUST001,Arun,Verified,2026-02-01 08:30:00
+CUST002,Meena,Pending,2026-02-01 09:00:00
+CUST003,Ravi,Verified,2026-01-28 10:15:00
+CUST004,Priya,Rejected,2026-01-30 11:45:00

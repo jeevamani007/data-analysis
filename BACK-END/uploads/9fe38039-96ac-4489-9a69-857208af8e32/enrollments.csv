@@ -1,0 +1,5 @@
+account_id,transaction_type,amount,transaction_date,transaction_time,remarks
+CC001,Debit,5000,2026-02-01,14:00,Amazon purchase
+CC001,Debit,12000,2026-02-01,18:30,Flight booking
+CC001,Refund,2000,2026-02-02,09:00,Cancelled order
+CC002,Debit,3000,2026-02-02,16:00,Swiggy order

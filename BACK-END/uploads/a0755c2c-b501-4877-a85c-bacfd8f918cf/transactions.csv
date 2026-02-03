@@ -1,0 +1,6 @@
+transaction_id,account_id,date,type,amount,description
+TXN001,ACC001,2025-01-10,CREDIT,10000,Salary Deposit
+TXN002,ACC001,2025-01-12,DEBIT,2000,ATM Withdrawal
+TXN003,ACC002,2025-01-11,CREDIT,5000,Deposit
+TXN004,ACC003,2025-01-15,DEBIT,1000,Utility Payment
+TXN005,ACC005,2025-01-16,CREDIT,20000,Cheque Deposit

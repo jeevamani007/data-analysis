@@ -1,0 +1,4 @@
+customer_id,name,age,gender,city
+CUST01,Ravi,35,M,Chennai
+CUST02,Sita,42,F,Madurai
+CUST03,Kumar,50,M,Salem

@@ -1,0 +1,5 @@
+transaction_id,account_id,amount,transaction_type,status,timestamp
+TXN001,ACC001,500,Deposit,Success,2026-02-01 09:20:10
+TXN002,ACC002,2000,Withdrawal,Success,2026-02-01 11:05:00
+TXN003,ACC003,1000,Deposit,Failed,2026-01-29 12:15:30
+TXN004,ACC004,1500,Deposit,Success,2026-01-30 17:00:50

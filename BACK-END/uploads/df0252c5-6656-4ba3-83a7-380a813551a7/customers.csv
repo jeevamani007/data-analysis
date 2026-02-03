@@ -1,0 +1,5 @@
+kyc_id,customer_id,document_type,document_number,status,verified_on
+KYC001,CUST001,Passport,P1234567,Verified,2026-01-02 10:00:00
+KYC002,CUST002,Driving License,D7654321,Pending,2026-01-06 11:20:10
+KYC003,CUST003,Aadhaar,A1234567890,Verified,2026-01-11 12:30:25
+KYC004,CUST004,Passport,P7654321,Rejected,2026-01-13 13:40:35

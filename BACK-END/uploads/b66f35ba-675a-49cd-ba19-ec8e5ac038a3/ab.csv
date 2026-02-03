@@ -1,0 +1,4 @@
+account_id,customer_id,account_type,branch,open_date,status,balance
+ACC101,CUST01,Savings,Chennai,2018-05-10,ACTIVE,25000
+ACC102,CUST02,Current,Madurai,2019-03-15,ACTIVE,120000
+ACC103,CUST03,Savings,Salem,2017-07-20,INACTIVE,0
