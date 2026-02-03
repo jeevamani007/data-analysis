@@ -17,7 +17,7 @@ class HealthcareAnalyzer:
         self.patient_col_keywords = ['patient', 'patient_id', 'patientid']
         self.visit_date_keywords = ['visit_date', 'visitdate', 'admission_date', 'appointment_date', 'registration_date', 'date']
         # More specific datetime hints for dedicated appointment tables
-        self.appointment_date_keywords = ['appointment_date_time', 'appointment_datetime', 'appointment_date']
+        self.appointment_date_keywords = ['appointment_date_time', 'appointment_datetime', 'appt_datetime', 'appt_date']
         self.department_keywords = ['department', 'dept', 'specialty', 'ward']
         self.diagnosis_keywords = ['diagnosis', 'disease', 'reason', 'reason_for_visit', 'complaint']
         self.age_keywords = ['age', 'patient_age']
@@ -64,29 +64,14 @@ class HealthcareAnalyzer:
         patient_table_name = None
         
         for table_name, df in dataframes.items():
+            name_l = table_name.lower()
+
             # Look for generic visit/registration indicators
             has_visit_date = self._fuzzy_find_column(df, self.visit_date_keywords) is not None
             has_department = self._fuzzy_find_column(df, self.department_keywords) is not None
             has_diagnosis = self._fuzzy_find_column(df, self.diagnosis_keywords) is not None
-            
-            if has_visit_date and (has_department or has_diagnosis):
-                # Score this candidate: prefer tables that have both department and diagnosis
-                score = 1  # base: has_visit_date
-                if has_department:
-                    score += 1
-                if has_diagnosis:
-                    score += 1
-                # Prefer tables whose name hints at visits/appointments/admissions
-                name_l = table_name.lower()
-                if any(k in name_l for k in ['visit', 'appointment', 'opd', 'admission']):
-                    score += 1
-                
-                if score > best_visit_score:
-                    best_visit_score = score
-                    visit_df = df
-                    visit_table_name = table_name
 
-            # Look for a dedicated appointment table (column contains 'appointment' + date/time)
+            # Check if this table looks like a dedicated appointment table by its columns
             appointment_date_col_candidate = None
             for col in df.columns:
                 col_l = col.lower()
@@ -94,6 +79,25 @@ class HealthcareAnalyzer:
                     appointment_date_col_candidate = col
                     break
 
+            is_appointment_like = ('appointment' in name_l) or (appointment_date_col_candidate is not None)
+
+            # Choose visit/registration table ONLY from non-appointment-like tables
+            if has_visit_date and (has_department or has_diagnosis) and not is_appointment_like:
+                # Score this candidate: prefer tables that have both department and diagnosis
+                score = 1  # base: has_visit_date
+                if has_department:
+                    score += 1
+                if has_diagnosis:
+                    score += 1
+                if any(k in name_l for k in ['visit', 'opd', 'admission', 'registration']):
+                    score += 1
+
+                if score > best_visit_score:
+                    best_visit_score = score
+                    visit_df = df
+                    visit_table_name = table_name
+
+            # Look for a dedicated appointment table (column contains 'appointment' + date/time)
             if appointment_date_col_candidate is not None:
                 appt_score = 1  # has appointment datetime
                 if self._fuzzy_find_column(df, self.patient_col_keywords) is not None:
@@ -102,7 +106,6 @@ class HealthcareAnalyzer:
                     appt_score += 1
                 if has_diagnosis:
                     appt_score += 1
-                name_l = table_name.lower()
                 if 'appointment' in name_l:
                     appt_score += 1
 
@@ -120,11 +123,6 @@ class HealthcareAnalyzer:
         
         if visit_df is None and appointment_df is None:
             return {'success': False, 'error': 'No visit/appointment data found'}
-
-        # If no separate visit_df found but we do have an appointment_df, treat that as visit_df for core stats
-        if visit_df is None and appointment_df is not None:
-            visit_df = appointment_df
-            visit_table_name = appointment_table_name
         
         # Detect columns for the main visit/registration timeline
         date_col = self._fuzzy_find_column(visit_df, self.visit_date_keywords)
@@ -174,6 +172,7 @@ class HealthcareAnalyzer:
                 patient_id_col=patient_id_col,
                 admission_col=admission_col,
                 discharge_col=discharge_col,
+                is_appointment=False,
             )
 
         # 1b. Separate Appointment Timeline (if a dedicated appointment table exists)
@@ -206,6 +205,7 @@ class HealthcareAnalyzer:
                     patient_id_col=appt_patient_id_col,
                     admission_col=appt_admission_col,
                     discharge_col=appt_discharge_col,
+                    is_appointment=True,
                 )
         
         # 2. Department Analysis
@@ -283,6 +283,7 @@ class HealthcareAnalyzer:
         patient_id_col: Optional[str],
         admission_col: Optional[str],
         discharge_col: Optional[str],
+        is_appointment: bool,
     ) -> Dict[str, Any]:
         """
         Create a timeline of visits by date with drill-down details.
@@ -309,7 +310,8 @@ class HealthcareAnalyzer:
             
             date_info = {
                 'date': date_str,
-                'visit_count': len(day_df)
+                'visit_count': len(day_df),
+                'timeline_type': 'appointment' if is_appointment else 'visit',
             }
             
             if dept_col and dept_col in day_df.columns:
@@ -379,6 +381,9 @@ class HealthcareAnalyzer:
                 }
 
             # Per-visit / per-appointment timeline for this date with exact time and slot name
+            stay_durations: List[float] = []
+            admissions_count = 0
+            discharges_count = 0
             visits = []
             for _, row in day_df.sort_values('_parsed_datetime').iterrows():
                 dt_val = row['_parsed_datetime']
@@ -415,32 +420,91 @@ class HealthcareAnalyzer:
                     if pd.notna(adm_dt):
                         adm_str = adm_dt.strftime('%Y-%m-%d %H:%M')
                         visit_entry['admission_time'] = adm_str
+                        admissions_count += 1
                 if discharge_col and discharge_col in day_df.columns:
                     dis_dt = pd.to_datetime(row.get(discharge_col), errors='coerce')
                     if pd.notna(dis_dt):
                         dis_str = dis_dt.strftime('%Y-%m-%d %H:%M')
                         visit_entry['discharge_time'] = dis_str
+                        discharges_count += 1
+
+                # Length of stay in days/hours/months (if both admission and discharge available)
+                stay_days_value = None
+                stay_hours_value = None
+                stay_months_value = None
+                if 'admission_time' in visit_entry and 'discharge_time' in visit_entry:
+                    try:
+                        adm_dt_calc = pd.to_datetime(visit_entry['admission_time'])
+                        dis_dt_calc = pd.to_datetime(visit_entry['discharge_time'])
+                        if pd.notna(adm_dt_calc) and pd.notna(dis_dt_calc) and dis_dt_calc >= adm_dt_calc:
+                            delta = dis_dt_calc - adm_dt_calc
+                            total_seconds = delta.total_seconds()
+                            stay_hours_value = round(total_seconds / 3600.0, 1)
+                            stay_days_value = round(total_seconds / (24.0 * 3600.0), 2)
+                            stay_months_value = round(stay_days_value / 30.0, 2)
+                            visit_entry['stay_hours'] = stay_hours_value
+                            visit_entry['stay_days'] = stay_days_value
+                            visit_entry['stay_months'] = stay_months_value
+                            stay_durations.append(stay_days_value)
+                    except Exception:
+                        stay_days_value = None
+                        stay_hours_value = None
+                        stay_months_value = None
 
                 # Simple human explanation for UI (beginner-friendly)
                 dept_txt = self._to_str_safe(row.get(dept_col)) if (dept_col and dept_col in day_df.columns) else ''
                 reason_txt = self._to_str_safe(row.get(diag_col)) if (diag_col and diag_col in day_df.columns) else ''
-                # Build explanation sentence
+                # Build explanation sentence (different for registration vs appointment)
                 who_part = f"Patient {patient_id_val}" if patient_id_val else "A patient"
-                dept_part = f"to {dept_txt}" if dept_txt else "to the hospital"
-                reason_part = ""
-                if reason_txt:
-                    reason_part = f" for {reason_txt}"
-                explanation = f"At {visit_entry['time']} ({slot_name}), {who_part} came {dept_part}{reason_part}."
+                if is_appointment:
+                    # Appointment-focused wording
+                    action_verb = "has an appointment"
+                    if admission_col and discharge_col:
+                        context_phrase = "for hospital admission"
+                    else:
+                        context_phrase = "to see the doctor"
+                    reason_phrase = f" for {reason_txt}" if reason_txt else ""
+                    dept_phrase = f" in {dept_txt}" if dept_txt else ""
+                    explanation = (
+                        f"At {visit_entry['time']} ({slot_name}), {who_part} {action_verb}{dept_phrase}{reason_phrase}."
+                    )
+                else:
+                    # Generic visit / registration wording
+                    dept_part = f"to {dept_txt}" if dept_txt else "to the hospital"
+                    reason_part = f" for {reason_txt}" if reason_txt else ""
+                    explanation = f"At {visit_entry['time']} ({slot_name}), {who_part} came {dept_part}{reason_part}."
                 if adm_str and dis_str:
                     explanation += f" They were admitted at {adm_str} and discharged at {dis_str}."
+                    # Choose the most user-friendly single unit for duration:
+                    # - If less than 24h: show hours
+                    # - If at least 1 day but less than ~60 days: show days
+                    # - Otherwise: show months
+                    if isinstance(stay_hours_value, (int, float)) and isinstance(stay_days_value, (int, float)) and isinstance(stay_months_value, (int, float)):
+                        if stay_hours_value < 24:
+                            explanation += f" Total stay: about {stay_hours_value} hour(s)."
+                        elif stay_days_value < 60:
+                            explanation += f" Total stay: about {stay_days_value} day(s)."
+                        else:
+                            explanation += f" Total stay: about {stay_months_value} month(s)."
                 elif adm_str and not dis_str:
-                    explanation += f" They were admitted at {adm_str}."
+                    explanation += f" They were admitted at {adm_str} (discharge date not recorded)."
                 elif dis_str and not adm_str:
-                    explanation += f" Discharge time recorded as {dis_str}."
+                    explanation += f" Discharge time recorded as {dis_str} (no admission time in this file)."
                 visit_entry['explanation'] = explanation
                 visits.append(visit_entry)
 
             date_info['visits'] = visits
+
+            # Aggregate stay metrics for the date (for UI summary)
+            if admissions_count or discharges_count or stay_durations:
+                avg_stay = round(float(sum(stay_durations) / len(stay_durations)), 2) if stay_durations else None
+                date_info['stay_summary'] = {
+                    'admissions': int(admissions_count),
+                    'discharges': int(discharges_count),
+                    'average_stay_days': avg_stay,
+                    'max_stay_days': round(float(max(stay_durations)), 2) if stay_durations else None,
+                    'min_stay_days': round(float(min(stay_durations)), 2) if stay_durations else None,
+                }
             
             timeline.append(date_info)
         
