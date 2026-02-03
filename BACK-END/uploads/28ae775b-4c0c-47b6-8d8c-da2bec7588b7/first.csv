@@ -1,0 +1,31 @@
+Patient_ID,Name,Age,Gender,Blood_Group
+P001,Karthik,28,M,A+
+P002,Priya,32,F,B+
+P003,Arjun,45,M,O-
+P004,Divya,25,F,AB+
+P005,Ravi,38,M,A-
+P006,Anjali,30,F,O+
+P007,Suresh,50,M,B-
+P008,Meena,27,F,A+
+P009,Ramesh,42,M,AB-
+P010,Sneha,35,F,O+
+P011,Kiran,29,M,B+
+P012,Nisha,31,F,A-
+P013,Manoj,46,M,O-
+P014,Priya S,26,F,AB+
+P015,Ajay,33,M,A+
+P016,Divya P,40,F,O-
+P017,Vinod,37,M,B+
+P018,Rekha,34,F,AB-
+P019,Arun,41,M,A+
+P020,Kavya,28,F,O+
+P021,Hari,39,M,B-
+P022,Anu,36,F,AB+
+P023,Deepak,43,M,O+
+P024,Swathi,29,F,A-
+P025,Raj,44,M,B+
+P026,Priyanka,30,F,AB-
+P027,Surya,35,M,O-
+P028,Latha,32,F,A+
+P029,Mohan,38,M,B+
+P030,Rani,27,F,O+

@@ -233,99 +233,23 @@ async def analyze_database(session_id: str):
                     db_name += f" {i+1}"
             
             # --- Single Pass Analysis per DB Cluster ---
+            # Rules: Healthcare domain ONLY runs new healthcare analyzer. Others (Banking, General) do NOT run old features.
             segmentation_result = None
             age_result = None
-            
-            # Find best candidates for analysis in this cluster
-            # We look for the most relevant table for each task
-            
-            # 1. Fuzzy Segmentation (Balance Analysis)
-            # Find table with best 'balance' column
-            for t in cluster_tables:
-                df = dataframes[t.table_name]
-                balance_col = next((c for c in df.columns if 'balance' in c.lower()), None)
-                id_col = next((c for c in df.columns if any(x in c.lower() for x in ['id', 'cust', 'number'])), None)
-                
-                if balance_col and id_col:
-                    # Found a candidate. If we haven't found one yet, or if this one looks like a main 'account' table, output it.
-                    # Simple heuristic: prefer 'account' in table name
-                    if not segmentation_result or 'account' in t.table_name.lower():
-                         segmentation_result = fuzzy_analyzer.analyze_balance_distribution(df, balance_col, id_col)
-                         segmentation_result['analyzed_table'] = t.table_name # Track which table was used
-            
-            # 2. Account Age Analysis
-            try:
-                for t in cluster_tables:
-                    df = dataframes[t.table_name]
-                    open_date_col = next((c for c in df.columns if any(k in c.lower() for k in ['open_date', 'open_time', 'created_at', 'joined', 'login_date', 'date', 'timestamp'])), None)
-                    id_col = next((c for c in df.columns if any(x in c.lower() for x in ['id', 'cust', 'number'])), None)
-                    
-                    if open_date_col and id_col:
-                        # Prefer tables with 'account' or 'customer' in name, or if we haven't found one yet
-                        if not age_result or 'account' in t.table_name.lower() or 'customer' in t.table_name.lower():
-                            age_result = fuzzy_analyzer.analyze_account_age(df, open_date_col, id_col)
-                            age_result['analyzed_table'] = t.table_name
-            except Exception as e:
-                print(f"[Account Age Analysis] Error in cluster {i+1}: {str(e)}")
-            
-            # 3. Transaction Analysis (New Fuzzy Logic)
             transaction_result = None
-            for t in cluster_tables:
-                df = dataframes[t.table_name]
-                # Check for likely transaction table (MUST have "transaction" or "trx" or similar in name, or just contain required columns)
-                # But to avoid false positives on simple lists, let's prefer table names with 'trans'
-                if 'trans' in t.table_name.lower() or 'trx' in t.table_name.lower() or 'ledg' in t.table_name.lower():
-                     # Attempt analysis
-                     res = fuzzy_analyzer.analyze_transactions(df)
-                     if res.get('success'):
-                         transaction_result = res
-                         transaction_result['analyzed_table'] = t.table_name
-                         break # Use the first valid transaction table found
-            
-            # If no obvious name match, try any table that has all 4 columns
-            if not transaction_result:
-                for t in cluster_tables:
-                     df = dataframes[t.table_name]
-                     res = fuzzy_analyzer.analyze_transactions(df)
-                     if res.get('success'):
-                         transaction_result = res
-                         transaction_result['analyzed_table'] = t.table_name
-                         break
-
-            # Credit Time Slot Analysis
             credit_analysis_result = None
-            try:
-                from credit_analyzer import CreditTimeSlotAnalyzer
-                credit_analyzer = CreditTimeSlotAnalyzer()
-                credit_analysis_result = credit_analyzer.analyze_cluster(
-                    tables=cluster_tables, 
-                    dataframes=dataframes,
-                    relationships=cluster_relationships
-                )
-                if credit_analysis_result:
-                    print(f"[Credit Analysis] Success for cluster {i+1}")
-            except Exception as e:
-                print(f"[Credit Analysis] Error in cluster {i+1}: {str(e)}")
-
-            # Login Workflow Analysis
             login_analysis_result = None
-            try:
-                from login_analyzer import LoginWorkflowAnalyzer
-                login_analyzer = LoginWorkflowAnalyzer()
-                login_analysis_result = login_analyzer.analyze_cluster(
-                    tables=cluster_tables,
-                    dataframes=dataframes,
-                    relationships=cluster_relationships,
-                    credit_analysis=credit_analysis_result
-                )
-                if login_analysis_result:
-                    print(f"[Login Analysis] Success for cluster {i+1}")
-                else:
-                    print(f"[Login Analysis] No data for cluster {i+1}")
-            except Exception as le:
-                print(f"[Login Analysis] Error in cluster {i+1}: {str(le)}")
 
-            # Healthcare Analysis (if Healthcare domain detected)
+            is_healthcare = domain_result.get('primary_domain') == 'Healthcare'
+
+            # Banking/Other: Skip all old features (balance, age, transaction, credit, login)
+            if not is_healthcare:
+                pass  # No banking-specific analysis
+            else:
+                # Healthcare: Skip banking features; healthcare_analysis runs below
+                pass
+
+            # Healthcare Analysis (ONLY for Healthcare domain - domain classifier rules unchanged)
             healthcare_analysis_result = None
             if domain_result.get('primary_domain') == 'Healthcare':
                 try:
