@@ -325,6 +325,25 @@ async def analyze_database(session_id: str):
             except Exception as le:
                 print(f"[Login Analysis] Error in cluster {i+1}: {str(le)}")
 
+            # Healthcare Analysis (if Healthcare domain detected)
+            healthcare_analysis_result = None
+            if domain_result.get('primary_domain') == 'Healthcare':
+                try:
+                    from healthcare_analyzer import HealthcareAnalyzer
+                    healthcare_analyzer = HealthcareAnalyzer()
+                    healthcare_analysis_result = healthcare_analyzer.analyze_cluster(
+                        tables=cluster_tables,
+                        dataframes=dataframes,
+                        relationships=cluster_relationships
+                    )
+                    if healthcare_analysis_result and healthcare_analysis_result.get('success'):
+                        print(f"[Healthcare Analysis] Success for cluster {i+1}")
+                    else:
+                        print(f"[Healthcare Analysis] No healthcare data found in cluster {i+1}")
+                except Exception as he:
+                    print(f"[Healthcare Analysis] Error in cluster {i+1}: {str(he)}")
+
+
 
             # Create profile (sanitize dicts so numpy types serialize to JSON)
             profile = DatabaseProfile(
@@ -343,6 +362,7 @@ async def analyze_database(session_id: str):
                 account_age_analysis=_to_native(age_result) if age_result else None,
                 segmentation_analysis=_to_native(segmentation_result) if segmentation_result else None,
                 transaction_analysis=_to_native(transaction_result) if transaction_result else None,
+                healthcare_analysis=_to_native(healthcare_analysis_result) if healthcare_analysis_result else None,
                 database_explanation=db_explanation,
                 relationship_explanation=relationship_explanation
             )

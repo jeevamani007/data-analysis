@@ -1,0 +1,6 @@
+visit_id,patient_id,visit_date,doctor_name,department,diagnosis,treatment,cost
+V001,P001,2026-02-01,Dr.Sharma,Cardiology,High BP,Medication,1500
+V002,P002,2026-02-01,Dr.Radha,Gynecology,PCOS,Tablets,2000
+V003,P003,2026-02-02,Dr.Kumar,Orthopedics,Knee Pain,Physiotherapy,1800
+V004,P004,2026-02-02,Dr.Anand,ENT,Cold & Fever,Injection,1200
+V005,P005,2026-02-03,Dr.Priya,Diabetology,Diabetes,Insulin,2500

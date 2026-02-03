@@ -1,0 +1,51 @@
+patient_id,patient_name,age,gender,mobile_number,address,registration_date_time,reason_for_visit,department
+P001,Ramesh Kumar,34,Female,9876543565,Chennai,2026-02-01 17:00:00,Headache,Gynecology
+P002,Priya Sharma,20,Female,9876543392,Chennai,2026-02-01 13:59:00,High BP,General
+P003,Arjun,36,Female,9876543974,Coimbatore,2026-02-01 10:55:00,Cold,General
+P004,Sneha,23,Female,9876543923,Hyderabad,2026-02-01 17:33:00,Back Pain,OPD
+P005,Karthik,48,Male,9876543222,Chennai,2026-02-01 08:51:00,Fever,OPD
+P006,Anitha,46,Female,9876543859,Bangalore,2026-02-01 16:49:00,Asthma,OPD
+P007,Ravi,51,Male,9876543595,Coimbatore,2026-02-01 14:40:00,PCOS,General
+P008,Priya,20,Male,9876543939,Coimbatore,2026-02-01 17:27:00,Asthma,Endocrinology
+P009,Manoj,25,Male,9876543274,Chennai,2026-02-01 09:35:00,Back Pain,General
+P010,Meena,23,Male,9876543897,Chennai,2026-02-01 08:52:00,Cold,Cardiology
+P011,Suresh,28,Male,9876543843,Coimbatore,2026-02-01 08:53:00,Fracture,General
+P012,Deepa,53,Female,9876543237,Coimbatore,2026-02-01 15:01:00,High BP,Cardiology
+P013,Vikram,23,Female,9876543545,Hyderabad,2026-02-01 17:07:00,High BP,Cardiology
+P014,Lakshmi,42,Male,9876543806,Bangalore,2026-02-01 13:03:00,Headache,Gynecology
+P015,Hari,25,Female,9876543264,Coimbatore,2026-02-01 11:42:00,Headache,Orthopedics
+P016,Divya,44,Male,9876543936,Coimbatore,2026-02-01 15:10:00,PCOS,Gynecology
+P017,Rajesh,56,Female,9876543881,Chennai,2026-02-01 12:56:00,High BP,Orthopedics
+P018,Neha,31,Female,9876543371,Chennai,2026-02-01 11:35:00,Fracture,Gynecology
+P019,Ajay,47,Female,9876543724,Chennai,2026-02-01 15:56:00,Fever,OPD
+P020,Pooja,33,Male,9876543535,Bangalore,2026-02-01 12:13:00,Cold,Orthopedics
+P021,Kumar,32,Male,9876543514,Chennai,2026-02-01 10:38:00,Back Pain,Cardiology
+P022,Shalini,57,Male,9876543451,Chennai,2026-02-01 09:00:00,Asthma,Cardiology
+P023,Rohan,58,Male,9876543584,Hyderabad,2026-02-01 17:19:00,Diabetes,Orthopedics
+P024,Anjali,52,Male,9876543314,Hyderabad,2026-02-01 11:54:00,Asthma,Orthopedics
+P025,Sanjay,30,Male,9876543488,Hyderabad,2026-02-01 10:20:00,Cold,Endocrinology
+P026,Preethi,51,Female,9876543493,Coimbatore,2026-02-01 17:47:00,Checkup,Endocrinology
+P027,Vijay,22,Female,9876543760,Bangalore,2026-02-01 11:55:00,Back Pain,Orthopedics
+P028,Sowmya,58,Male,9876543176,Coimbatore,2026-02-01 12:10:00,High BP,Cardiology
+P029,Manish,38,Male,9876543364,Coimbatore,2026-02-01 08:10:00,PCOS,Orthopedics
+P030,Aishwarya,52,Male,9876543415,Bangalore,2026-02-01 13:00:00,Cold,Endocrinology
+P031,Karthik2,60,Female,9876543131,Chennai,2026-02-01 11:29:00,Diabetes,Gynecology
+P032,Anu,39,Male,9876543491,Chennai,2026-02-01 10:09:00,Cold,General
+P033,Rakesh,35,Female,9876543848,Bangalore,2026-02-01 11:42:00,Fever,Cardiology
+P034,Swathi,50,Male,9876543338,Chennai,2026-02-01 12:23:00,Headache,General
+P035,Vishal,38,Female,9876543732,Bangalore,2026-02-01 09:28:00,Diabetes,Cardiology
+P036,Megha,39,Male,9876543160,Chennai,2026-02-01 09:35:00,Checkup,Orthopedics
+P037,Praveen,52,Female,9876543391,Coimbatore,2026-02-01 14:04:00,Fracture,Cardiology
+P038,Nisha,20,Male,9876543871,Coimbatore,2026-02-01 15:32:00,Headache,OPD
+P039,Aravind,44,Male,9876543455,Hyderabad,2026-02-01 09:49:00,Back Pain,General
+P040,Ritu,48,Male,9876543421,Bangalore,2026-02-01 14:02:00,Cold,General
+P041,Ramesh2,22,Male,9876543381,Bangalore,2026-02-01 09:37:00,Diabetes,Cardiology
+P042,Priya2,26,Male,9876543436,Chennai,2026-02-01 12:21:00,Fever,Endocrinology
+P043,Arjun2,43,Female,9876543794,Bangalore,2026-02-01 17:00:00,Diabetes,Orthopedics
+P044,Sneha2,30,Male,9876543254,Chennai,2026-02-01 09:10:00,Back Pain,General
+P045,Karthik3,30,Female,9876543158,Chennai,2026-02-01 13:54:00,High BP,Orthopedics
+P046,Anitha2,56,Male,9876543311,Coimbatore,2026-02-01 14:31:00,Headache,Endocrinology
+P047,Ravi2,24,Female,9876543844,Coimbatore,2026-02-01 17:41:00,Back Pain,OPD
+P048,Priya3,46,Female,9876543190,Chennai,2026-02-01 14:57:00,Back Pain,Gynecology
+P049,Manoj2,41,Male,9876543677,Hyderabad,2026-02-01 08:57:00,Asthma,OPD
+P050,Meena2,52,Female,9876543186,Hyderabad,2026-02-01 16:04:00,Checkup,Cardiology
