@@ -563,10 +563,15 @@ window.startDatabaseAnalysis = async function (profileIndex) {
 
     try {
         if (primaryDomain === 'Banking' || primaryDomain === 'General/Other') {
-            // Proceed to account analysis for banking-like data
-            await proceedToAccountAnalysis();
+            // Old features removed: no timeline/account/transaction analysis for non-healthcare
+            statusDiv.style.display = 'block';
+            statusDiv.style.color = 'var(--text-muted)';
+            statusDiv.innerHTML = 'Database profile loaded. Timeline analysis is available for Healthcare domain only.';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
         } else if (primaryDomain === 'Healthcare') {
-            // Show healthcare analysis
+            // Show healthcare analysis with new diagram format
             showHealthcareAnalysisResults(profile);
         }
     } catch (error) {
@@ -580,7 +585,8 @@ window.startDatabaseAnalysis = async function (profileIndex) {
     }
 };
 
-// Healthcare Analysis Results Display - SIMPLIFIED
+// Healthcare Analysis Results - NEW: Diagram format Start ----|----|---- End
+// Tables sorted by date/timestamp ascending, small boxes show date & time
 function showHealthcareAnalysisResults(profile) {
     const mainContent = document.getElementById('mainContent');
     const hcData = profile.healthcare_analysis;
@@ -591,7 +597,7 @@ function showHealthcareAnalysisResults(profile) {
                 <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏥</div>
                 <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #14B8A6;">Healthcare Database Detected</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 2rem;">
-                    Unable to perform detailed analysis. ${hcData?.error || 'No visit data found.'}
+                    Unable to perform detailed analysis. ${hcData?.error || 'No date/timestamp columns found (excluding date of birth).'}
                 </p>
                 <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
             </div>
@@ -599,18 +605,19 @@ function showHealthcareAnalysisResults(profile) {
         return;
     }
 
-    const dateTimeline = hcData.date_timeline || {};
-    const dates = dateTimeline.dates || [];
-    const apptTimeline = hcData.appointment_timeline || {};
-    const apptDates = apptTimeline.dates || [];
+    const nodes = hcData.diagram_nodes || [];
+    const firstDate = hcData.first_date || '';
+    const lastDate = hcData.last_date || '';
+    const totalRecords = hcData.total_records || 0;
+    const tablesSummary = hcData.tables_summary || [];
 
-    if (dates.length === 0 && apptDates.length === 0) {
+    if (nodes.length === 0) {
         mainContent.innerHTML = `
             <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
                 <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏥</div>
-                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #14B8A6;">No Visit / Appointment Data</h2>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #14B8A6;">No Date/Time Data</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 2rem;">
-                    No dated visits or appointments found in the healthcare data.
+                    No date or timestamp columns found in healthcare tables (date of birth excluded).
                 </p>
                 <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
             </div>
@@ -622,181 +629,157 @@ function showHealthcareAnalysisResults(profile) {
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
             
-            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #14B8A6;">🏥 Healthcare Visit / Appointment Analysis</h1>
-            <p style="color: var(--text-secondary); margin-bottom: 3rem; font-size: 1.1rem;">
-                ${profile.database_name} • ${hcData.total_visits} Total Visits
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #14B8A6;">🏥 Healthcare Data Timeline</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+                ${profile.database_name} • ${totalRecords} records • Click any box to see column explanations
             </p>
             
-            <!-- REGISTRATION / VISIT TIMELINE -->
-            ${dates.length ? `
-            <section style="margin-bottom: 3rem;">
-                <h2 style="font-size: 1.6rem; margin-bottom: 1rem; color: var(--text-primary);">
-                    📅 Registration / Visit Timeline
+            <!-- Diagram: Start ----|----|---- End -->
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">
+                    📅 Sorted Timeline (${firstDate} → ${lastDate})
                 </h2>
-                <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem;">
-                    Click on a date to see how many patients actually visited that day, split by Morning, Afternoon, Evening and Night.
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
+                    Click any box to see column explanations (admission, appointment, discharge, lab, etc.) from your uploaded files.
                 </p>
-                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 3rem 2rem;">
-                    <div style="display: flex; align-items: center; justify-content: center; overflow-x: auto; padding-bottom: 1rem; gap: 1rem;">
-            ` : ''}
+                <div style="background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(13,148,136,0.06)); border: 1px solid rgba(20,184,166,0.3); border-radius: 16px; padding: 1.5rem; overflow-x: auto;">
+                    <div style="display: flex; align-items: flex-start; min-width: max-content; gap: 0; flex-wrap: nowrap;">
+                        <!-- START -->
+                        <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">
+                            <div style="width: 14px; height: 14px; border-radius: 50%; background: #10b981; border: 2px solid #059669; margin-bottom: 0.3rem;"></div>
+                            <div style="font-size: 0.75rem; font-weight: 700; color: #059669;">START</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">${firstDate}</div>
+                        </div>
+                        <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>
     `;
 
-    if (dates.length) {
-        dates.forEach((dateInfo, idx) => {
-            const isPeak = dateInfo.date === dateTimeline.peak_date;
-            const dateLabel = dateInfo.date.split('-').slice(1).join('/'); // MM/DD format
-
-            html += `
-                <div style="flex-shrink: 0; text-align: center; position: relative;">
-                    <div 
-                        onclick="window.healthcareIsAppointmentMode=false; showHealthcareDateDetails(${idx})"
-                        style="
-                            width: 80px; 
-                            height: 80px; 
-                            border-radius: 50%; 
-                            background: ${isPeak ? 'linear-gradient(135deg, #14B8A6, #0D9488)' : 'linear-gradient(135deg, #0F766E, #115E59)'}; 
-                            color: white; 
-                            display: flex; 
-                            flex-direction: column;
-                            align-items: center; 
-                            justify-content: center; 
-                            font-weight: 700; 
-                            cursor: pointer; 
-                            margin-bottom: 0.5rem; 
-                            transition: all 0.3s;
-                            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-                            border: ${isPeak ? '3px solid #FDE047' : '3px solid transparent'};
-                        "
-                        onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 20px rgba(20, 184, 166, 0.4)';"
-                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 10px rgba(0,0,0,0.2)';">
-                        <div style="font-size: 1.8rem;">${dateInfo.visit_count}</div>
-                        <div style="font-size: 0.7rem; opacity: 0.9;">visits</div>
-                    </div>
-                    <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600; margin-bottom: 0.25rem;">
-                        ${dateLabel}
-                    </div>
-                    <div style="font-size: 0.75rem; color: var(--text-muted);">
-                        ${dateInfo.date.split('-')[0]}
-                    </div>
-                    ${isPeak ? '<div style="font-size: 0.75rem; color: #FDE047; font-weight: 700; margin-top: 0.25rem;">⭐ PEAK</div>' : ''}
-                </div>
-                
-                ${idx < dates.length - 1 ? `
-                    <div style="
-                        flex-shrink: 0; 
-                        width: 60px; 
-                        height: 3px; 
-                        background: linear-gradient(90deg, var(--accent-primary), transparent, var(--accent-primary)); 
-                        align-self: center; 
-                        margin-bottom: 2rem;
-                    "></div>
-                ` : ''}
-            `;
-        });
-
+    nodes.forEach((node, i) => {
+        const dateLabel = node.date ? node.date.split('-').slice(1).join('/') : '';
+        const timeStr = node.time ? node.time.substring(0, 5) : '';
+        const label = timeStr ? `${dateLabel} ${timeStr}` : dateLabel;
         html += `
-                    </div>
-                </div>
-            </section>
+                        <div class="healthcare-node" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 72px; cursor: pointer; padding: 0.35rem;" 
+                            onclick="showHealthcareNodeDetails(${i})" role="button" tabindex="0" data-node-index="${i}">
+                            <div style="width: 48px; min-height: 48px; padding: 0.4rem; border-radius: 10px; background: linear-gradient(135deg, #14B8A6, #0D9488); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(20,184,166,0.3); transition: all 0.2s;"
+                                onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 4px 12px rgba(20,184,166,0.5)';"
+                                onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(20,184,166,0.3)';">
+                                <div style="font-size: 1rem;">${node.count}</div>
+                                <div style="font-size: 0.6rem; opacity: 0.9;">records</div>
+                            </div>
+                            <div style="font-size: 0.7rem; color: var(--text-primary); font-weight: 600; margin-top: 0.35rem; text-align: center; max-width: 80px; overflow: hidden; text-overflow: ellipsis;">${label}</div>
+                        </div>
+                        ${i < nodes.length - 1 ? '<div style="flex: 1; min-width: 16px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>' : ''}
         `;
-    }
+    });
 
-    // Separate Appointment Timeline
-    if (apptDates.length) {
-        html += `
-            <section style="margin-bottom: 3rem;">
-                <h2 style="font-size: 1.6rem; margin-bottom: 1rem; color: var(--text-primary);">
-                    📅 Appointment Timeline (Only Appointment Table)
-                </h2>
-                <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem;">
-                    Each dot here comes only from your appointment table (columns like <code>appointment_date_time</code>, <code>reason_for_visit</code>). Click a date to see appointment times and reasons.
-                </p>
-                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 3rem 2rem;">
-                    <div style="display: flex; align-items: center; justify-content: center; overflow-x: auto; padding-bottom: 1rem; gap: 1rem;">
-        `;
-
-        apptDates.forEach((dateInfo, idx) => {
-            const isPeak = dateInfo.date === apptTimeline.peak_date;
-            const dateLabel = dateInfo.date.split('-').slice(1).join('/');
-
-            html += `
-                <div style="flex-shrink: 0; text-align: center; position: relative;">
-                    <div 
-                        onclick="showHealthcareApptDateDetails(${idx})"
-                        style="
-                            width: 80px; 
-                            height: 80px; 
-                            border-radius: 50%; 
-                            background: ${isPeak ? 'linear-gradient(135deg, #0ea5e9, #0369a1)' : 'linear-gradient(135deg, #0284c7, #0369a1)'}; 
-                            color: white; 
-                            display: flex; 
-                            flex-direction: column;
-                            align-items: center; 
-                            justify-content: center; 
-                            font-weight: 700; 
-                            cursor: pointer; 
-                            margin-bottom: 0.5rem; 
-                            transition: all 0.3s;
-                            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-                            border: ${isPeak ? '3px solid #F97316' : '3px solid transparent'};
-                        "
-                        onmouseover="this.style.transform='scale(1.15)'; this.style.boxShadow='0 6px 20px rgba(56,189,248,0.4)';"
-                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 10px rgba(0,0,0,0.2)';">
-                        <div style="font-size: 1.8rem;">${dateInfo.visit_count}</div>
-                        <div style="font-size: 0.7rem; opacity: 0.9;">appts</div>
-                    </div>
-                    <div style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600; margin-bottom: 0.25rem;">
-                        ${dateLabel}
-                    </div>
-                    <div style="font-size: 0.75rem; color: var(--text-muted);">
-                        ${dateInfo.date.split('-')[0]}
-                    </div>
-                    ${isPeak ? '<div style="font-size: 0.75rem; color: #F97316; font-weight: 700; margin-top: 0.25rem;">⭐ PEAK</div>' : ''}
-                </div>
-                
-                ${idx < apptDates.length - 1 ? `
-                    <div style="
-                        flex-shrink: 0; 
-                        width: 60px; 
-                        height: 3px; 
-                        background: linear-gradient(90deg, #0ea5e9, transparent, #0ea5e9); 
-                        align-self: center; 
-                        margin-bottom: 2rem;
-                    "></div>
-                ` : ''}
-            `;
-        });
-
-        html += `
-                    </div>
-                </div>
-            </section>
-        `;
-    }
-
-    // Common date details container used by both registration and appointment timelines
     html += `
-            <!-- DATE DETAILS SECTION (Hidden initially, shown when date is clicked) -->
-            <div id="date-details-container" style="display: none;">
-                <div id="date-details-content"></div>
+                        <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>
+                        <!-- END -->
+                        <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">
+                            <div style="width: 14px; height: 14px; border-radius: 50%; background: #ef4444; border: 2px solid #dc2626; margin-bottom: 0.3rem;"></div>
+                            <div style="font-size: 0.75rem; font-weight: 700; color: #dc2626;">END</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">${lastDate}</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Node details panel (hidden initially) -->
+            <div id="healthcare-node-details" style="display: none;">
+                <div id="healthcare-node-details-content"></div>
             </div>
         </div>
     `;
 
     mainContent.innerHTML = html;
 
-    // Store timeline data for drill-down (both registration/visit and appointment)
-    window.healthcareTimelineData = dates;
+    window.healthcareDiagramNodes = nodes;
     window.healthcareFullData = hcData;
-    window.healthcareAppointmentTimelineData = apptDates;
-
-    window.showHealthcareApptDateDetails = function (index) {
-        window.healthcareTimelineData = window.healthcareAppointmentTimelineData || [];
-        window.healthcareSelectedDateIndex = null; // reset toggle for appt stream
-        window.healthcareIsAppointmentMode = true;
-        showHealthcareDateDetails(index);
-    };
 }
+
+// Show records when clicking a timeline node
+window.showHealthcareNodeDetails = function (nodeIndex) {
+    const container = document.getElementById('healthcare-node-details');
+    const content = document.getElementById('healthcare-node-details-content');
+    const nodes = window.healthcareDiagramNodes;
+    if (!container || !content || !nodes || nodeIndex < 0 || nodeIndex >= nodes.length) return;
+
+    const node = nodes[nodeIndex];
+    const prevIdx = window.healthcareSelectedNodeIndex;
+    if (prevIdx === nodeIndex) {
+        container.style.display = 'none';
+        window.healthcareSelectedNodeIndex = null;
+        return;
+    }
+    window.healthcareSelectedNodeIndex = nodeIndex;
+
+    const records = node.records || [];
+    const dateStr = node.date || '';
+    const timeStr = node.time || '';
+    const tableNames = node.table_names || [];
+
+    let html = `
+        <div style="background: var(--bg-card); border: 2px solid #14B8A6; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(20,184,166,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">📅 ${dateStr} ${timeStr ? timeStr : ''}</h3>
+                <button class="btn-secondary" onclick="showHealthcareNodeDetails(${nodeIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
+                <strong>${records.length}</strong> record(s) from table(s): ${tableNames.join(', ')}
+            </p>
+            <div style="max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem;">
+    `;
+
+    records.forEach((r, idx) => {
+        const rec = r.record || {};
+        const purposes = r.column_purposes || {};
+        const explanations = r.value_explanations || {};
+        const dataFlow = r.data_flow_explanation || '';
+        const workSummary = r.work_summary || '';
+        const stayDuration = r.stay_duration || null;
+        const hospitalDelay = r.hospital_delay || null;
+        const fileName = r.file_name || (r.table_name ? r.table_name + '.csv' : '');
+        const keys = Object.keys(rec);
+        const pairs = keys.map(k => {
+            const purpose = purposes[k];
+            const purposeLabel = purpose ? purpose.purpose : k;
+            const val = explanations[k] !== undefined ? explanations[k] : (rec[k] || 'Not recorded');
+            const isNull = !rec[k] || String(rec[k]).trim() === '' || val === 'Not recorded' || val === 'Empty or not recorded' || val === 'Not recorded or missing';
+            const valStyle = isNull ? 'color: #94a3b8; font-style: italic;' : '';
+            return '<strong title="' + k + '">' + purposeLabel + ':</strong> <span style="' + valStyle + '">' + val + '</span>';
+        }).join(' · ');
+        const fileLabel = fileName ? '<span style="font-size: 0.75rem; color: var(--text-muted);">' + fileName + '</span>' : '';
+        const workDiv = workSummary ? '<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.4rem; padding: 0.35rem 0; border-bottom: 1px solid rgba(20,184,166,0.3);">' + workSummary + '</div>' : '';
+        let stayDiv = '';
+        if (stayDuration && stayDuration.explanation) {
+            stayDiv = '<div style="margin: 0.5rem 0; padding: 0.5rem 0.7rem; background: rgba(20,184,166,0.1); border-left: 3px solid #14B8A6; border-radius: 6px; font-size: 0.85rem;">' +
+                '<div style="font-weight: 600; color: #0f172a; margin-bottom: 0.2rem;">Discharge: ' + (stayDuration.discharge_time || stayDuration.discharge_time_short || '') + '</div>' +
+                '<div style="color: var(--text-secondary);">' + stayDuration.explanation + '</div>' +
+                '</div>';
+        }
+        let delayDiv = '';
+        if (hospitalDelay && hospitalDelay.is_hospital_delay && hospitalDelay.explanation) {
+            delayDiv = '<div style="margin: 0.5rem 0; padding: 0.5rem 0.7rem; background: rgba(239,68,68,0.1); border-left: 3px solid #ef4444; border-radius: 6px; font-size: 0.85rem;">' +
+                '<div style="font-weight: 700; color: #dc2626; margin-bottom: 0.2rem;">Hospital delay</div>' +
+                '<div style="color: var(--text-secondary);">' + hospitalDelay.explanation + '</div>' +
+                '</div>';
+        }
+        const flowDiv = dataFlow ? '<div style="font-size: 0.8rem; color: var(--text-muted); padding-top: 0.35rem; border-top: 1px solid rgba(148,163,184,0.25);">' + dataFlow + '</div>' : '';
+        html += '<div style="padding: 0.7rem 0.9rem; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; color: var(--text-primary);">' +
+            '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">' +
+            '<span style="color: #14B8A6; font-weight: 600;">' + r.table_name + '</span>' + fileLabel + '</div>' +
+            workDiv +
+            '<div style="margin-bottom: 0.35rem;">' + (pairs || '—') + '</div>' + delayDiv + stayDiv + flowDiv + '</div>';
+    });
+
+    html += `
+            </div>
+        </div>
+    `;
+
+    content.innerHTML = html;
+    container.style.display = 'block';
+};
 
 // Healthcare Date Details Drill-Down - SIMPLIFIED EXPLANATIONS
 window.showHealthcareDateDetails = function (dateIndex) {
