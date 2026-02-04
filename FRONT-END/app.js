@@ -697,6 +697,11 @@ function showHealthcareAnalysisResults(profile) {
     window.healthcareFullData = hcData;
 }
 
+// Inline HTML onclick safety: ensure global function name resolves
+function showHealthcareNodeDetails(nodeIndex) {
+    return window.showHealthcareNodeDetails(nodeIndex);
+}
+
 // Show records when clicking a timeline node
 window.showHealthcareNodeDetails = function (nodeIndex) {
     const container = document.getElementById('healthcare-node-details');
@@ -718,16 +723,17 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
     const timeStr = node.time || '';
     const tableNames = node.table_names || [];
 
+    // Friendly, compact, step-by-step UI
     let html = `
         <div style="background: var(--bg-card); border: 2px solid #14B8A6; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(20,184,166,0.15);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">📅 ${dateStr} ${timeStr ? timeStr : ''}</h3>
+                <h3 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">📅 ${dateStr} ${timeStr || ''}</h3>
                 <button class="btn-secondary" onclick="showHealthcareNodeDetails(${nodeIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
             </div>
             <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
                 <strong>${records.length}</strong> record(s) from table(s): ${tableNames.join(', ')}
             </p>
-            <div style="max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem;">
+            <div style="max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
     `;
 
     records.forEach((r, idx) => {
@@ -736,6 +742,10 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
         const explanations = r.value_explanations || {};
         const dataFlow = r.data_flow_explanation || '';
         const workSummary = r.work_summary || '';
+        const rowEventStory = r.row_event_story || '';
+        const timeLogExplanation = r.time_log_explanation || '';
+        const crossTableLinks = r.cross_table_links || [];
+        const tableRole = r.table_workflow_role || {};
         const stayDuration = r.stay_duration || null;
         const hospitalDelay = r.hospital_delay || null;
         const fileName = r.file_name || (r.table_name ? r.table_name + '.csv' : '');
@@ -743,13 +753,27 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
         const pairs = keys.map(k => {
             const purpose = purposes[k];
             const purposeLabel = purpose ? purpose.purpose : k;
+            const classification = purpose && purpose.column_classification ? purpose.column_classification : '';
+            const classShort = classification ? (classification.indexOf('Primary') >= 0 ? 'PK' : classification.indexOf('Foreign') >= 0 ? 'FK' : classification.indexOf('Date column') >= 0 ? 'Date' : classification.indexOf('Timestamp') >= 0 ? 'Time' : classification.indexOf('Status') >= 0 ? 'Status' : classification.indexOf('Amount') >= 0 ? 'Amt' : classification.indexOf('Description') >= 0 ? 'Desc' : '') : '';
+            const tag = classShort ? '<span style="font-size: 0.65rem; background: #e2e8f0; color: #475569; padding: 0.1rem 0.25rem; border-radius: 3px; margin-left: 0.2rem;">' + classShort + '</span>' : '';
             const val = explanations[k] !== undefined ? explanations[k] : (rec[k] || 'Not recorded');
             const isNull = !rec[k] || String(rec[k]).trim() === '' || val === 'Not recorded' || val === 'Empty or not recorded' || val === 'Not recorded or missing';
             const valStyle = isNull ? 'color: #94a3b8; font-style: italic;' : '';
-            return '<strong title="' + k + '">' + purposeLabel + ':</strong> <span style="' + valStyle + '">' + val + '</span>';
+            return '<strong title="' + (classification || k) + '">' + purposeLabel + '</strong>' + tag + ': <span style="' + valStyle + '">' + val + '</span>';
         }).join(' · ');
+        const rowNum = (r.source_row_number !== undefined && r.source_row_number !== null) ? ('<span style="font-size: 0.75rem; color: var(--text-muted);">row ' + r.source_row_number + '</span>') : '';
         const fileLabel = fileName ? '<span style="font-size: 0.75rem; color: var(--text-muted);">' + fileName + '</span>' : '';
-        const workDiv = workSummary ? '<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.4rem; padding: 0.35rem 0; border-bottom: 1px solid rgba(20,184,166,0.3);">' + workSummary + '</div>' : '';
+        const roleLabel = tableRole.role ? '<span style="font-size: 0.7rem; background: rgba(20,184,166,0.2); color: #0d9488; padding: 0.15rem 0.4rem; border-radius: 4px;">' + tableRole.role + '</span>' : '';
+        const roleExplDiv = tableRole.role_explanation ? '<div style="font-size: 0.8rem; color: #475569; margin-bottom: 0.4rem;">' + tableRole.role_explanation + '</div>' : '';
+        // Step-by-step (compact)
+        const step1 = rowEventStory ? ('<div style="font-size: 0.9rem; font-weight: 700; color: #0f172a; margin-bottom: 0.25rem;">1) What happened: <span style="font-weight: 600;">' + rowEventStory + '</span></div>') : '';
+        const step2 = timeLogExplanation ? ('<div style="font-size: 0.82rem; color: #475569; margin-bottom: 0.35rem;">2) Time log: ' + timeLogExplanation + '</div>') : '';
+        let linksDiv = '';
+        if (crossTableLinks.length > 0) {
+            linksDiv = '<div style="margin: 0.35rem 0 0; padding: 0.4rem 0.55rem; background: #f1f5f9; border-radius: 8px; font-size: 0.8rem;"><strong>Links (FK):</strong><ul style="margin: 0.25rem 0 0 1rem; padding: 0;">' +
+                crossTableLinks.map(function (link) { return '<li><strong>' + link.column + '</strong> = ' + link.value + ' → ' + link.link_explanation + '</li>'; }).join('') + '</ul></div>';
+        }
+        const workDiv = workSummary && !rowEventStory ? '<div style="font-size: 0.86rem; font-weight: 600; color: #0f172a; margin-bottom: 0.35rem;">' + workSummary + '</div>' : '';
         let stayDiv = '';
         if (stayDuration && stayDuration.explanation) {
             stayDiv = '<div style="margin: 0.5rem 0; padding: 0.5rem 0.7rem; background: rgba(20,184,166,0.1); border-left: 3px solid #14B8A6; border-radius: 6px; font-size: 0.85rem;">' +
@@ -765,11 +789,27 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
                 '</div>';
         }
         const flowDiv = dataFlow ? '<div style="font-size: 0.8rem; color: var(--text-muted); padding-top: 0.35rem; border-top: 1px solid rgba(148,163,184,0.25);">' + dataFlow + '</div>' : '';
-        html += '<div style="padding: 0.7rem 0.9rem; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; color: var(--text-primary);">' +
-            '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">' +
-            '<span style="color: #14B8A6; font-weight: 600;">' + r.table_name + '</span>' + fileLabel + '</div>' +
-            workDiv +
-            '<div style="margin-bottom: 0.35rem;">' + (pairs || '—') + '</div>' + delayDiv + stayDiv + flowDiv + '</div>';
+        // Small card + click-to-expand (avoid huge box)
+        html += '<details style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.7rem;">' +
+            '<summary style="cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;">' +
+            '<div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">' +
+            '<span style="color: #14B8A6; font-weight: 800; font-size: 0.9rem;">' + r.table_name + '</span>' +
+            roleLabel +
+            (fileName ? '<span style="font-size: 0.75rem; color: var(--text-muted);">' + fileName + '</span>' : '') +
+            rowNum +
+            '</div>' +
+            '<span style="font-size: 0.78rem; color: #64748b;">Click to expand</span>' +
+            '</summary>' +
+            (roleExplDiv || '') +
+            '<div style="padding-top: 0.35rem;">' +
+            step1 + step2 + workDiv +
+            (delayDiv || '') + (stayDiv || '') +
+            '<div style="margin: 0.35rem 0 0.25rem; font-size: 0.82rem; color: #0f172a;"><strong>3) Column values (with meaning):</strong></div>' +
+            '<div style="font-size: 0.82rem; color: var(--text-primary); line-height: 1.45;">' + (pairs || '—') + '</div>' +
+            linksDiv +
+            (flowDiv || '') +
+            '</div>' +
+            '</details>';
     });
 
     html += `
