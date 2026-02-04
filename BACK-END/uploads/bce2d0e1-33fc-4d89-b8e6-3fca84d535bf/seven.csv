@@ -1,0 +1,4 @@
+discharge_id,admission_id,patient_id,discharge_date,discharge_timestamp,status
+DIS001,ADM001,P001,2026-02-04,2026-02-04 10:00:00,Recovered
+DIS002,ADM002,P002,2026-02-03,2026-02-03 18:00:00,Stable
+DIS003,ADM003,P003,2026-02-05,2026-02-05 11:00:00,Recovered
