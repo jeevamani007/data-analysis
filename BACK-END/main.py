@@ -267,6 +267,24 @@ async def analyze_database(session_id: str):
                 except Exception as he:
                     print(f"[Healthcare Analysis] Error in cluster {i+1}: {str(he)}")
 
+            # Banking Timeline Analysis (ONLY for Banking domain - timestamp sort ascending, Start----|----|----End)
+            banking_analysis_result = None
+            if domain_result.get('primary_domain') == 'Banking':
+                try:
+                    from banking_analyzer import BankingAnalyzer
+                    banking_analyzer = BankingAnalyzer()
+                    banking_analysis_result = banking_analyzer.analyze_cluster(
+                        tables=cluster_tables,
+                        dataframes=dataframes,
+                        relationships=cluster_relationships
+                    )
+                    if banking_analysis_result and banking_analysis_result.get('success'):
+                        print(f"[Banking Analysis] Success for cluster {i+1}")
+                    else:
+                        print(f"[Banking Analysis] No timestamp data found in cluster {i+1}")
+                except Exception as be:
+                    print(f"[Banking Analysis] Error in cluster {i+1}: {str(be)}")
+
 
 
             # Create profile (sanitize dicts so numpy types serialize to JSON)
@@ -287,6 +305,7 @@ async def analyze_database(session_id: str):
                 segmentation_analysis=_to_native(segmentation_result) if segmentation_result else None,
                 transaction_analysis=_to_native(transaction_result) if transaction_result else None,
                 healthcare_analysis=_to_native(healthcare_analysis_result) if healthcare_analysis_result else None,
+                banking_analysis=_to_native(banking_analysis_result) if banking_analysis_result else None,
                 database_explanation=db_explanation,
                 relationship_explanation=relationship_explanation
             )
@@ -586,12 +605,12 @@ async def analyze_accounts(session_id: str, date_column: str = None, id_column: 
             }
         
         # Perform age analysis
-        # NEW: First perform login analysis if possible
+        # Login/open_date/transaction timeline features REMOVED - use Banking domain Analyze for new timeline
         login_metrics = None
         has_login_data = False
         daily_login_analysis = None
-        
-        # 1. Detect Login Data across all tables
+
+        # 1. Detect Login Data across all tables (for age_analysis login_metrics only, no timeline)
         login_candidates = date_detector.find_login_timestamp_columns(all_dataframes)
         
         if login_candidates:
@@ -629,21 +648,12 @@ async def analyze_accounts(session_id: str, date_column: str = None, id_column: 
                         has_login_data = True
                     except Exception as e:
                         print(f"Login analysis failed: {str(e)}")
-                    try:
-                        daily_login_analysis = login_analyzer.analyze_daily_logins_with_account_age(
-                            accounts_df=account_df,
-                            logins_df=login_df,
-                            open_col=date_column,
-                            login_col=login_col,
-                            link_col=target_id_col,
-                        )
-                    except Exception as e:
-                        print(f"Daily login analysis failed: {str(e)}")
-                        daily_login_analysis = None
+                    # daily_login_analysis REMOVED - use Banking domain Analyze for timeline
+                    pass
                 else:
-                    daily_login_analysis = None
+                    pass
         else:
-            daily_login_analysis = None
+            pass
 
         age_analysis = fuzzy_analyzer.analyze_account_age(
             df=account_df, 
@@ -702,72 +712,9 @@ async def analyze_accounts(session_id: str, date_column: str = None, id_column: 
             include_timestamps=True
         )
         
-        # Open date timeline: one point per date, with creations (customer_id, time, Morning/Evening/Night)
+        # Open date timeline REMOVED - use Banking domain Analyze for new timeline
         open_date_timeline = []
         open_date_has_time = False
-        try:
-            acc = account_df.copy()
-            time_col = None
-            for c in acc.columns:
-                if c != date_column and 'time' in c.lower() and 'stamp' not in c.lower():
-                    time_col = c
-                    break
-            if time_col and time_col in acc.columns:
-                acc['_dt'] = pd.to_datetime(acc[date_column].astype(str) + ' ' + acc[time_col].astype(str), errors='coerce')
-            else:
-                acc['_dt'] = pd.to_datetime(acc[date_column], errors='coerce')
-            valid = acc.dropna(subset=['_dt']).copy()
-            if not valid.empty:
-                valid = valid.sort_values('_dt')
-                has_time = valid['_dt'].dt.time.apply(lambda x: x != pd.Timestamp(0).time()).any()
-                open_date_has_time = bool(has_time)
-                valid['_date_only'] = valid['_dt'].dt.strftime('%Y-%m-%d')
-                valid['_time_str'] = valid['_dt'].dt.strftime('%H:%M') if has_time else ""
-                def _time_of_day(h):
-                    if 5 <= h < 12: return "Morning"
-                    if 12 <= h < 17: return "Afternoon"
-                    if 17 <= h < 21: return "Evening"
-                    return "Night"
-                valid['_time_of_day'] = valid['_dt'].dt.hour.apply(_time_of_day)
-                by_date = valid.groupby('_date_only')
-                dates_sorted = sorted(valid['_date_only'].unique())
-                peak_date_only = valid.groupby('_date_only').size().idxmax() if len(valid) > 0 else None
-                dates_with_multi = set(str(c.get('date', '')) for c in same_day_result.get('same_day_customers', []) if c.get('date'))
-                for idx, d in enumerate(dates_sorted):
-                    day_df = by_date.get_group(d)
-                    is_first = (idx == 0)
-                    is_last = (idx == len(dates_sorted) - 1)
-                    is_peak_day = (peak_date_only == d)
-                    creations = []
-                    cust_counts = {}
-                    for _, r in day_df.iterrows():
-                        cid = str(r.get(id_column, r.get('customer_id', '')))
-                        cust_counts[cid] = cust_counts.get(cid, 0) + 1
-                        creations.append({
-                            "customer_id": cid,
-                            "account_id": str(r.get('account_id', r.get(id_column, ''))),
-                            "time_str": r.get('_time_str', ''),
-                            "time_of_day": r.get('_time_of_day', ''),
-                            "created_at": r['_dt'].strftime('%Y-%m-%d %H:%M') if has_time and hasattr(r['_dt'], 'strftime') else d,
-                        })
-                    multi_create_customers = [k for k, v in cust_counts.items() if v > 1]
-                    brief_expl = f"On {d}: {len(creations)} account(s) created."
-                    full_expl = f"Date {d}: {len(creations)} account(s). " + (f"Customer(s) {', '.join(multi_create_customers)} created 2+ accounts this day. " if multi_create_customers else "") + "Morning 5-12, Afternoon 12-17, Evening 17-21, Night 21-5."
-                    open_date_timeline.append({
-                        "date": d,
-                        "date_time": d,
-                        "count": len(creations),
-                        "creations": creations,
-                        "multi_create_customers": multi_create_customers,
-                        "multi_create_same_day": len(multi_create_customers) > 0,
-                        "is_first": is_first,
-                        "is_last": is_last,
-                        "is_peak_day": is_peak_day,
-                        "brief_explanation": brief_expl,
-                        "full_explanation": full_expl,
-                    })
-        except Exception as e:
-            print(f"[open_date_timeline] {e}")
         
         # Multi-table linking: we used customer_id to link activity from other files (logical join)
         used_multi_table_activity = linked_data is not None and not linked_data.empty
@@ -813,16 +760,8 @@ async def analyze_accounts(session_id: str, date_column: str = None, id_column: 
             "open_table": account_table_name,
         }
 
-        # Transaction Timeline: only when a transaction table exists (has amount, type, date)
+        # Transaction Timeline REMOVED - use Banking domain Analyze for new timeline
         transaction_timeline = None
-        for tname, tdf in all_dataframes.items():
-            try:
-                tx_res = fuzzy_analyzer.analyze_transaction_timeline(tdf)
-                if tx_res.get("has_data") and tx_res.get("daily"):
-                    transaction_timeline = tx_res
-                    break
-            except Exception as e:
-                continue
 
         out = {
             "success": True,
