@@ -138,6 +138,9 @@ class DatabaseProfile(BaseModel):
     # Healthcare Analysis (for healthcare domains)
     healthcare_analysis: Optional[Dict[str, Any]] = Field(None, description="Healthcare visit and department analysis results")
 
+    # Banking Timeline Analysis (for banking domains)
+    banking_analysis: Optional[Dict[str, Any]] = Field(None, description="Banking timeline sorted ascending for Start----|----|----End diagram")
+
 
 
 class UploadResponse(BaseModel):

@@ -62,10 +62,12 @@ class HealthcareAnalyzer:
         has_patient_like = has_patient_id and ('name' in cols_lower or 'dob' in cols_lower or 'created_date' in cols_lower)
         if ('patient' in tbl_lower or (has_patient_like and 'admission' not in cols_lower and 'appointment' not in cols_lower and 'bill_amount' not in cols_lower)):
             return {"role": "patient", "role_explanation": "Patient master record. Each row is one patient registered in the hospital."}
-        if 'doctor' in tbl_lower or ('doctor' in cols_lower and 'doctor_id' in cols_lower):
-            return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
-        if 'appt' in tbl_lower or 'appointment' in tbl_lower or ('appointment' in cols_lower and 'appt_date' in cols_lower):
+        if 'appt' in tbl_lower or 'appointment' in tbl_lower or ('appointment' in cols_lower and ('appointment_date' in cols_lower or 'appt_date' in cols_lower)):
             return {"role": "appointment", "role_explanation": "Appointment booking. When the patient was scheduled to come to the hospital."}
+        if 'doctor' in tbl_lower and 'appointment' not in cols_lower:
+            return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
+        if 'doctor' in cols_lower and 'doctor_id' in cols_lower and 'appointment' not in cols_lower and 'appointment_date' not in cols_lower:
+            return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
         if 'admission' in tbl_lower or 'admit' in tbl_lower or ('admission' in cols_lower and ('admission_date' in cols_lower or 'admission_timestamp' in cols_lower)):
             return {"role": "admission", "role_explanation": "Patient admission. When the patient was actually admitted to the ward or unit."}
         if 'treatment' in tbl_lower or ('treatment' in cols_lower and 'treatment_type' in cols_lower):
@@ -384,6 +386,36 @@ class HealthcareAnalyzer:
                 parts.append(f"at {ward}")
         return " ".join(parts).strip() or "Healthcare record"
 
+    def _extract_key_values_by_purpose(
+        self, raw_record: Dict, column_purposes: Dict
+    ) -> Dict[str, str]:
+        """
+        Dynamically extract key values from record using column purpose patterns.
+        No hardcoded column names.
+        """
+        out = {}
+        for col, val in raw_record.items():
+            if not val or str(val).strip() == '':
+                continue
+            v = str(val).strip()
+            purp = (column_purposes.get(col) or {}).get('purpose', '').lower()
+            col_lower = col.lower()
+            if 'patient' in purp and 'identifier' in purp:
+                out['patient_id'] = v
+            elif 'name' in purp or col_lower == 'name':
+                out['name'] = v
+            elif 'reason' in purp or 'diagnosis' in purp or 'symptom' in purp or 'reason' in col_lower:
+                out['reason'] = v
+            elif 'amount' in purp or 'volume' in purp or 'amount' in col_lower or 'bill' in col_lower and 'amount' in col_lower:
+                out['amount'] = v
+            elif 'ward' in col_lower or 'care unit' in purp or 'department' in purp:
+                out['ward'] = v
+            elif 'status' in purp or 'status' in col_lower or 'result' in col_lower:
+                out['status'] = v
+            elif 'treatment' in purp or 'procedure' in purp or 'treatment' in col_lower:
+                out['treatment'] = v
+        return out
+
     def _build_row_event_story(
         self,
         table_name: str,
@@ -395,39 +427,49 @@ class HealthcareAnalyzer:
         table_workflow_role: Dict[str, Any],
     ) -> str:
         """
-        Convert one row into a hospital event in sentence form. Compulsory for every record.
-        Mentions what happened to the patient at that time.
+        Build healthcare event explanation dynamically from role and observed column values.
+        No hardcoded column names. Neat, one-line format.
         """
-        role = (table_workflow_role or {}).get("role", "other")
-        work_summary = self._build_work_summary(table_name, raw_record, column_purposes, file_name)
-        patient_id = self._get_patient_id_from_record(raw_record, column_purposes)
-        time_part = f" at {event_time}" if event_time else ""
-        base = f"On {event_date}{time_part}, "
+        role_info = table_workflow_role or {}
+        role = role_info.get("role", "other")
+        role_expl = role_info.get("role_explanation", "Healthcare record.")
+        kv = self._extract_key_values_by_purpose(raw_record, column_purposes)
+        patient_id = kv.get('patient_id') or self._get_patient_id_from_record(raw_record, column_purposes)
+        parts = []
+
         if role == "patient":
-            name = raw_record.get("name") or raw_record.get("patient_name") or "Patient"
-            base += f"{name} (ID: {patient_id or '—'}) was registered in the hospital."
+            name = kv.get('name', 'Patient')
+            parts.append(f"{name} registered" + (f" (ID: {patient_id})" if patient_id else ""))
+        elif role == "doctor":
+            name = kv.get('name', 'Doctor')
+            parts.append(f"{name} profile created" + (f" (ID: {kv.get('patient_id', '')})" if kv.get('patient_id') else ""))
         elif role == "appointment":
-            base += f"appointment for patient {patient_id or '—'} was recorded. {work_summary}."
+            parts.append(f"Appointment recorded for patient {patient_id or '—'}")
+            if kv.get('ward'):
+                parts.append(f"at {kv['ward']}")
+            if kv.get('reason'):
+                parts.append(f"({kv['reason']})")
         elif role == "admission":
-            reason = raw_record.get("reason") or raw_record.get("diagnosis") or raw_record.get("symptom") or ""
-            base += f"patient {patient_id or '—'} was admitted to the hospital."
-            if reason:
-                base += f" Reason: {reason}."
-            else:
-                base += f" {work_summary}."
+            parts.append(f"Patient {patient_id or '—'} admitted" + (f" to {kv['ward']}" if kv.get('ward') else ""))
+            if kv.get('reason'):
+                parts.append(f"- {kv['reason']}")
         elif role == "treatment":
-            ttype = raw_record.get("treatment_type") or raw_record.get("procedure") or "treatment"
-            base += f"patient received {ttype} (admission {raw_record.get('admission_id', '—')}). {work_summary}."
+            t = kv.get('treatment', 'treatment')
+            parts.append(f"Treatment: {t}" + (f" (patient {patient_id})" if patient_id else ""))
         elif role == "billing":
-            amt = raw_record.get("bill_amount") or raw_record.get("amount") or "—"
-            base += f"bill was generated for patient {patient_id or '—'} (admission {raw_record.get('admission_id', '—')}), amount ₹{amt}. {work_summary}."
+            amt = kv.get('amount', '—')
+            parts.append(f"Bill generated for patient {patient_id or '—'}" + (f", amount {amt}" if amt != '—' else ""))
         elif role == "discharge":
-            base += f"patient {patient_id or '—'} was discharged from the hospital. {work_summary}."
+            parts.append(f"Patient {patient_id or '—'} discharged" + (f" ({kv['status']})" if kv.get('status') else ""))
         elif role == "lab":
-            base += f"lab or test record for patient {patient_id or '—'}. {work_summary}."
+            parts.append(f"Lab/test for patient {patient_id or '—'}")
+        elif role == "donation":
+            parts.append(f"Donation by patient {patient_id or '—'}" + (f", {kv.get('amount', '')}" if kv.get('amount') else ""))
         else:
-            base += work_summary + "."
-        return base
+            work_sum = self._build_work_summary(table_name, raw_record, column_purposes, file_name)
+            parts.append(work_sum)
+
+        return " ".join(parts).strip() or role_expl
 
     def _build_time_log_explanation(
         self,
