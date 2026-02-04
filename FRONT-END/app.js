@@ -562,11 +562,12 @@ window.startDatabaseAnalysis = async function (profileIndex) {
     const primaryDomain = domainData?.primary_domain || 'Other';
 
     try {
-        if (primaryDomain === 'Banking' || primaryDomain === 'General/Other') {
-            // Old features removed: no timeline/account/transaction analysis for non-healthcare
+        if (primaryDomain === 'Banking') {
+            showBankingAnalysisResults(profile);
+        } else if (primaryDomain === 'General/Other') {
             statusDiv.style.display = 'block';
             statusDiv.style.color = 'var(--text-muted)';
-            statusDiv.innerHTML = 'Database profile loaded. Timeline analysis is available for Healthcare domain only.';
+            statusDiv.innerHTML = 'Database profile loaded. Timeline analysis is available for Banking and Healthcare domains only.';
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
@@ -583,6 +584,180 @@ window.startDatabaseAnalysis = async function (profileIndex) {
         btn.style.opacity = '1';
         btn.style.cursor = 'pointer';
     }
+};
+
+// Banking Analysis Results - Diagram format Start ----|----|---- End
+// All CSV files in DB cluster, timestamps sorted ascending (date, time, sec, AM/PM)
+function showBankingAnalysisResults(profile) {
+    const mainContent = document.getElementById('mainContent');
+    const bkData = profile.banking_analysis;
+
+    if (!bkData || !bkData.success) {
+        mainContent.innerHTML = `
+            <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏦</div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #0F766E;">Banking Database Detected</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                    ${bkData?.error || 'No date/timestamp columns found in banking tables.'}
+                </p>
+                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+            </div>
+        `;
+        return;
+    }
+
+    const nodes = bkData.diagram_nodes || [];
+    const firstDate = bkData.first_date || '';
+    const lastDate = bkData.last_date || '';
+    const totalRecords = bkData.total_records || 0;
+
+    if (nodes.length === 0) {
+        mainContent.innerHTML = `
+            <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏦</div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #0F766E;">No Date/Time Data</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                    No date or timestamp columns found in banking tables.
+                </p>
+                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+            </div>
+        `;
+        return;
+    }
+
+    const BANK_COLOR = '#0F766E';
+    const BANK_BG = 'rgba(15,118,110,0.08)';
+    const BANK_BORDER = 'rgba(15,118,110,0.3)';
+
+    let html = `
+        <div style="padding: 2rem; overflow-y: auto; height: 100%;">
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
+            
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${BANK_COLOR};">🏦 Banking Data Timeline</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+                ${profile.database_name} • ${totalRecords} records • Full date/time sorted ascending • Click any box to see details
+            </p>
+            
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">
+                    📅 Sorted Timeline (${firstDate} → ${lastDate})
+                </h2>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
+                    All records from uploaded files, sorted by date and time (ascending). Click any box to see column values and explanations.
+                </p>
+                <div style="background: linear-gradient(135deg, ${BANK_BG}, rgba(15,118,110,0.06)); border: 1px solid ${BANK_BORDER}; border-radius: 16px; padding: 1.5rem; overflow-x: auto;">
+                    <div style="display: flex; align-items: flex-start; min-width: max-content; gap: 0; flex-wrap: nowrap;">
+                        <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">
+                            <div style="width: 14px; height: 14px; border-radius: 50%; background: #10b981; border: 2px solid #059669; margin-bottom: 0.3rem;"></div>
+                            <div style="font-size: 0.75rem; font-weight: 700; color: #059669;">START</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">${firstDate}</div>
+                        </div>
+                        <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid ${BANK_BORDER}; align-self: flex-start; margin-top: 6px;"></div>
+    `;
+
+    nodes.forEach((node, i) => {
+        const dateLabel = node.date ? node.date.split('-').slice(1).join('/') : '';
+        const timeStr = node.time ? node.time.substring(0, 5) : '';
+        const label = timeStr ? `${dateLabel} ${timeStr}` : dateLabel;
+        html += `
+                        <div class="banking-node" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 72px; cursor: pointer; padding: 0.35rem;" 
+                            onclick="showBankingNodeDetails(${i})" role="button" tabindex="0" data-node-index="${i}">
+                            <div style="width: 48px; min-height: 48px; padding: 0.4rem; border-radius: 10px; background: linear-gradient(135deg, ${BANK_COLOR}, #0D5C54); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(15,118,110,0.3); transition: all 0.2s;"
+                                onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 4px 12px rgba(15,118,110,0.5)';"
+                                onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(15,118,110,0.3)';">
+                                <div style="font-size: 1rem;">${node.count}</div>
+                                <div style="font-size: 0.6rem; opacity: 0.9;">records</div>
+                            </div>
+                            <div style="font-size: 0.7rem; color: var(--text-primary); font-weight: 600; margin-top: 0.35rem; text-align: center; max-width: 80px; overflow: hidden; text-overflow: ellipsis;">${label}</div>
+                        </div>
+                        ${i < nodes.length - 1 ? '<div style="flex: 1; min-width: 16px; height: 24px; border-bottom: 3px solid ' + BANK_BORDER + '; align-self: flex-start; margin-top: 6px;"></div>' : ''}
+        `;
+    });
+
+    html += `
+                        <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid ${BANK_BORDER}; align-self: flex-start; margin-top: 6px;"></div>
+                        <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">
+                            <div style="width: 14px; height: 14px; border-radius: 50%; background: #ef4444; border: 2px solid #dc2626; margin-bottom: 0.3rem;"></div>
+                            <div style="font-size: 0.75rem; font-weight: 700; color: #dc2626;">END</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">${lastDate}</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div id="banking-node-details" style="display: none;">
+                <div id="banking-node-details-content"></div>
+            </div>
+        </div>
+    `;
+
+    mainContent.innerHTML = html;
+
+    window.bankingDiagramNodes = nodes;
+    window.bankingFullData = bkData;
+}
+
+window.showBankingNodeDetails = function (nodeIndex) {
+    const container = document.getElementById('banking-node-details');
+    const content = document.getElementById('banking-node-details-content');
+    const nodes = window.bankingDiagramNodes;
+    if (!container || !content || !nodes || nodeIndex < 0 || nodeIndex >= nodes.length) return;
+
+    const node = nodes[nodeIndex];
+    const prevIdx = window.bankingSelectedNodeIndex;
+    if (prevIdx === nodeIndex) {
+        container.style.display = 'none';
+        window.bankingSelectedNodeIndex = null;
+        return;
+    }
+    window.bankingSelectedNodeIndex = nodeIndex;
+
+    const records = node.records || [];
+    const dateStr = node.date || '';
+    const timeStr = node.time || '';
+    const tableNames = node.table_names || [];
+
+    let html = `
+        <div style="background: var(--bg-card); border: 2px solid #0F766E; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(15,118,110,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.15rem; color: #0F766E; margin: 0;">📅 Event: ${dateStr} ${timeStr || ''}</h3>
+                <button class="btn-secondary" onclick="showBankingNodeDetails(${nodeIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
+                <strong>${records.length}</strong> record(s) from: ${tableNames.join(', ')}
+            </p>
+            <div style="max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+    `;
+
+    records.forEach((r) => {
+        const rec = r.record || {};
+        const purposes = r.column_purposes || {};
+        const explanations = r.value_explanations || rec;
+        const workSummary = r.work_summary || '';
+        const timeLogExplanation = r.time_log_explanation || '';
+        const fileName = r.file_name || (r.table_name ? r.table_name + '.csv' : '');
+        const keys = Object.keys(rec);
+        const pairs = keys.map(k => {
+            const purpose = purposes[k];
+            const purposeLabel = (purpose && purpose.purpose) || k;
+            const val = explanations[k] !== undefined ? explanations[k] : (rec[k] || '—');
+            const isNull = !rec[k] || String(rec[k]).trim() === '';
+            const valStyle = isNull ? 'color: #94a3b8; font-style: italic;' : '';
+            return '<strong>' + purposeLabel + ':</strong> <span style="' + valStyle + '">' + val + '</span>';
+        }).join(' · ');
+        html += '<details style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.7rem;">' +
+            '<summary style="cursor: pointer; list-style: none;"><span style="color: #0F766E; font-weight: 700;">' + r.table_name + '</span>' +
+            (fileName ? ' <span style="font-size: 0.75rem; color: var(--text-muted);">' + fileName + '</span>' : '') + '</summary>' +
+            '<div style="padding-top: 0.5rem;">' +
+            '<div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.35rem;">' + workSummary + '</div>' +
+            '<div style="font-size: 0.82rem; color: #64748b;">' + timeLogExplanation + '</div>' +
+            '<div style="font-size: 0.82rem; margin-top: 0.4rem; color: var(--text-primary);">' + (pairs || '—') + '</div>' +
+            '</div></details>';
+    });
+
+    html += '</div></div>';
+    content.innerHTML = html;
+    container.style.display = 'block';
 };
 
 // Healthcare Analysis Results - NEW: Diagram format Start ----|----|---- End
@@ -764,10 +939,11 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
         const rowNum = (r.source_row_number !== undefined && r.source_row_number !== null) ? ('<span style="font-size: 0.75rem; color: var(--text-muted);">row ' + r.source_row_number + '</span>') : '';
         const fileLabel = fileName ? '<span style="font-size: 0.75rem; color: var(--text-muted);">' + fileName + '</span>' : '';
         const roleLabel = tableRole.role ? '<span style="font-size: 0.7rem; background: rgba(20,184,166,0.2); color: #0d9488; padding: 0.15rem 0.4rem; border-radius: 4px;">' + tableRole.role + '</span>' : '';
-        const roleExplDiv = tableRole.role_explanation ? '<div style="font-size: 0.8rem; color: #475569; margin-bottom: 0.4rem;">' + tableRole.role_explanation + '</div>' : '';
-        // Step-by-step (compact)
-        const step1 = rowEventStory ? ('<div style="font-size: 0.9rem; font-weight: 700; color: #0f172a; margin-bottom: 0.25rem;">1) What happened: <span style="font-weight: 600;">' + rowEventStory + '</span></div>') : '';
-        const step2 = timeLogExplanation ? ('<div style="font-size: 0.82rem; color: #475569; margin-bottom: 0.35rem;">2) Time log: ' + timeLogExplanation + '</div>') : '';
+        const roleExplDiv = tableRole.role_explanation ? '<div style="font-size: 0.78rem; color: #64748b; margin-bottom: 0.35rem;">' + tableRole.role_explanation + '</div>' : '';
+        const eventLine = (timeLogExplanation && rowEventStory)
+            ? ('<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.3rem;">' + timeLogExplanation + ' — ' + rowEventStory + '</div>')
+            : (rowEventStory ? ('<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.3rem;">' + rowEventStory + '</div>') : '') +
+              (timeLogExplanation ? ('<div style="font-size: 0.82rem; color: #64748b;">' + timeLogExplanation + '</div>') : '');
         let linksDiv = '';
         if (crossTableLinks.length > 0) {
             linksDiv = '<div style="margin: 0.35rem 0 0; padding: 0.4rem 0.55rem; background: #f1f5f9; border-radius: 8px; font-size: 0.8rem;"><strong>Links (FK):</strong><ul style="margin: 0.25rem 0 0 1rem; padding: 0;">' +
@@ -802,7 +978,7 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
             '</summary>' +
             (roleExplDiv || '') +
             '<div style="padding-top: 0.35rem;">' +
-            step1 + step2 + workDiv +
+            eventLine + workDiv +
             (delayDiv || '') + (stayDiv || '') +
             '<div style="margin: 0.35rem 0 0.25rem; font-size: 0.82rem; color: #0f172a;"><strong>3) Column values (with meaning):</strong></div>' +
             '<div style="font-size: 0.82rem; color: var(--text-primary); line-height: 1.45;">' + (pairs || '—') + '</div>' +
@@ -1486,205 +1662,6 @@ function showAccountAnalysisResults(data, dateColumn, idColumn) {
                 
 
             </div>
-
-            <!-- Open Date Timeline: Start ----|----|---- End, click date → big explanation panel -->
-            ${(data.open_date_timeline && data.open_date_timeline.length > 0) ? (function () {
-            const daily = data.open_date_timeline;
-            window.openDateDailyData = daily;
-            const firstEntry = daily[0];
-            const lastEntry = daily[daily.length - 1];
-            const sum = data.timeline_diagram_summary || {};
-            const totalAcc = sum.total_accounts != null ? sum.total_accounts : (ageAnalysis.counts.NEW + ageAnalysis.counts.ACTIVE + ageAnalysis.counts.TRUSTED);
-            const activeAcc = sum.active_count != null ? sum.active_count : totalAcc;
-            const inactiveAcc = sum.inactive_count != null ? sum.inactive_count : (inactiveCustomers && inactiveCustomers.count) || 0;
-            const timelineBrief = (sum.timeline_brief || '').replace(/"/g, '&quot;');
-            const timelineFull = (sum.timeline_full || '').replace(/"/g, '&quot;');
-            const peakDt = sum.peak_date_time || firstEntry?.date;
-            const peakCnt = sum.peak_count != null ? sum.peak_count : (daily.find(e => e.is_peak_day) || {}).count;
-            const peakBrief = (sum.peak_brief || '').replace(/"/g, '&quot;');
-            const peakFull = (sum.peak_full || peakBrief).replace(/"/g, '&quot;');
-            const multiBrief = (sum.multi_account_brief || (data.same_day_accounts && data.same_day_accounts.brief_explanation) || '').replace(/"/g, '&quot;');
-            const multiFull = (sum.multi_account_full || (data.same_day_accounts && data.same_day_accounts.full_explanation) || '').replace(/"/g, '&quot;');
-            const multiExists = sum.multi_account_exists === true || (data.same_day_accounts && (data.same_day_accounts.total_affected || 0) > 0);
-            return `
-            <div class="open-date-timeline-diagram timeline-line-diagram" style="background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.06)); border: 1px solid rgba(59,130,246,0.25); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                    <h2 style="font-size: 1.4rem; color: #3b82f6;">📅 Open Date Timeline</h2>
-                    <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('timeline-full-theory', this)">Show full deep explanation</button>
-                </div>
-                <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: rgba(255,255,255,0.5); border-radius: 10px; border: 1px solid rgba(59,130,246,0.2); font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;">
-                    <span id="timeline-brief-text">${timelineBrief}</span>
-                    <div class="explanation-content" id="timeline-full-theory" style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6;">${timelineFull}</div>
-                </div>
-                <p style="font-size: 0.9rem; color: #475569; margin-bottom: 0.75rem;"><strong>Click a date point</strong> to see: this date, customer ID, time (Morning/Afternoon/Evening/Night), one customer 2+ accounts.</p>
-                <div class="timeline-track-wrap" style="overflow-x: auto; padding: 0.5rem 0;">
-                    <div class="timeline-track-line" style="display: flex; align-items: flex-start; min-width: max-content; gap: 0;">
-                        <div class="timeline-node-wrap timeline-node-start" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; cursor: pointer;" onclick="showOpenDateExplanation(-1, this)" role="button" tabindex="0">
-                            <div class="timeline-node-dot" style="width: 14px; height: 14px; border-radius: 50%; background: #10b981; border: 2px solid #059669; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: #10b981;">Start</div>
-                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${(firstEntry && firstEntry.date) || firstDate}</div>
-                            <div style="font-size: 0.65rem; color: var(--text-muted);">Active: ${activeAcc} · Inactive: ${inactiveAcc}</div>
-                        </div>
-                        <div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(59,130,246,0.5); align-self: flex-start; margin-top: 6px;"></div>
-                        ${daily.map((entry, i) => `
-                        <div class="timeline-node-wrap timeline-node-mid open-date-day-node ${entry.is_peak_day ? 'timeline-node-peak' : ''}" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 72px; cursor: pointer;" onclick="showOpenDateExplanation(${i}, this)" role="button" tabindex="0" data-day-index="${i}">
-                            <div class="timeline-node-dot" style="width: 12px; height: 12px; border-radius: 50%; background: ${entry.is_peak_day ? '#a855f7' : '#8b5cf6'}; border: 2px solid ${entry.is_peak_day ? '#7c3aed' : '#6d28d9'}; margin-bottom: 0.25rem;"></div>
-                            ${entry.is_peak_day ? '<div style="font-size: 0.65rem; font-weight: 700; color: #a855f7;">Peak</div>' : ''}
-                            <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-primary);">${entry.date}</div>
-                            <div style="font-size: 0.75rem; color: #8b5cf6; font-weight: 700;">${entry.count}</div>
-                            ${entry.multi_create_same_day ? '<div style="font-size: 0.6rem; color: #ec4899;">👥 2+</div>' : ''}
-                        </div>
-                        ${i < daily.length - 1 ? '<div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(59,130,246,0.5); align-self: flex-start; margin-top: 6px;"></div>' : ''}
-                        `).join('')}
-                        ${daily.length > 0 ? '<div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(59,130,246,0.5); align-self: flex-start; margin-top: 6px;"></div>' : ''}
-                        <div class="timeline-node-wrap timeline-node-end" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; cursor: pointer;" onclick="showOpenDateExplanation(-2, this)" role="button" tabindex="0">
-                            <div class="timeline-node-dot" style="width: 14px; height: 14px; border-radius: 50%; background: #ef4444; border: 2px solid #dc2626; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: #ef4444;">End</div>
-                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${(lastEntry && lastEntry.date) || lastDate}</div>
-                            <div style="font-size: 0.65rem; color: var(--text-muted);">Total: ${totalAcc}</div>
-                        </div>
-                    </div>
-                </div>
-                <div id="open-date-explanation-panel" class="open-date-explanation-panel" style="margin-top: 1.25rem; padding: 1.25rem 1.5rem; background: #fff; border: 2px solid rgba(59,130,246,0.35); border-radius: 12px; min-height: 100px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
-                    <div id="open-date-explanation-placeholder" style="font-size: 1rem; color: #64748b; font-weight: 500;">👆 Click a date point above. Each creation: Customer ID, time (Morning/Afternoon/Evening/Night), one customer 2+ accounts this day.</div>
-                    <div id="open-date-explanation-content" style="display: none;"></div>
-                </div>
-                <div class="timeline-peak-expl" style="margin-top: 1rem; padding: 0.75rem; background: rgba(168,85,247,0.1); border-radius: 10px; border: 1px solid rgba(168,85,247,0.3);">
-                    <strong style="color: #a855f7;">Peak activity:</strong> <span style="color: var(--text-secondary);">${peakDt}</span> — <strong>${peakCnt}</strong> account(s) opened.
-                    <span style="color: var(--text-muted); font-size: 0.85rem; margin-left: 0.25rem;">${peakBrief}</span>
-                    <button type="button" class="explanation-trigger" style="margin-left: 0.5rem; font-size: 0.8rem;" onclick="toggleTimestampExplanation('timeline-peak-reason', this)">Full deep explanation</button>
-                    <div class="explanation-content" id="timeline-peak-reason" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">${peakFull}</div>
-                </div>
-                ${multiExists ? `
-                <div class="timeline-multi-account-feature" style="margin-top: 1rem; padding: 0.75rem 1rem; background: rgba(236,72,153,0.1); border: 1px solid rgba(236,72,153,0.35); border-radius: 10px;">
-                    <strong style="color: #ec4899;">👥 One user multiple accounts created:</strong>
-                    <span style="color: var(--text-secondary); font-size: 0.9rem; margin-left: 0.25rem;">${multiBrief}</span>
-                    <button type="button" class="explanation-trigger" style="margin-left: 0.5rem; font-size: 0.8rem;" onclick="toggleTimestampExplanation('timeline-multi-full', this)">Full deep explanation</button>
-                    <div class="explanation-content" id="timeline-multi-full" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">${multiFull}</div>
-                </div>
-                ` : ''}
-            </div>
-            `;
-        })() : ''}
-
-            <!-- Login Users: Start ----|----|---- End, click date → big explanation panel -->
-            ${(data.daily_login_analysis && data.daily_login_analysis.has_data && data.daily_login_analysis.daily && data.daily_login_analysis.daily.length > 0) ? (function () {
-            const dl = data.daily_login_analysis;
-            const daily = dl.daily;
-            window.loginDailyData = daily;
-            const firstDay = daily[0];
-            const lastDay = daily[daily.length - 1];
-            return `
-            <div class="login-users-diagram timeline-line-diagram" style="background: linear-gradient(135deg, rgba(34,197,94,0.08), rgba(59,130,246,0.06)); border: 1px solid rgba(34,197,94,0.3); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                    <h2 style="font-size: 1.4rem; color: #22c55e;">🔐 Login Users</h2>
-                    <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('login-users-full-theory', this)">Show full deep explanation</button>
-                </div>
-                <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: rgba(255,255,255,0.5); border-radius: 10px; border: 1px solid rgba(34,197,94,0.2); font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;">
-                    <span>${(dl.brief || '').replace(/"/g, '&quot;')}</span>
-                    <div class="explanation-content" id="login-users-full-theory" style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6;">${(dl.full_explanation || '').replace(/"/g, '&quot;')}</div>
-                </div>
-                <p style="font-size: 0.9rem; color: #475569; margin-bottom: 0.75rem;"><strong>Click a date point</strong> to see: this date, this time, this user login. Morning/Afternoon/Evening/Night.</p>
-                <div class="timeline-track-wrap" style="overflow-x: auto; padding: 0.5rem 0;">
-                    <div class="timeline-track-line" style="display: flex; align-items: flex-start; min-width: max-content; gap: 0;">
-                        <div class="timeline-node-wrap timeline-node-start" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; cursor: pointer;" onclick="showLoginDayExplanation(-1, this)" role="button" tabindex="0">
-                            <div class="timeline-node-dot" style="width: 14px; height: 14px; border-radius: 50%; background: #22c55e; border: 2px solid #16a34a; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: #22c55e;">Start</div>
-                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${firstDay ? firstDay.date : ''}</div>
-                            <div style="font-size: 0.65rem; color: var(--text-muted);">${dl.total_logins || 0} logins</div>
-                        </div>
-                        <div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(34,197,94,0.5); align-self: flex-start; margin-top: 6px;"></div>
-                        ${daily.map((entry, i) => `
-                        <div class="timeline-node-wrap timeline-node-mid login-day-node" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 72px; cursor: pointer;" onclick="showLoginDayExplanation(${i}, this)" role="button" tabindex="0" data-day-index="${i}">
-                            <div class="timeline-node-dot" style="width: 12px; height: 12px; border-radius: 50%; background: #3b82f6; border: 2px solid #2563eb; margin-bottom: 0.25rem;"></div>
-                            <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-primary);">${entry.date}</div>
-                            <div style="font-size: 0.75rem; color: #3b82f6; font-weight: 700;">${entry.login_count}</div>
-                            <div style="font-size: 0.6rem; color: var(--text-muted);">N:${entry.new_account_logins} O:${entry.old_account_logins}</div>${entry.multi_login_same_day ? '<div style="font-size: 0.6rem; color: #ec4899;">👥 2+</div>' : ''}
-                        </div>
-                        ${i < daily.length - 1 ? '<div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(34,197,94,0.5); align-self: flex-start; margin-top: 6px;"></div>' : ''}
-                        `).join('')}
-                        ${daily.length > 0 ? '<div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(34,197,94,0.5); align-self: flex-start; margin-top: 6px;"></div>' : ''}
-                        <div class="timeline-node-wrap timeline-node-end" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; cursor: pointer;" onclick="showLoginDayExplanation(-2, this)" role="button" tabindex="0">
-                            <div class="timeline-node-dot" style="width: 14px; height: 14px; border-radius: 50%; background: #ef4444; border: 2px solid #dc2626; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: #ef4444;">End</div>
-                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${lastDay ? lastDay.date : ''}</div>
-                            <div style="font-size: 0.65rem; color: var(--text-muted);">${dl.total_logins || 0} logins</div>
-                        </div>
-                    </div>
-                </div>
-                <div id="login-explanation-panel" class="login-explanation-panel" style="margin-top: 1.25rem; padding: 1.25rem 1.5rem; background: #fff; border: 2px solid rgba(34,197,94,0.35); border-radius: 12px; min-height: 100px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
-                    <div id="login-explanation-placeholder" style="font-size: 1rem; color: #64748b; font-weight: 500;">👆 Click a date point above. Each login shows: this user, this time, morning/afternoon/evening/night, account created date.</div>
-                    <div id="login-explanation-content" style="display: none;"></div>
-                </div>
-                <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(34,197,94,0.08); border-radius: 10px; border: 1px solid rgba(34,197,94,0.25);">
-                    <strong style="color: #22c55e;">Table: Date | Account | Login Time | Time of Day | Account Created</strong>
-                    <div style="overflow-x: auto; margin-top: 0.5rem;">
-                        <table style="width: 100%; font-size: 0.9rem; border-collapse: collapse;">
-                            <thead><tr style="border-bottom: 2px solid var(--border);"><th style="padding: 0.4rem;">Date</th><th style="padding: 0.4rem;">Account</th><th style="padding: 0.4rem;">Login Time</th><th style="padding: 0.4rem;">Time of Day</th><th style="padding: 0.4rem;">Account Created</th></tr></thead>
-                            <tbody>
-                                ${(dl.table_detail || []).slice(0, 50).map(r => `<tr style="border-bottom: 1px solid rgba(0,0,0,0.08);"><td style="padding: 0.4rem;">${r.Date}</td><td style="padding: 0.4rem;">${r.Account}</td><td style="padding: 0.4rem; font-weight: 600;">${r['Login Time'] || '—'}</td><td style="padding: 0.4rem;">${r['Time of Day'] || '—'}</td><td style="padding: 0.4rem;">${r['Account Created'] || '—'}</td></tr>`).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                    ${(dl.table_detail || []).length > 50 ? `<p style="font-size: 0.85rem; color: #475569; margin-top: 0.5rem;">Showing first 50 of ${dl.table_detail.length} logins.</p>` : ''}
-                    <p style="margin-top: 0.75rem; font-size: 0.9rem; color: #475569; line-height: 1.6;">${(dl.story || '').replace(/"/g, '&quot;')}</p>
-                </div>
-            </div>
-            `;
-        })() : ''}
-
-            <!-- Transaction Details: Start ----|----|---- End, click date → big explanation panel below -->
-            ${(data.transaction_timeline && data.transaction_timeline.has_data && data.transaction_timeline.daily && data.transaction_timeline.daily.length > 0) ? (function () {
-            const tt = data.transaction_timeline;
-            const daily = tt.daily;
-            window.txnDailyData = daily;
-            const firstDay = daily[0];
-            const lastDay = daily[daily.length - 1];
-            return `
-            <div class="transaction-details-diagram timeline-line-diagram" style="background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(234,88,12,0.06)); border: 1px solid rgba(245,158,11,0.35); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                    <h2 style="font-size: 1.4rem; color: #f59e0b;">💰 Transaction Details</h2>
-                    <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('txn-full-theory', this)">Show full deep explanation</button>
-                </div>
-                <div style="margin-bottom: 1rem; padding: 0.75rem 1rem; background: rgba(255,255,255,0.5); border-radius: 10px; border: 1px solid rgba(245,158,11,0.25);">
-                    <span style="font-size: 0.95rem; color: #1e293b; font-weight: 500;">${(tt.brief || '').replace(/"/g, '&quot;')}</span>
-                    <div class="explanation-content transaction-explanation-content" id="txn-full-theory" style="margin-top: 0.5rem;">${(tt.full_explanation || '').replace(/"/g, '&quot;')}</div>
-                </div>
-                <p style="font-size: 0.9rem; color: #475569; margin-bottom: 0.75rem;"><strong>Click a date point</strong> to see explanations. Status: <strong style="color: #059669;">PASS</strong> = SUCCESS, <strong style="color: #dc2626;">FAIL</strong> = DECLINED/BLOCKED.</p>
-                <div class="timeline-track-wrap" style="overflow-x: auto; padding: 0.5rem 0;">
-                    <div class="timeline-track-line" style="display: flex; align-items: flex-start; min-width: max-content; gap: 0;">
-                        <div class="timeline-node-wrap timeline-node-start" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; cursor: pointer;" onclick="showTxnDayExplanation(-1, this)" role="button" tabindex="0" title="First date">
-                            <div class="timeline-node-dot" style="width: 14px; height: 14px; border-radius: 50%; background: #22c55e; border: 2px solid #16a34a; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: #22c55e;">Start</div>
-                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${firstDay ? firstDay.date : ''}</div>
-                            <div style="font-size: 0.65rem; color: var(--text-muted);">${tt.total_transactions || 0} txns</div>
-                        </div>
-                        <div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(245,158,11,0.5); align-self: flex-start; margin-top: 6px;"></div>
-                        ${daily.map((entry, i) => `
-                        <div class="timeline-node-wrap timeline-node-mid txn-day-node" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 72px; cursor: pointer;" onclick="showTxnDayExplanation(${i}, this)" role="button" tabindex="0" data-day-index="${i}" title="Click to explain">
-                            <div class="timeline-node-dot" style="width: 12px; height: 12px; border-radius: 50%; background: #f59e0b; border: 2px solid #d97706; margin-bottom: 0.25rem;"></div>
-                            <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-primary);">${entry.date}</div>
-                            <div style="font-size: 0.75rem; color: #f59e0b; font-weight: 700;">${entry.transaction_count}</div>
-                            ${entry.multi_user_same_day ? '<div style="font-size: 0.6rem; color: #ec4899;">👥 2+</div>' : ''}<div style="font-size: 0.6rem; color: var(--text-muted);">P:${entry.pass_count || 0} F:${entry.fail_count || 0}</div>
-                        </div>
-                        ${i < daily.length - 1 ? '<div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(245,158,11,0.5); align-self: flex-start; margin-top: 6px;"></div>' : ''}
-                        `).join('')}
-                        ${daily.length > 0 ? '<div class="timeline-line-seg" style="flex: 1; min-width: 16px; width: 24px; height: 24px; border-bottom: 3px solid rgba(245,158,11,0.5); align-self: flex-start; margin-top: 6px;"></div>' : ''}
-                        <div class="timeline-node-wrap timeline-node-end" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; cursor: pointer;" onclick="showTxnDayExplanation(-2, this)" role="button" tabindex="0" title="Last date">
-                            <div class="timeline-node-dot" style="width: 14px; height: 14px; border-radius: 50%; background: #ef4444; border: 2px solid #dc2626; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: #ef4444;">End</div>
-                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">${lastDay ? lastDay.date : ''}</div>
-                            <div style="font-size: 0.65rem; color: var(--text-muted);">${tt.total_transactions || 0} txns</div>
-                        </div>
-                    </div>
-                </div>
-                <div id="txn-explanation-panel" class="txn-explanation-panel" style="margin-top: 1.25rem; padding: 1.25rem 1.5rem; background: #fff; border: 2px solid rgba(245,158,11,0.4); border-radius: 12px; min-height: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
-                    <div id="txn-explanation-placeholder" style="font-size: 1rem; color: #64748b; font-weight: 500;">👆 Click a date point above. Each transaction shows status: PASS (success) or FAIL (declined/blocked).</div>
-                    <div id="txn-explanation-content" style="display: none;"></div>
-                </div>
-            </div>
-            `;
-        })() : ''}
 
             <!-- Detailed Account Table -->
             <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;">
