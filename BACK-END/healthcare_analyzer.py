@@ -17,6 +17,16 @@ DOB_EXCLUDE_KEYWORDS = [
     'dateofbirth', 'patient_dob', 'birth_day'
 ]
 
+# Column classification tags for healthcare explanation
+COLUMN_CLASS_PK = "Primary Key (PK)"
+COLUMN_CLASS_FK = "Foreign Key (FK)"
+COLUMN_CLASS_DATE = "Date column"
+COLUMN_CLASS_TIMESTAMP = "Timestamp column"
+COLUMN_CLASS_STATUS = "Status column"
+COLUMN_CLASS_AMOUNT = "Amount column"
+COLUMN_CLASS_DESCRIPTION = "Description column"
+COLUMN_CLASS_OTHER = "Other"
+
 
 class HealthcareAnalyzer:
     """
@@ -39,74 +49,140 @@ class HealthcareAnalyzer:
                 return True
         return False
 
+    def _identify_table_workflow_role(self, table_name: str, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Identify what this table represents in hospital workflow.
+        Returns: { role, role_explanation } e.g. patient, doctor, appointment, admission, treatment, billing, discharge, lab.
+        """
+        tbl_lower = table_name.lower().replace('-', '_')
+        cols_lower = " ".join(c.lower() for c in df.columns)
+        combined = tbl_lower + " " + cols_lower
+
+        has_patient_id = 'patient_id' in cols_lower
+        has_patient_like = has_patient_id and ('name' in cols_lower or 'dob' in cols_lower or 'created_date' in cols_lower)
+        if ('patient' in tbl_lower or (has_patient_like and 'admission' not in cols_lower and 'appointment' not in cols_lower and 'bill_amount' not in cols_lower)):
+            return {"role": "patient", "role_explanation": "Patient master record. Each row is one patient registered in the hospital."}
+        if 'doctor' in tbl_lower or ('doctor' in cols_lower and 'doctor_id' in cols_lower):
+            return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
+        if 'appt' in tbl_lower or 'appointment' in tbl_lower or ('appointment' in cols_lower and 'appt_date' in cols_lower):
+            return {"role": "appointment", "role_explanation": "Appointment booking. When the patient was scheduled to come to the hospital."}
+        if 'admission' in tbl_lower or 'admit' in tbl_lower or ('admission' in cols_lower and ('admission_date' in cols_lower or 'admission_timestamp' in cols_lower)):
+            return {"role": "admission", "role_explanation": "Patient admission. When the patient was actually admitted to the ward or unit."}
+        if 'treatment' in tbl_lower or ('treatment' in cols_lower and 'treatment_type' in cols_lower):
+            return {"role": "treatment", "role_explanation": "Treatment or procedure record. What was done to the patient (e.g. ECG, X-Ray)."}
+        if 'bill' in tbl_lower or 'billing' in tbl_lower or ('bill' in cols_lower and 'amount' in cols_lower):
+            return {"role": "billing", "role_explanation": "Billing record. Amount to be paid for the stay or service."}
+        if 'discharge' in tbl_lower or ('discharge' in cols_lower and ('discharge_date' in cols_lower or 'discharge_time' in cols_lower)):
+            return {"role": "discharge", "role_explanation": "Discharge record. When the patient left the hospital."}
+        if 'lab' in tbl_lower or 'test' in tbl_lower or 'report' in tbl_lower or 'result' in cols_lower:
+            return {"role": "lab", "role_explanation": "Lab or test result. Investigation reports for the patient."}
+        if 'registration' in tbl_lower or 'visit' in tbl_lower and 'admission' not in cols_lower:
+            return {"role": "registration", "role_explanation": "Registration or visit log. When the patient first came or was registered."}
+        if 'donation' in tbl_lower:
+            return {"role": "donation", "role_explanation": "Blood or organ donation record."}
+        return {"role": "other", "role_explanation": "Healthcare-related table. Part of hospital workflow."}
+
     def _find_date_timestamp_columns(self, df: pd.DataFrame) -> List[Tuple[str, Optional[str]]]:
         """
-        Find (date_col, time_col) for the table.
-        Returns list of (date_col, time_col or None). Uses first valid pair.
-        Excludes DOB columns.
+        Find (date_col, time_col) for EVENT TIME - when the hospital action happened.
+        Prefer: event_time, created_timestamp, event_timestamp, recorded_at (actual event time).
+        Fallback: admission_date+time, appointment_date+time, reg_date, etc.
+        Ensures chronological order matches when actions actually occurred.
         """
+        # Event-time columns: when the action happened (preferred for sort order)
+        event_time_patterns = [
+            'event_time', 'event_timestamp', 'created_timestamp', 'created_at',
+            'recorded_at', 'bill_timestamp', 'registration_timestamp',
+            'discharge_timestamp', 'treatment_timestamp', 'treatment_time',
+        ]
+        # Date+time pairs for admission/registration/appointment
+        date_time_patterns = [
+            ('admission', 'admission_date', 'admission_time'),
+            ('discharge', 'discharge_date', 'discharge_time'),
+            ('reg', 'reg_date', None),
+            ('registration', 'registration_date', 'registration_time'),
+            ('appointment', 'appointment_date', 'appointment_time'),
+            ('appt', 'appt_date', 'appt_time'),
+        ]
+
+        def is_parseable(col: str) -> bool:
+            try:
+                sample = df[col].dropna().head(10)
+                if len(sample) == 0:
+                    return False
+                parsed = pd.to_datetime(sample, errors='coerce')
+                return parsed.notna().sum() >= len(sample) * 0.5
+            except Exception:
+                return False
+
+        # 1. Prefer full event-time column (single column with datetime)
+        for col in df.columns:
+            if self._is_dob_column(col):
+                continue
+            col_lower = col.lower()
+            if any(pat in col_lower for pat in event_time_patterns) and is_parseable(col):
+                sample = df[col].dropna().iloc[0] if len(df) > 0 else None
+                if sample is not None:
+                    parsed = pd.to_datetime(sample, errors='coerce')
+                    if pd.notna(parsed):
+                        return [(col, None)]
+
+        # 2. Admission: admission_date + admission_time (event = when admitted)
+        adm_col = next((c for c in df.columns if ('admission' in c.lower() or 'admit' in c.lower()) and ('date' in c.lower() or 'time' in c.lower()) and is_parseable(c)), None)
+        if adm_col:
+            adm_time = next((c for c in df.columns if c != adm_col and 'admission' in c.lower() and 'time' in c.lower() and 'date' not in c.lower()), None)
+            if adm_time and adm_time in df.columns:
+                return [(adm_col, adm_time)]
+            return [(adm_col, None)]
+
+        # 3. Registration: reg_date, registration_date, created_timestamp
+        for col in df.columns:
+            if self._is_dob_column(col):
+                continue
+            col_lower = col.lower()
+            if ('reg_date' in col_lower or 'registration_date' in col_lower or 'visit_date' in col_lower) and is_parseable(col):
+                time_col = next((c for c in df.columns if c != col and 'time' in c.lower() and 'date' not in c.lower() and 'stamp' not in c.lower()), None)
+                return [(col, time_col if time_col and time_col in df.columns else None)]
+
+        # 4. Appointment: prefer created_timestamp (event) over appointment_date (scheduled)
+        if 'created_timestamp' in df.columns and is_parseable('created_timestamp'):
+            return [('created_timestamp', None)]
+        appt_col = self._find_appointment_column(df)
+        if appt_col and appt_col in df.columns:
+            time_col = next((c for c in df.columns if 'appointment_time' in c.lower() or 'appt_time' in c.lower()), None)
+            return [(appt_col, time_col if time_col and time_col in df.columns else None)]
+
+        # 5. Bill: bill_timestamp or bill_date
+        for col in df.columns:
+            if 'bill_timestamp' in col.lower() and is_parseable(col):
+                return [(col, None)]
+            if 'bill_date' in col.lower() and is_parseable(col):
+                return [(col, None)]
+
+        # 6. Fallback: any date/timestamp column
         candidates = []
         for col in df.columns:
             if self._is_dob_column(col):
                 continue
             col_lower = col.lower()
-            if any(k in col_lower for k in self.date_keywords):
-                # Check if parseable as datetime
-                try:
-                    sample = df[col].dropna().head(10)
-                    if len(sample) == 0:
-                        continue
-                    parsed = pd.to_datetime(sample, errors='coerce')
-                    if parsed.notna().sum() >= len(sample) * 0.5:
-                        candidates.append(col)
-                except Exception:
-                    pass
-
-        # Also try columns with date-like names that parse as datetime (fallback)
-        existing_cols = {c for c in candidates}
-        for col in df.columns:
-            if self._is_dob_column(col) or col in existing_cols:
-                continue
-            col_lower = col.lower()
-            if not any(k in col_lower for k in ['date', 'time', 'timestamp', 'created', 'admission', 'discharge', 'reg', 'appt', 'donation', 'visit', 'recorded', 'scheduled']):
-                continue
-            try:
-                sample = df[col].dropna().head(20)
-                if len(sample) < 5:
-                    continue
-                parsed = pd.to_datetime(sample, errors='coerce')
-                if parsed.notna().sum() / len(sample) >= 0.5:
-                    sample_str = sample.astype(str)
-                    if sample_str.str.match(r'^\d{1,3}$').all() and sample_str.str.len().max() <= 3:
-                        continue
+            if any(k in col_lower for k in ['date', 'time', 'timestamp', 'created', 'recorded']):
+                if is_parseable(col):
                     candidates.append(col)
-            except Exception:
-                pass
-
         if not candidates:
             return []
-
-        # Pick primary date column - prefer combined date+time, or date + separate time
         col = candidates[0]
         sample_val = df[col].dropna().iloc[0] if len(df) > 0 else None
         if sample_val is not None:
             parsed = pd.to_datetime(sample_val, errors='coerce')
-            if pd.notna(parsed):
-                # Has time component?
-                if parsed.hour != 0 or parsed.minute != 0 or parsed.second != 0:
-                    return [(col, None)]
-        # Look for separate time column
-        for c2 in df.columns:
-            if c2 == col or self._is_dob_column(c2):
-                continue
-            if 'time' in c2.lower() and 'date' not in c2.lower() and 'stamp' not in c2.lower():
-                return [(col, c2)]
-        return [(col, None)]
+            if pd.notna(parsed) and (parsed.hour != 0 or parsed.minute != 0 or parsed.second != 0):
+                return [(col, None)]
+        time_col = next((c for c in df.columns if c != col and 'time' in c.lower() and 'date' not in c.lower() and 'stamp' not in c.lower()), None)
+        return [(col, time_col if time_col and time_col in df.columns else None)]
 
-    def _infer_column_purpose(self, col_name: str, series: pd.Series) -> Dict[str, Any]:
+    def _infer_column_purpose(self, col_name: str, series: pd.Series, df: pd.DataFrame = None) -> Dict[str, Any]:
         """
-        Infer healthcare column purpose from observed column name and data. Pattern-based, no hardcoded columns.
-        Returns: { purpose, work_explanation, null_explanation } for admission, appointment, discharge, lab, etc.
+        Infer healthcare column purpose and classification from observed column name and data.
+        Returns: purpose, work_explanation, null_explanation, column_classification, link_explanation (for FK).
         """
         col_lower = col_name.lower().replace('-', '_')
         tokens = re.split(r'[_\s]+', col_lower)
@@ -116,76 +192,122 @@ class HealthcareAnalyzer:
         null_pct = (null_count / total * 100) if total > 0 else 0
         non_null = series.dropna()
         sample_vals = non_null.head(5).astype(str).tolist() if len(non_null) > 0 else []
+        is_unique = series.nunique() == len(series) and len(series) > 0
 
         purpose = None
         work_explanation = None
+        column_classification = COLUMN_CLASS_OTHER
+        link_explanation = None
 
         # Healthcare-purpose patterns (observed from column name)
         if tokens[-1] == 'id' or col_lower.endswith('_id'):
             base = '_'.join(tokens[:-1]) if len(tokens) > 1 else 'record'
             purpose = f"{base.replace('_', ' ').title()} identifier"
+            is_first_col = df is not None and len(df.columns) > 0 and col_name == df.columns[0]
+            if is_first_col and (col_lower.endswith('_id') or is_unique):
+                column_classification = COLUMN_CLASS_PK
+                work_explanation = "Unique ID for this row in the table (primary key)."
+            elif not is_first_col and base in ('patient', 'doctor', 'appointment', 'admission', 'treatment', 'bill', 'discharge'):
+                column_classification = COLUMN_CLASS_FK
+                if base == 'patient':
+                    link_explanation = "Links this row to the patient master record. Same ID appears in patient table."
+                elif base == 'doctor':
+                    link_explanation = "Links this row to the doctor who attended. Same ID in doctor table."
+                elif base == 'appointment':
+                    link_explanation = "Links this row to the appointment booking. Connects admission to scheduled time."
+                elif base == 'admission':
+                    link_explanation = "Links this row to the admission record. Connects billing or treatment to that admission."
+                elif base == 'treatment':
+                    link_explanation = "Links this row to the treatment or procedure record."
+                elif base == 'bill':
+                    link_explanation = "Links this row to the bill record for this stay."
+                elif base == 'discharge':
+                    link_explanation = "Links this row to the discharge record."
+            elif is_unique:
+                column_classification = COLUMN_CLASS_PK
+                work_explanation = "Unique ID for this row in the table."
         elif 'admission' in col_lower or 'admit' in col_lower:
-            if 'date' in tokens or 'time' in tokens:
+            if 'date' in tokens or 'time' in tokens or 'stamp' in col_lower:
                 purpose = "Patient admission date/time"
                 work_explanation = "When patient was admitted"
+                column_classification = COLUMN_CLASS_TIMESTAMP if 'stamp' in col_lower or 'time' in col_lower else COLUMN_CLASS_DATE
             else:
                 purpose = "Admission identifier"
         elif 'discharge' in col_lower:
-            if 'date' in tokens or 'time' in tokens:
+            if 'date' in tokens or 'time' in tokens or 'stamp' in col_lower:
                 purpose = "Patient discharge date/time"
                 work_explanation = "When patient was discharged"
+                column_classification = COLUMN_CLASS_TIMESTAMP if 'stamp' in col_lower or 'time' in col_lower else COLUMN_CLASS_DATE
             else:
                 purpose = "Discharge information"
         elif 'appt' in col_lower or 'appointment' in col_lower:
-            if 'date' in tokens or 'time' in tokens:
+            if 'date' in tokens or 'time' in tokens or 'stamp' in col_lower:
                 purpose = "Patient appointment date/time"
                 work_explanation = "When appointment was scheduled"
+                column_classification = COLUMN_CLASS_TIMESTAMP if 'stamp' in col_lower or 'time' in col_lower else COLUMN_CLASS_DATE
             else:
                 purpose = "Appointment identifier"
         elif 'reg' in col_lower or 'registration' in col_lower or 'visit' in col_lower:
             if 'date' in tokens or 'time' in tokens:
                 purpose = "Patient visit/registration date/time"
                 work_explanation = "When patient registered or visited"
+                column_classification = COLUMN_CLASS_TIMESTAMP if 'stamp' in col_lower or 'time' in col_lower else COLUMN_CLASS_DATE
             else:
                 purpose = "Registration identifier"
         elif 'donation' in col_lower:
             if 'date' in tokens:
                 purpose = "Blood donation date"
                 work_explanation = "When donation was made"
+                column_classification = COLUMN_CLASS_DATE
             else:
                 purpose = "Donation information"
         elif 'lab' in col_lower or 'test' in col_lower or 'report' in col_lower or 'result' in col_lower:
             purpose = "Lab test or report"
             work_explanation = "Test result or report value"
+            column_classification = COLUMN_CLASS_DESCRIPTION
         elif 'date' in tokens or col_lower.endswith('_date'):
             idx = next((i for i, t in enumerate(tokens) if t == 'date'), -1)
             prefix = ' '.join(tokens[:idx]).replace('_', ' ').title() if idx > 0 else 'Event'
             purpose = f"{prefix} date" if prefix else "Date"
-        elif 'time' in tokens or col_lower.endswith('_time'):
-            idx = next((i for i, t in enumerate(tokens) if t == 'time'), -1)
+            column_classification = COLUMN_CLASS_DATE
+        elif 'time' in tokens or col_lower.endswith('_time') or 'stamp' in col_lower or 'timestamp' in col_lower:
+            idx = next((i for i, t in enumerate(tokens) if t in ('time', 'stamp')), -1)
             prefix = ' '.join(tokens[:idx]).replace('_', ' ').title() if idx > 0 else 'Event'
-            purpose = f"{prefix} time" if prefix else "Time"
+            purpose = f"{prefix} time" if prefix else "Event time"
+            column_classification = COLUMN_CLASS_TIMESTAMP
         elif 'reason' in tokens or 'diagnosis' in tokens or 'symptom' in tokens:
             purpose = "Reason for visit or diagnosis"
             work_explanation = "Why patient came or condition"
+            column_classification = COLUMN_CLASS_DESCRIPTION
         elif 'ward' in tokens or 'dept' in tokens or 'department' in tokens:
             purpose = "Department or care unit"
             work_explanation = "Where patient was treated"
+            column_classification = COLUMN_CLASS_DESCRIPTION
         elif 'slot' in tokens:
             purpose = "Time slot"
             work_explanation = "Morning/Afternoon/Evening session"
         elif 'patient' in tokens:
             purpose = "Patient identifier"
             work_explanation = "Links to patient record"
-        elif 'volume' in col_lower or 'ml' in col_lower:
-            purpose = "Quantity or volume"
-            work_explanation = "Amount (e.g. blood volume)"
+            if 'id' in col_lower:
+                column_classification = COLUMN_CLASS_FK
+                link_explanation = "Links this row to the patient master record. Same ID in patient table."
+        elif 'volume' in col_lower or 'ml' in col_lower or 'amount' in col_lower or 'bill_amount' in col_lower:
+            purpose = "Quantity, volume or amount"
+            work_explanation = "Amount (e.g. bill amount, blood volume)"
+            column_classification = COLUMN_CLASS_AMOUNT
         elif 'blood' in col_lower and 'group' in col_lower:
             purpose = "Blood type"
+            column_classification = COLUMN_CLASS_DESCRIPTION
         elif 'name' in tokens:
             purpose = "Name"
         elif 'status' in tokens or 'result' in tokens:
             purpose = "Status or outcome"
+            column_classification = COLUMN_CLASS_STATUS
+        elif 'type' in tokens and 'treatment' in col_lower:
+            purpose = "Type of treatment or procedure"
+            work_explanation = "What was done (e.g. ECG, X-Ray)"
+            column_classification = COLUMN_CLASS_DESCRIPTION
         else:
             purpose = col_name.replace('_', ' ').title()
 
@@ -194,6 +316,8 @@ class HealthcareAnalyzer:
             "work_explanation": work_explanation,
             "null_pct": float(round(null_pct, 1)),
             "null_explanation": "Not recorded or missing" if null_pct > 0 else None,
+            "column_classification": column_classification,
+            "link_explanation": link_explanation,
         }
 
     def _build_work_summary(self, table_name: str, raw_record: Dict, column_purposes: Dict, file_name: str = "") -> str:
@@ -259,6 +383,85 @@ class HealthcareAnalyzer:
             if ward:
                 parts.append(f"at {ward}")
         return " ".join(parts).strip() or "Healthcare record"
+
+    def _build_row_event_story(
+        self,
+        table_name: str,
+        raw_record: Dict,
+        column_purposes: Dict,
+        file_name: str,
+        event_date: str,
+        event_time: str,
+        table_workflow_role: Dict[str, Any],
+    ) -> str:
+        """
+        Convert one row into a hospital event in sentence form. Compulsory for every record.
+        Mentions what happened to the patient at that time.
+        """
+        role = (table_workflow_role or {}).get("role", "other")
+        work_summary = self._build_work_summary(table_name, raw_record, column_purposes, file_name)
+        patient_id = self._get_patient_id_from_record(raw_record, column_purposes)
+        time_part = f" at {event_time}" if event_time else ""
+        base = f"On {event_date}{time_part}, "
+        if role == "patient":
+            name = raw_record.get("name") or raw_record.get("patient_name") or "Patient"
+            base += f"{name} (ID: {patient_id or '—'}) was registered in the hospital."
+        elif role == "appointment":
+            base += f"appointment for patient {patient_id or '—'} was recorded. {work_summary}."
+        elif role == "admission":
+            reason = raw_record.get("reason") or raw_record.get("diagnosis") or raw_record.get("symptom") or ""
+            base += f"patient {patient_id or '—'} was admitted to the hospital."
+            if reason:
+                base += f" Reason: {reason}."
+            else:
+                base += f" {work_summary}."
+        elif role == "treatment":
+            ttype = raw_record.get("treatment_type") or raw_record.get("procedure") or "treatment"
+            base += f"patient received {ttype} (admission {raw_record.get('admission_id', '—')}). {work_summary}."
+        elif role == "billing":
+            amt = raw_record.get("bill_amount") or raw_record.get("amount") or "—"
+            base += f"bill was generated for patient {patient_id or '—'} (admission {raw_record.get('admission_id', '—')}), amount ₹{amt}. {work_summary}."
+        elif role == "discharge":
+            base += f"patient {patient_id or '—'} was discharged from the hospital. {work_summary}."
+        elif role == "lab":
+            base += f"lab or test record for patient {patient_id or '—'}. {work_summary}."
+        else:
+            base += work_summary + "."
+        return base
+
+    def _build_time_log_explanation(
+        self,
+        event_date: str,
+        event_time: str,
+        row_event_story: str,
+        table_name: str,
+    ) -> str:
+        """Short, clear event time. Always include full timestamp (HH:MM:SS) when available."""
+        at_time = f"{event_date} {event_time}".strip() if event_time else event_date
+        return f"Event: {at_time}"
+
+    def _build_cross_table_links_for_record(
+        self,
+        raw_record: Dict,
+        column_purposes: Dict,
+    ) -> List[Dict[str, str]]:
+        """
+        For columns that look like patient_id, doctor_id, appointment_id, admission_id,
+        explain how they link this table to another hospital process.
+        """
+        links = []
+        for col, val in raw_record.items():
+            if not val or str(val).strip() == '':
+                continue
+            purp = column_purposes.get(col) or {}
+            link_expl = purp.get("link_explanation")
+            if link_expl:
+                links.append({
+                    "column": col,
+                    "value": str(val).strip(),
+                    "link_explanation": link_expl,
+                })
+        return links
 
     def _find_admission_discharge_columns(self, df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
         """Find admission and discharge date columns by name pattern. Returns (admission_col, discharge_col)."""
@@ -466,6 +669,18 @@ class HealthcareAnalyzer:
             df['__date_str'] = df[date_col].astype(str).str.split().str[0]
             df['__time_str'] = df[time_col].astype(str)
             df['__dt'] = pd.to_datetime(df['__date_str'] + ' ' + df['__time_str'], errors='coerce')
+            # Fallback for 12-hour formats with AM/PM (e.g., "10:30 AM")
+            if df['__dt'].isna().any():
+                def _try_parse(row):
+                    if pd.notna(row['__dt']):
+                        return row['__dt']
+                    date_part = str(row['__date_str'])
+                    time_part = str(row['__time_str'])
+                    try:
+                        return pd.to_datetime(f"{date_part} {time_part}", format="%Y-%m-%d %I:%M %p", errors='coerce')
+                    except Exception:
+                        return pd.NaT
+                df['__dt'] = df.apply(_try_parse, axis=1)
             df['__dt'] = df['__dt'].fillna(pd.to_datetime(df[date_col], errors='coerce'))
         df = df.dropna(subset=['__dt'])
         df = df.sort_values('__dt', ascending=True)
@@ -475,13 +690,14 @@ class HealthcareAnalyzer:
         data_cols = [c for c in df.columns if c not in skip_cols and not str(c).startswith('__')]
         column_purposes = {}
         for c in data_cols:
-            column_purposes[c] = self._infer_column_purpose(c, df[c])
+            column_purposes[c] = self._infer_column_purpose(c, df[c], df)
 
         adm_col, dis_col = self._find_admission_discharge_columns(df)
         appt_col = self._find_appointment_column(df)
+        table_workflow_role = self._identify_table_workflow_role(table_name, df)
 
         records = []
-        for _, row in df.iterrows():
+        for row_idx, row in df.iterrows():
             dt = row['__dt']
             raw_record = {}
             explained_record = {}
@@ -499,6 +715,16 @@ class HealthcareAnalyzer:
                     data_flow_parts.append(f"{purpose_info['purpose']}: {expl}")
 
             work_summary = self._build_work_summary(table_name, raw_record, column_purposes, file_name)
+            event_date = dt.strftime('%Y-%m-%d')
+            event_time = dt.strftime('%H:%M:%S')  # Always include full time for clarity
+            row_event_story = self._build_row_event_story(
+                table_name, raw_record, column_purposes, file_name,
+                event_date, event_time, table_workflow_role,
+            )
+            time_log_explanation = self._build_time_log_explanation(
+                event_date, event_time, row_event_story, table_name,
+            )
+            cross_table_links = self._build_cross_table_links_for_record(raw_record, column_purposes)
 
             stay_duration = None
             if adm_col and dis_col and adm_col in row.index and dis_col in row.index:
@@ -509,14 +735,22 @@ class HealthcareAnalyzer:
             rec = {
                 'table_name': table_name,
                 'file_name': file_name or f"{table_name}.csv",
-                'date': dt.strftime('%Y-%m-%d'),
-                'time': dt.strftime('%H:%M:%S') if dt.hour != 0 or dt.minute != 0 or dt.second != 0 else '',
+                # Which row this event came from (helps “which table / which row” trace)
+                'source_row_index': int(row_idx) if str(row_idx).isdigit() else str(row_idx),
+                'source_row_number': int(row_idx) + 1 if str(row_idx).isdigit() else None,
+                'date': event_date,
+                'time': event_time,
+                'event_datetime': f"{event_date} {event_time}",
                 'datetime_sort': dt,
                 'record': raw_record,
                 'column_purposes': column_purposes,
                 'data_flow_explanation': " | ".join(data_flow_parts) if data_flow_parts else "Record at this date/time",
                 'value_explanations': explained_record,
                 'work_summary': work_summary,
+                'row_event_story': row_event_story,
+                'time_log_explanation': time_log_explanation,
+                'cross_table_links': cross_table_links,
+                'table_workflow_role': table_workflow_role,
                 '_patient_id': patient_id,
                 '_event_datetime': dt,
             }
@@ -555,6 +789,17 @@ class HealthcareAnalyzer:
             all_records.extend(records)
             # Column purposes observed for this table (first record has them)
             col_purposes = records[0].get('column_purposes', {}) if records else {}
+            col_explanations = []
+            for c in col_purposes:
+                purp = col_purposes[c]
+                col_explanations.append({
+                    'column': c,
+                    'purpose': purp.get('purpose'),
+                    'work_explanation': purp.get('work_explanation'),
+                    'column_classification': purp.get('column_classification', COLUMN_CLASS_OTHER),
+                    'link_explanation': purp.get('link_explanation'),
+                })
+            table_role = records[0].get('table_workflow_role', {}) if records else {}
             tables_summary.append({
                 'table_name': table_name,
                 'file_name': file_name,
@@ -563,6 +808,8 @@ class HealthcareAnalyzer:
                 'first_date': records[0]['date'],
                 'last_date': records[-1]['date'],
                 'column_purposes': col_purposes,
+                'table_workflow_role': table_role,
+                'column_explanations': col_explanations,
             })
 
         if not all_records:
@@ -589,21 +836,30 @@ class HealthcareAnalyzer:
         first_time = all_records[0].get('time', '')
         last_time = all_records[-1].get('time', '')
 
-        # Build diagram nodes: unique (date, time) points, each with list of records
-        diagram_nodes = []
-        seen = set()
+        # Build diagram nodes: unique (date, time) points, sorted chronologically
+        # Use full datetime for grouping to avoid date-only collisions
+        node_map = {}
         for r in all_records:
-            key = (r['date'], r.get('time', ''))
-            if key not in seen:
-                seen.add(key)
-                nodes_for_key = [x for x in all_records if (x['date'], x.get('time', '')) == key]
-                diagram_nodes.append({
+            dt_key = (r['date'], r.get('time', ''))
+            if dt_key not in node_map:
+                node_map[dt_key] = {
                     'date': r['date'],
                     'time': r.get('time', ''),
-                    'count': len(nodes_for_key),
-                    'records': nodes_for_key,
-                    'table_names': list(set(x['table_name'] for x in nodes_for_key))
-                })
+                    'records': [],
+                    'sort_key': f"{r['date']} {r.get('time', '') or '00:00:00'}",
+                }
+            node_map[dt_key]['records'].append(r)
+
+        diagram_nodes = []
+        for dt_key in sorted(node_map.keys(), key=lambda k: node_map[k]['sort_key']):
+            n = node_map[dt_key]
+            diagram_nodes.append({
+                'date': n['date'],
+                'time': n['time'],
+                'count': len(n['records']),
+                'records': n['records'],
+                'table_names': list(set(x['table_name'] for x in n['records']))
+            })
 
         return {
             'success': True,
