@@ -732,27 +732,54 @@ window.showBankingNodeDetails = function (nodeIndex) {
     records.forEach((r) => {
         const rec = r.record || {};
         const purposes = r.column_purposes || {};
-        const explanations = r.value_explanations || rec;
         const workSummary = r.work_summary || '';
         const timeLogExplanation = r.time_log_explanation || '';
+        const dataFlow = r.data_flow_explanation || '';
+        const updateExpl = r.update_explanation || '';
+        const loginExpl = r.login_explanation || '';
+        const txExpl = r.transaction_explanation;
+        const blocks = r.explanation_blocks || [];
         const fileName = r.file_name || (r.table_name ? r.table_name + '.csv' : '');
         const keys = Object.keys(rec);
         const pairs = keys.map(k => {
             const purpose = purposes[k];
             const purposeLabel = (purpose && purpose.purpose) || k;
-            const val = explanations[k] !== undefined ? explanations[k] : (rec[k] || '—');
+            const val = rec[k] || '—';
             const isNull = !rec[k] || String(rec[k]).trim() === '';
             const valStyle = isNull ? 'color: #94a3b8; font-style: italic;' : '';
             return '<strong>' + purposeLabel + ':</strong> <span style="' + valStyle + '">' + val + '</span>';
         }).join(' · ');
+        let body = '<div style="padding-top: 0.5rem;">';
+        body += '<div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.35rem;">' + workSummary + '</div>';
+        body += '<div style="font-size: 0.82rem; color: #64748b;">' + timeLogExplanation + '</div>';
+        if (dataFlow) {
+            body += '<div style="font-size: 0.88rem; color: #0f172a; line-height: 1.5; margin-top: 0.5rem; padding: 0.5rem; background: rgba(15,118,110,0.06); border-radius: 8px;">' + dataFlow + '</div>';
+        }
+        if (loginExpl) {
+            body += '<div style="font-size: 0.82rem; margin-top: 0.35rem; color: #475569;">' + loginExpl + '</div>';
+        }
+        if (txExpl && txExpl.explanation) {
+            body += '<div style="font-size: 0.85rem; margin-top: 0.4rem; padding: 0.4rem; background: #f8fafc; border-left: 3px solid #0F766E; border-radius: 4px;">' + txExpl.explanation + '</div>';
+        }
+        if (updateExpl) {
+            body += '<div style="font-size: 0.8rem; margin-top: 0.3rem; color: #64748b;">' + updateExpl + '</div>';
+        }
+        blocks.forEach(function (b) {
+            const t = b.type || '';
+            let bg = 'rgba(245,158,11,0.1)';
+            let border = '#f59e0b';
+            if (t === 'negative_balance') { bg = 'rgba(239,68,68,0.1)'; border = '#ef4444'; }
+            else if (t === 'credit' || t === 'balance_increase') { bg = 'rgba(34,197,94,0.1)'; border = '#22c55e'; }
+            else if (t === 'debit' || t === 'balance_decrease') { bg = 'rgba(245,158,11,0.1)'; border = '#f59e0b'; }
+            else if (t === 'refund') { bg = 'rgba(59,130,246,0.1)'; border = '#3b82f6'; }
+            body += '<div style="margin-top: 0.5rem; padding: 0.5rem 0.6rem; background: ' + bg + '; border-left: 3px solid ' + border + '; border-radius: 6px; font-size: 0.85rem;">' + b.explanation + '</div>';
+        });
+        body += '<div style="font-size: 0.82rem; margin-top: 0.5rem; color: var(--text-primary);">' + (pairs || '—') + '</div>';
+        body += '</div>';
         html += '<details style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.7rem;">' +
             '<summary style="cursor: pointer; list-style: none;"><span style="color: #0F766E; font-weight: 700;">' + r.table_name + '</span>' +
             (fileName ? ' <span style="font-size: 0.75rem; color: var(--text-muted);">' + fileName + '</span>' : '') + '</summary>' +
-            '<div style="padding-top: 0.5rem;">' +
-            '<div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.35rem;">' + workSummary + '</div>' +
-            '<div style="font-size: 0.82rem; color: #64748b;">' + timeLogExplanation + '</div>' +
-            '<div style="font-size: 0.82rem; margin-top: 0.4rem; color: var(--text-primary);">' + (pairs || '—') + '</div>' +
-            '</div></details>';
+            body + '</details>';
     });
 
     html += '</div></div>';
