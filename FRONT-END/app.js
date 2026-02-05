@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Banking Data Analysis Assistant - Frontend Application
  * Connects to backend APIs for comprehensive banking data analysis
  */
@@ -615,6 +615,263 @@ function showBankingAnalysisResults(profile) {
         return;
     }
 
+    // --- Column-level Event Blueprint (uses backend event_columns from banking_analyzer) ---
+    function buildEventBlueprintFromBackend(eventColumns) {
+        const eventOrder = ['account_open', 'login', 'deposit', 'withdraw', 'refund', 'failed', 'logout', 'check_balance'];
+        const eventLabels = {
+            account_open: 'Created Account',
+            login: 'Login',
+            logout: 'Logout',
+            deposit: 'Deposit / Credit',
+            withdraw: 'Withdrawal Transaction',
+            refund: 'Refund',
+            failed: 'Failed / Declined',
+            check_balance: 'Check Balance'
+        };
+
+        const eventMap = eventColumns || {};
+        const hasAnyEvent = Object.keys(eventMap).some((k) => (eventMap[k] || []).length > 0);
+        if (!hasAnyEvent) {
+            // Count total detected events to show in message
+            const totalEventTypes = Object.keys(eventMap).length;
+            return `
+                <section style="margin-bottom: 2rem;">
+                    <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">
+                        📋 Event Columns Blueprint
+                    </h2>
+                    <div style="background: rgba(251,191,36,0.1); border-left: 4px solid #f59e0b; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem;">
+                        <div style="font-size: 1.1rem; font-weight: 600; color: #d97706; margin-bottom: 0.75rem;">
+                            ⚠️ No Banking Event Columns Detected
+                        </div>
+                        <p style="color: var(--text-primary); margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.6;">
+                            We could not find columns that look like banking events (login, logout, deposit, withdraw, refund, failed, or account opened) from your uploaded tables.
+                        </p>
+                        <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.6;">
+                            The diagram will appear when your files have columns with these patterns:
+                        </p>
+                        <div style="background: white; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0.75rem; font-size: 0.85rem;">
+                                <div>
+                                    <strong style="color: #059669;">✓ Login:</strong> 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">login_time</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">login_date</code>
+                                </div>
+                                <div>
+                                    <strong style="color: #dc2626;">✓ Logout:</strong> 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">logout_time</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">logout_date</code>
+                                </div>
+                                <div>
+                                    <strong style="color: #0ea5e9;">✓ Account Open:</strong> 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">open_date</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">created_at</code>
+                                </div>
+                                <div>
+                                    <strong style="color: #22c55e;">✓ Deposit/Credit:</strong> 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">deposit_date</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">credit_time</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">credit_amount</code>
+                                </div>
+                                <div>
+                                    <strong style="color: #f59e0b;">✓ Withdraw/Debit:</strong> 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">withdraw_date</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">debit_time</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">withdrawal_amount</code>
+                                </div>
+                                <div>
+                                    <strong style="color: #8b5cf6;">✓ Refund:</strong> 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">refund_date</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">refund_timestamp</code>
+                                </div>
+                                <div>
+                                    <strong style="color: #ef4444;">✓ Failed/Status:</strong> 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">status</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">failed</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">declined</code>
+                                </div>
+                                <div>
+                                    <strong style="color: #6366f1;">✓ Event Type:</strong> 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">event</code>, 
+                                    <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">transaction_type</code>
+                                </div>
+                            </div>
+                        </div>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.5;">
+                            <strong>💡 Tip:</strong> Column names are flexible! We look for keywords like <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">login</code>, <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">deposit</code>, <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">withdraw</code> combined with <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">date</code>, <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">time</code>, or <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">timestamp</code>. Amount columns (like <code style="background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 4px;">credit_amount</code>) are also detected!
+                        </p>
+                    </div>
+                </section>
+            `;
+        }
+
+        function renderColumns(evType) {
+            const cols = eventMap[evType] || [];
+            if (!cols.length) return '<div style="font-size: 0.78rem; color: #e5e7eb; opacity: 0.7;">Not detected</div>';
+
+            // Extract just the column name (remove "Table." prefix if present)
+            const columnNames = cols.map(c => {
+                const parts = c.split('.');
+                return parts.length > 1 ? parts[1] : c; // If format is "Table.Column", take Column only
+            });
+
+            // Show up to 3 columns, then "+X more"
+            const first = columnNames.slice(0, 3);
+            const extra = columnNames.length - first.length;
+
+            let inner = first
+                .map((c) => `<div style="font-size: 0.78rem; color: #e5e7eb; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${c}">${c}</div>`)
+                .join('');
+            if (extra > 0) {
+                inner += `<div style="font-size: 0.72rem; color: #cbd5f5; margin-top: 0.15rem;">+${extra} more</div>`;
+            }
+            return inner;
+        }
+
+        function has(evType) {
+            return (eventMap[evType] || []).length > 0;
+        }
+
+        // Count detected event types for summary
+        const detectedCount = Object.keys(eventMap).filter(k => (eventMap[k] || []).length > 0).length;
+        const totalEventTypes = 8; // Total possible event types
+
+        // Layout similar to the provided blueprint image
+        let html = `
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.8rem; margin-bottom: 1rem; color: var(--text-primary); text-align: center;">
+                    📊 Banking Event Blueprint
+                </h2>
+                
+                <!-- Detection Summary -->
+                <div style="background: linear-gradient(135deg, rgba(15,118,110,0.08), rgba(13,92,84,0.06)); border: 1px solid rgba(15,118,110,0.3); border-radius: 12px; padding: 1rem; margin-bottom: 1.5rem; text-align: center;">
+                    <div style="font-size: 1rem; color: var(--text-primary); margin-bottom: 0.5rem;">
+                        <strong style="font-size: 1.4rem; color: #0F766E;">${detectedCount}</strong> out of <strong>${totalEventTypes}</strong> event types detected
+                    </div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);">
+                        ${detectedCount === totalEventTypes ? '✅ All event types found! Your banking data is fully mapped.' :
+                detectedCount >= 4 ? '✓ Good coverage! Some event types are missing but the main flow is detected.' :
+                    detectedCount >= 1 ? '⚠️ Partial detection. Consider adding more event-related columns for complete analysis.' :
+                        '❌ No events detected. See the guide above for expected column names.'}
+                    </div>
+                </div>
+
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.98rem; text-align: center;">
+                    This blueprint is a visual demo built only from column names. Each box is one event type. Inside each box we list the matching table columns (Table.Column) that look like that event.
+                </p>
+                <div style="background: #f9fafb; border-radius: 20px; padding: 1.75rem; border: 1px solid #e5e7eb;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 1.8rem;">
+
+                        <!-- Top row: Start / Created Account -->
+                        <div style="display: flex; justify-content: center; gap: 6rem; width: 100%;">
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.35rem;">
+                                <div style="font-size: 0.85rem; color: #6b7280;">Start</div>
+                                <div style="min-width: 120px; padding: 0.6rem 0.9rem; border-radius: 999px; background: #1d4ed8; color: white; text-align: center; font-weight: 600;">
+                                    Process
+                                </div>
+                            </div>
+                            ${has('account_open') ? `
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.35rem;">
+                                <div style="font-size: 0.85rem; color: #6b7280;">Account</div>
+                                <div style="min-width: 150px; padding: 0.6rem 0.9rem; border-radius: 999px; background: #1d4ed8; color: white; text-align: center; font-weight: 600;">
+                                    ${eventLabels.account_open}
+                                </div>
+                                <div style="margin-top: 0.35rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #eff6ff; border: 1px solid #dbeafe; max-width: 260px;">
+                                    ${renderColumns('account_open')}
+                                </div>
+                            </div>` : ''}
+                        </div>
+
+                        <!-- Center login -->
+                        ${has('login') ? `
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.35rem;">
+                            <div style="min-width: 130px; padding: 0.6rem 0.9rem; border-radius: 16px; background: #1d4ed8; color: white; text-align: center; font-weight: 600;">
+                                ${eventLabels.login}
+                            </div>
+                            <div style="margin-top: 0.35rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #eff6ff; border: 1px solid #dbeafe; max-width: 260px;">
+                                ${renderColumns('login')}
+                            </div>
+                        </div>` : ''}
+
+                        <!-- Middle row: left Credit/Deposit, center transaction column, right Logout -->
+                        <div style="display: flex; justify-content: center; gap: 4rem; width: 100%; align-items: flex-start;">
+
+                            <!-- Left: Credit / Deposit -->
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: center;">
+                                ${has('deposit') ? `
+                                <div style="min-width: 130px; padding: 0.6rem 0.9rem; border-radius: 16px; background: #1d4ed8; color: white; text-align: center; font-weight: 600;">
+                                    Credit / Deposit
+                                </div>
+                                <div style="margin-top: 0.15rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #eff6ff; border: 1px solid #dbeafe; max-width: 260px;">
+                                    ${renderColumns('deposit')}
+                                </div>` : ''}
+                            </div>
+
+                            <!-- Center: Withdrawal / Credit / Refund / Check Balance -->
+                            <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: center;">
+                                ${has('withdraw') ? `
+                                <div style="min-width: 180px; padding: 0.55rem 1rem; border-radius: 18px; background: #0f766e; color: white; text-align: center; font-weight: 600;">
+                                    ${eventLabels.withdraw}
+                                </div>
+                                <div style="margin-top: 0.15rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #ecfdf3; border: 1px solid #bbf7d0; max-width: 280px;">
+                                    ${renderColumns('withdraw')}
+                                </div>` : ''}
+
+                                ${has('deposit') ? `
+                                <div style="min-width: 140px; padding: 0.55rem 1rem; border-radius: 18px; background: #0f766e; color: white; text-align: center; font-weight: 600;">
+                                    Credit
+                                </div>
+                                <div style="margin-top: 0.15rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #ecfdf3; border: 1px solid #bbf7d0; max-width: 280px;">
+                                    ${renderColumns('deposit')}
+                                </div>` : ''}
+
+                                ${has('refund') ? `
+                                <div style="min-width: 140px; padding: 0.55rem 1rem; border-radius: 18px; background: #0f766e; color: white; text-align: center; font-weight: 600;">
+                                    ${eventLabels.refund}
+                                </div>
+                                <div style="margin-top: 0.15rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #ecfdf3; border: 1px solid #bbf7d0; max-width: 280px;">
+                                    ${renderColumns('refund')}
+                                </div>` : ''}
+
+                                ${has('check_balance') ? `
+                                <div style="min-width: 160px; padding: 0.55rem 1rem; border-radius: 18px; background: #0f766e; color: white; text-align: center; font-weight: 600;">
+                                    ${eventLabels.check_balance}
+                                </div>
+                                <div style="margin-top: 0.15rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #ecfdf3; border: 1px solid #bbf7d0; max-width: 280px;">
+                                    ${renderColumns('check_balance')}
+                                </div>` : ''}
+
+                                ${has('failed') ? `
+                                <div style="min-width: 160px; padding: 0.55rem 1rem; border-radius: 18px; background: #b91c1c; color: white; text-align: center; font-weight: 600;">
+                                    ${eventLabels.failed}
+                                </div>
+                                <div style="margin-top: 0.15rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; max-width: 280px;">
+                                    ${renderColumns('failed')}
+                                </div>` : ''}
+                            </div>
+
+                            <!-- Right: Logout and End -->
+                            <div style="display: flex; flex-direction: column; gap: 1rem; align-items: center;">
+                                ${has('logout') ? `
+                                <div style="min-width: 120px; padding: 0.6rem 0.9rem; border-radius: 16px; background: #1d4ed8; color: white; text-align: center; font-weight: 600;">
+                                    ${eventLabels.logout}
+                                </div>
+                                <div style="margin-top: 0.15rem; padding: 0.4rem 0.6rem; border-radius: 10px; background: #eff6ff; border: 1px solid #dbeafe; max-width: 260px;">
+                                    ${renderColumns('logout')}
+                                </div>` : ''}
+
+                                <div style="margin-top: 1.2rem; min-width: 110px; padding: 0.55rem 0.9rem; border-radius: 999px; border: 2px solid #1d4ed8; color: #1d4ed8; text-align: center; font-weight: 600;">
+                                    End
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        `;
+
+        return html;
+    }
+
     const caseDetails = bkData.case_details || [];
     const caseIds = bkData.case_ids || [];
     const totalCases = bkData.total_cases || 0;
@@ -648,6 +905,8 @@ function showBankingAnalysisResults(profile) {
             <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
                 ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} user(s) â€¢ ${totalActivities} activities
             </p>
+
+            ${buildEventBlueprintFromBackend(bkData.event_columns)}
             
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">ðŸ“‹ Explanations</h2>
@@ -665,10 +924,10 @@ function showBankingAnalysisResults(profile) {
                 </p>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
                     ${users.map(u => {
-                        const userCases = caseDetails.filter(c => c.user_id === u);
-                        const ids = userCases.map(c => c.case_id);
-                        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #0F766E;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">â†’ Case IDs: ' + ids.join(', ') + '</span></div>';
-                    }).join('')}
+        const userCases = caseDetails.filter(c => c.user_id === u);
+        const ids = userCases.map(c => c.case_id);
+        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #0F766E;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">â†’ Case IDs: ' + ids.join(', ') + '</span></div>';
+    }).join('')}
                 </div>
             </section>
 
@@ -939,7 +1198,7 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
         const eventLine = (timeLogExplanation && rowEventStory)
             ? ('<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.3rem;">' + timeLogExplanation + ' â€” ' + rowEventStory + '</div>')
             : (rowEventStory ? ('<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.3rem;">' + rowEventStory + '</div>') : '') +
-              (timeLogExplanation ? ('<div style="font-size: 0.82rem; color: #64748b;">' + timeLogExplanation + '</div>') : '');
+            (timeLogExplanation ? ('<div style="font-size: 0.82rem; color: #64748b;">' + timeLogExplanation + '</div>') : '');
         let linksDiv = '';
         if (crossTableLinks.length > 0) {
             linksDiv = '<div style="margin: 0.35rem 0 0; padding: 0.4rem 0.55rem; background: #f1f5f9; border-radius: 8px; font-size: 0.8rem;"><strong>Links (FK):</strong><ul style="margin: 0.25rem 0 0 1rem; padding: 0;">' +
