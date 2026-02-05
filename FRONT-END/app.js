@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Banking Data Analysis Assistant - Frontend Application
  * Connects to backend APIs for comprehensive banking data analysis
  */
@@ -21,7 +21,7 @@ const uploadSection = document.getElementById('uploadSection');
 const loadingSection = document.getElementById('loadingSection');
 const resultsSection = document.getElementById('resultsSection');
 
-// Toggle Open Date Day explanation: click point → show box; click same point again → hide
+// Toggle Open Date Day explanation: click point â†’ show box; click same point again â†’ hide
 window.showOpenDateExplanation = function (index, nodeEl) {
     const daily = window.openDateDailyData;
     if (!daily || !daily.length) return;
@@ -43,10 +43,10 @@ window.showOpenDateExplanation = function (index, nodeEl) {
     if (!entry) return;
     const creations = entry.creations || [];
     const multiCusts = entry.multi_create_customers || [];
-    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">📅 Date: ' + entry.date + '</div><button type="button" onclick="showOpenDateExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">← Back</button></div>';
+    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">ðŸ“… Date: ' + entry.date + '</div><button type="button" onclick="showOpenDateExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
     html += '<div style="font-size: 0.95rem; color: #475569; margin-bottom: 1rem;">' + entry.count + ' account(s) created on this date.</div>';
     if (entry.multi_create_same_day && multiCusts.length) {
-        html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">⚠️ One customer created 2+ accounts this day: ' + multiCusts.join(', ') + '.</div>';
+        html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">âš ï¸ One customer created 2+ accounts this day: ' + multiCusts.join(', ') + '.</div>';
     }
     html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
     creations.forEach(function (cr) {
@@ -54,7 +54,7 @@ window.showOpenDateExplanation = function (index, nodeEl) {
         const time = cr.time_str || '';
         const tod = cr.time_of_day || '';
         const suffix = multiCusts.indexOf(cid) >= 0 ? ' <span style="color: #ec4899; font-size: 0.85rem;">(2+ accounts this day)</span>' : '';
-        html += '<div style="padding: 0.85rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 1rem; color: #1e293b; line-height: 1.6;"><strong style="color: #0f172a;">Customer ' + cid + '</strong> created account at <strong style="color: #3b82f6;">' + (time || '—') + '</strong> (' + tod + ').' + suffix + '</div>';
+        html += '<div style="padding: 0.85rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 1rem; color: #1e293b; line-height: 1.6;"><strong style="color: #0f172a;">Customer ' + cid + '</strong> created account at <strong style="color: #3b82f6;">' + (time || 'â€”') + '</strong> (' + tod + ').' + suffix + '</div>';
     });
     html += '</div>';
     placeholder.style.display = 'none';
@@ -62,7 +62,7 @@ window.showOpenDateExplanation = function (index, nodeEl) {
     content.innerHTML = html;
 };
 
-// Toggle Login Day explanation: click point → show box; click same point again → hide
+// Toggle Login Day explanation: click point â†’ show box; click same point again â†’ hide
 window.showLoginDayExplanation = function (index, nodeEl) {
     const daily = window.loginDailyData;
     if (!daily || !daily.length) return;
@@ -83,16 +83,16 @@ window.showLoginDayExplanation = function (index, nodeEl) {
     const entry = index === -1 ? daily[0] : index === -2 ? daily[daily.length - 1] : daily[index];
     if (!entry) return;
     const logins = entry.logins || [];
-    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">📅 Date: ' + entry.date + '</div><button type="button" onclick="showLoginDayExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">← Back</button></div>';
+    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">ðŸ“… Date: ' + entry.date + '</div><button type="button" onclick="showLoginDayExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
     html += '<div style="font-size: 0.95rem; color: #475569; margin-bottom: 1rem;">' + entry.login_count + ' login(s). New: ' + entry.new_account_logins + ', Old: ' + entry.old_account_logins + '.</div>';
     if (entry.multi_login_same_day && (entry.multi_login_accounts || []).length) {
-        html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">⚠️ One user logged in 2+ times on this day: ' + entry.multi_login_accounts.join(', ') + '.</div>';
+        html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">âš ï¸ One user logged in 2+ times on this day: ' + entry.multi_login_accounts.join(', ') + '.</div>';
     }
     html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
     const multiAccs = entry.multi_login_accounts || [];
     logins.forEach(function (lg) {
         const acc = lg.account_id || '?';
-        const time = lg.time_str || lg.login_at || '—';
+        const time = lg.time_str || lg.login_at || 'â€”';
         const tod = lg.time_of_day || '';
         const created = lg.created_at || '';
         const isMulti = multiAccs.indexOf(acc) >= 0;
@@ -105,7 +105,7 @@ window.showLoginDayExplanation = function (index, nodeEl) {
     content.innerHTML = html;
 };
 
-// Toggle Transaction Day explanation: click point → show box; click same point again → hide, return to placeholder
+// Toggle Transaction Day explanation: click point â†’ show box; click same point again â†’ hide, return to placeholder
 window.showTxnDayExplanation = function (index, nodeEl) {
     const daily = window.txnDailyData;
     if (!daily || !daily.length) return;
@@ -127,14 +127,14 @@ window.showTxnDayExplanation = function (index, nodeEl) {
     if (!entry) return;
     const txns = entry.transactions || [];
     const multiAccs = entry.multi_accounts || [];
-    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">📅 Date: ' + entry.date + '</div><button type="button" onclick="showTxnDayExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">← Back</button></div>';
-    html += '<div style="font-size: 0.95rem; color: #475569; margin-bottom: 1rem;">' + entry.transaction_count + ' transaction(s). Credits: ' + entry.credits + ', Debits: ' + entry.debits + ', Refunds: ' + entry.refunds + ', Blocked: ' + entry.declined + '. <strong>PASS: ' + (entry.pass_count || 0) + '</strong> · <strong style="color: #dc2626;">FAIL: ' + (entry.fail_count || 0) + '</strong></div>';
-    if (entry.multi_user_same_day && multiAccs.length) html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">⚠️ ' + multiAccs.join(', ') + ' performed 2+ transactions on this day.</div>';
+    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">ðŸ“… Date: ' + entry.date + '</div><button type="button" onclick="showTxnDayExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
+    html += '<div style="font-size: 0.95rem; color: #475569; margin-bottom: 1rem;">' + entry.transaction_count + ' transaction(s). Credits: ' + entry.credits + ', Debits: ' + entry.debits + ', Refunds: ' + entry.refunds + ', Blocked: ' + entry.declined + '. <strong>PASS: ' + (entry.pass_count || 0) + '</strong> Â· <strong style="color: #dc2626;">FAIL: ' + (entry.fail_count || 0) + '</strong></div>';
+    if (entry.multi_user_same_day && multiAccs.length) html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">âš ï¸ ' + multiAccs.join(', ') + ' performed 2+ transactions on this day.</div>';
     html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
     txns.forEach(function (t) {
         const status = t.status || 'PASS';
         const statusClr = status === 'FAIL' ? '#dc2626' : '#059669';
-        html += '<div style="padding: 0.85rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 1rem; color: #1e293b; line-height: 1.6;"><strong style="color: #0f172a;">Account ' + (t.account || '?') + '</strong> at <strong style="color: #f59e0b;">' + (t.time || '—') + '</strong> · ' + (t.type || '') + ' ' + (t.amount || '') + ' · Balance ' + (t.balance_before || '0') + ' → ' + (t.balance_after || '0') + '.<br><span style="display: inline-block; margin-top: 0.35rem; padding: 0.2rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; background: ' + (status === 'FAIL' ? 'rgba(220,38,38,0.12)' : 'rgba(5,150,105,0.12)') + '; color: ' + statusClr + ';">Status: ' + status + '</span> — ' + (t.status_explanation || (status === 'FAIL' ? 'Transaction declined or blocked' : 'Transaction completed successfully')) + '<br><span style="color: #475569;">' + (t.meaning || '') + '</span></div>';
+        html += '<div style="padding: 0.85rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 1rem; color: #1e293b; line-height: 1.6;"><strong style="color: #0f172a;">Account ' + (t.account || '?') + '</strong> at <strong style="color: #f59e0b;">' + (t.time || 'â€”') + '</strong> Â· ' + (t.type || '') + ' ' + (t.amount || '') + ' Â· Balance ' + (t.balance_before || '0') + ' â†’ ' + (t.balance_after || '0') + '.<br><span style="display: inline-block; margin-top: 0.35rem; padding: 0.2rem 0.5rem; border-radius: 6px; font-weight: 600; font-size: 0.9rem; background: ' + (status === 'FAIL' ? 'rgba(220,38,38,0.12)' : 'rgba(5,150,105,0.12)') + '; color: ' + statusClr + ';">Status: ' + status + '</span> â€” ' + (t.status_explanation || (status === 'FAIL' ? 'Transaction declined or blocked' : 'Transaction completed successfully')) + '<br><span style="color: #475569;">' + (t.meaning || '') + '</span></div>';
     });
     html += '</div>';
     placeholder.style.display = 'none';
@@ -220,7 +220,7 @@ function displayFileList() {
         const fileItem = document.createElement('div');
         fileItem.className = 'file-item';
         fileItem.innerHTML = `
-            <div class="file-icon">📄</div>
+            <div class="file-icon">ðŸ“„</div>
             <div class="file-info">
                 <div class="file-name">${file.name}</div>
                 <div class="file-size">${formatFileSize(file.size)}</div>
@@ -349,7 +349,7 @@ function animateLoadingSteps() {
             if (currentStep > 0) {
                 document.getElementById(steps[currentStep - 1]).classList.remove('active');
                 document.getElementById(steps[currentStep - 1]).classList.add('complete');
-                document.getElementById(steps[currentStep - 1]).querySelector('.step-icon').textContent = '✓';
+                document.getElementById(steps[currentStep - 1]).querySelector('.step-icon').textContent = 'âœ“';
             }
             currentStep++;
         } else {
@@ -363,13 +363,23 @@ function showDomainSplitView() {
     const mainContent = document.getElementById('mainContent');
 
     if (!analysisResults || analysisResults.length === 0) {
-        proceedToAccountAnalysis();
+        mainContent.innerHTML = `
+            <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1rem;">ðŸ“Š</div>
+                <h2 style="font-size: 1.8rem; margin-bottom: 1rem; color: var(--text-primary);">No Databases Detected</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem; max-width: 500px;">
+                    We could not detect distinct data groups. Try uploading CSV files with clear table structure.
+                </p>
+                <button class="btn-secondary" onclick="location.reload()" style="padding: 0.75rem 1.5rem;">â† Try Different Files</button>
+            </div>
+        `;
+        showResultsSection();
         return;
     }
 
     let htmlContent = `
         <div style="height: 100%; display: flex; flex-direction: column; align-items: center; padding: 2rem; overflow-y: auto;">
-            <h2 style="font-size: 2.5rem; margin-bottom: 2rem; color: var(--text-primary); text-align: center; font-weight: 700;">🏦 Detected Databases</h2>
+            <h2 style="font-size: 2.5rem; margin-bottom: 2rem; color: var(--text-primary); text-align: center; font-weight: 700;">¦ Detected Databases</h2>
             <p style="color: var(--text-secondary); margin-bottom: 3rem; max-width: 700px; text-align: center; font-size: 1.1rem;">
                 We analyzed your files and detected <strong>${analysisResults.length}</strong> distinct data group(s).
             </p>
@@ -392,9 +402,9 @@ function showDomainSplitView() {
 
         // Set card colors based on primary domain
         const cardColor = isBanking ? '#0F766E' : (isHealthcare ? '#14B8A6' : '#64748B');
-        const cardLabel = isBanking ? `🏦 ${profile.database_name}` :
-            (isHealthcare ? `🏥 Healthcare Database ${index + 1}` :
-                `📊 Database ${index + 1}: General / Mixed`);
+        const cardLabel = isBanking ? ` ${profile.database_name}` :
+            (isHealthcare ? ` Healthcare Database ${index + 1}` :
+                `ðŸ“Š Database ${index + 1}: General / Mixed`);
 
         if (!domainData || !domainData.chart_data) return;
 
@@ -473,7 +483,7 @@ function showDomainSplitView() {
                                 id="analyze-btn-${index}"
                                 onclick="startDatabaseAnalysis(${index})"
                                 style="width: 100%; padding: 1rem 2rem; font-size: 1.1rem; position: relative;">
-                                ${isBanking ? '🏦 Analyze Banking Data' : (isHealthcare ? '🏥 Analyze Healthcare Data' : '📊 Analyze Data')} →
+                                ${isBanking ? '¦ Analyze Banking Data' : (isHealthcare ? ' Analyze Healthcare Data' : 'ðŸ“Š Analyze Data')} â†’
                             </button>
                             <div id="analyze-status-${index}" style="margin-top: 0.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; display: none;">
                                 Processing...
@@ -586,8 +596,7 @@ window.startDatabaseAnalysis = async function (profileIndex) {
     }
 };
 
-// Banking Analysis Results - Diagram format Start ----|----|---- End
-// All CSV files in DB cluster, timestamps sorted ascending (date, time, sec, AM/PM)
+// Banking Analysis Results - Case ID per User (Sessions)
 function showBankingAnalysisResults(profile) {
     const mainContent = document.getElementById('mainContent');
     const bkData = profile.banking_analysis;
@@ -595,31 +604,33 @@ function showBankingAnalysisResults(profile) {
     if (!bkData || !bkData.success) {
         mainContent.innerHTML = `
             <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
-                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏦</div>
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">¦</div>
                 <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #0F766E;">Banking Database Detected</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 2rem;">
-                    ${bkData?.error || 'No date/timestamp columns found in banking tables.'}
+                    ${bkData?.error || 'No activities found. We look for login time, logout time, created time, or open time in your files.'}
                 </p>
-                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+                <button class="btn-secondary" onclick="showDomainSplitView()">â† Back to Database List</button>
             </div>
         `;
         return;
     }
 
-    const nodes = bkData.diagram_nodes || [];
-    const firstDate = bkData.first_date || '';
-    const lastDate = bkData.last_date || '';
-    const totalRecords = bkData.total_records || 0;
+    const caseDetails = bkData.case_details || [];
+    const caseIds = bkData.case_ids || [];
+    const totalCases = bkData.total_cases || 0;
+    const totalUsers = bkData.total_users || 0;
+    const users = bkData.users || [];
+    const explanations = bkData.explanations || [];
+    const totalActivities = bkData.total_activities || 0;
 
-    if (nodes.length === 0) {
+    if (caseDetails.length === 0) {
         mainContent.innerHTML = `
             <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
-                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏦</div>
-                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #0F766E;">No Date/Time Data</h2>
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">¦</div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #0F766E;">No Sessions Found</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 2rem;">
-                    No date or timestamp columns found in banking tables.
-                </p>
-                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+                    No sessions found. Sessions need a start (e.g. login or open) and steps (e.g. credit, debit).</p>
+                <button class="btn-secondary" onclick="showDomainSplitView()"> Back to Database List</button>
             </div>
         `;
         return;
@@ -631,155 +642,113 @@ function showBankingAnalysisResults(profile) {
 
     let html = `
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
-            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">â† Back</button>
             
-            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${BANK_COLOR};">🏦 Banking Data Timeline</h1>
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${BANK_COLOR};"> Banking Case IDs</h1>
             <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
-                ${profile.database_name} • ${totalRecords} records • Full date/time sorted ascending • Click any box to see details
+                ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} user(s) â€¢ ${totalActivities} activities
             </p>
             
             <section style="margin-bottom: 2rem;">
-                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">
-                    📅 Sorted Timeline (${firstDate} → ${lastDate})
-                </h2>
-                <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
-                    All records from uploaded files, sorted by date and time (ascending). Click any box to see column values and explanations.
-                </p>
-                <div style="background: linear-gradient(135deg, ${BANK_BG}, rgba(15,118,110,0.06)); border: 1px solid ${BANK_BORDER}; border-radius: 16px; padding: 1.5rem; overflow-x: auto;">
-                    <div style="display: flex; align-items: flex-start; min-width: max-content; gap: 0; flex-wrap: nowrap;">
-                        <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">
-                            <div style="width: 14px; height: 14px; border-radius: 50%; background: #10b981; border: 2px solid #059669; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.75rem; font-weight: 700; color: #059669;">START</div>
-                            <div style="font-size: 0.7rem; color: var(--text-muted);">${firstDate}</div>
-                        </div>
-                        <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid ${BANK_BORDER}; align-self: flex-start; margin-top: 6px;"></div>
-    `;
-
-    nodes.forEach((node, i) => {
-        const dateLabel = node.date ? node.date.split('-').slice(1).join('/') : '';
-        const timeStr = node.time ? node.time.substring(0, 5) : '';
-        const label = timeStr ? `${dateLabel} ${timeStr}` : dateLabel;
-        html += `
-                        <div class="banking-node" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 72px; cursor: pointer; padding: 0.35rem;" 
-                            onclick="showBankingNodeDetails(${i})" role="button" tabindex="0" data-node-index="${i}">
-                            <div style="width: 48px; min-height: 48px; padding: 0.4rem; border-radius: 10px; background: linear-gradient(135deg, ${BANK_COLOR}, #0D5C54); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(15,118,110,0.3); transition: all 0.2s;"
-                                onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 4px 12px rgba(15,118,110,0.5)';"
-                                onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(15,118,110,0.3)';">
-                                <div style="font-size: 1rem;">${node.count}</div>
-                                <div style="font-size: 0.6rem; opacity: 0.9;">records</div>
-                            </div>
-                            <div style="font-size: 0.7rem; color: var(--text-primary); font-weight: 600; margin-top: 0.35rem; text-align: center; max-width: 80px; overflow: hidden; text-overflow: ellipsis;">${label}</div>
-                        </div>
-                        ${i < nodes.length - 1 ? '<div style="flex: 1; min-width: 16px; height: 24px; border-bottom: 3px solid ' + BANK_BORDER + '; align-self: flex-start; margin-top: 6px;"></div>' : ''}
-        `;
-    });
-
-    html += `
-                        <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid ${BANK_BORDER}; align-self: flex-start; margin-top: 6px;"></div>
-                        <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">
-                            <div style="width: 14px; height: 14px; border-radius: 50%; background: #ef4444; border: 2px solid #dc2626; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.75rem; font-weight: 700; color: #dc2626;">END</div>
-                            <div style="font-size: 0.7rem; color: var(--text-muted);">${lastDate}</div>
-                        </div>
-                    </div>
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">ðŸ“‹ Explanations</h2>
+                <div style="background: ${BANK_BG}; border: 1px solid ${BANK_BORDER}; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem;">
+                    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-primary); line-height: 1.8;">
+                        ${explanations.map(e => '<li>' + e + '</li>').join('')}
+                    </ul>
                 </div>
             </section>
 
-            <div id="banking-node-details" style="display: none;">
-                <div id="banking-node-details-content"></div>
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">ðŸ‘¥ Users & Case IDs</h2>
+                <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;">
+                    Case IDs are in order of start time. Click a case to see its steps.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
+                    ${users.map(u => {
+                        const userCases = caseDetails.filter(c => c.user_id === u);
+                        const ids = userCases.map(c => c.case_id);
+                        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #0F766E;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">â†’ Case IDs: ' + ids.join(', ') + '</span></div>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">ðŸ“Œ Case IDs (Ascending)</h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                    ${caseDetails.map((c, i) => `
+                        <div class="banking-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, ${BANK_COLOR}, #0D5C54); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(15,118,110,0.3); transition: all 0.2s;"
+                            onclick="showBankingCaseDetails(${i})" role="button" tabindex="0">
+                            Case #${c.case_id}
+                        </div>
+                    `).join('')}
+                </div>
+            </section>
+
+            <div id="banking-case-details" style="display: none;">
+                <div id="banking-case-details-content"></div>
             </div>
         </div>
     `;
 
     mainContent.innerHTML = html;
-
-    window.bankingDiagramNodes = nodes;
-    window.bankingFullData = bkData;
+    window.bankingCaseDetails = caseDetails;
 }
 
-window.showBankingNodeDetails = function (nodeIndex) {
-    const container = document.getElementById('banking-node-details');
-    const content = document.getElementById('banking-node-details-content');
-    const nodes = window.bankingDiagramNodes;
-    if (!container || !content || !nodes || nodeIndex < 0 || nodeIndex >= nodes.length) return;
+window.showBankingCaseDetails = function (caseIndex) {
+    const container = document.getElementById('banking-case-details');
+    const content = document.getElementById('banking-case-details-content');
+    const cases = window.bankingCaseDetails;
+    if (!container || !content || !cases || caseIndex < 0 || caseIndex >= cases.length) return;
 
-    const node = nodes[nodeIndex];
-    const prevIdx = window.bankingSelectedNodeIndex;
-    if (prevIdx === nodeIndex) {
+    const c = cases[caseIndex];
+    const prevIdx = window.bankingSelectedCaseIndex;
+    if (prevIdx === caseIndex) {
         container.style.display = 'none';
-        window.bankingSelectedNodeIndex = null;
+        window.bankingSelectedCaseIndex = null;
         return;
     }
-    window.bankingSelectedNodeIndex = nodeIndex;
+    window.bankingSelectedCaseIndex = caseIndex;
 
-    const records = node.records || [];
-    const dateStr = node.date || '';
-    const timeStr = node.time || '';
-    const tableNames = node.table_names || [];
-
+    const activities = c.activities || [];
+    const seq = (c.event_sequence || []).join(' â†’ ');
     let html = `
         <div style="background: var(--bg-card); border: 2px solid #0F766E; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(15,118,110,0.15);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.15rem; color: #0F766E; margin: 0;">📅 Event: ${dateStr} ${timeStr || ''}</h3>
-                <button class="btn-secondary" onclick="showBankingNodeDetails(${nodeIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
+                <h3 style="font-size: 1.15rem; color: #0F766E; margin: 0;">Case ID ${c.case_id} Â· User ${c.user_id}</h3>
+                <button class="btn-secondary" onclick="showBankingCaseDetails(${caseIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">âœ• Close</button>
             </div>
-            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
-                <strong>${records.length}</strong> record(s) from: ${tableNames.join(', ')}
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem;">
+                ${c.first_activity_timestamp} â†’ ${c.last_activity_timestamp} Â· ${activities.length} steps (in time order)
             </p>
-            <div style="max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+            <p style="color: var(--text-primary); font-size: 0.95rem; margin-bottom: 1rem; font-weight: 600;">
+                Steps: ${seq}
+            </p>
+            <p style="color: #475569; font-size: 0.88rem; margin-bottom: 1rem;">${c.explanation || ''}</p>
+            <div style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
     `;
 
-    records.forEach((r) => {
-        const rec = r.record || {};
-        const purposes = r.column_purposes || {};
-        const workSummary = r.work_summary || '';
-        const timeLogExplanation = r.time_log_explanation || '';
-        const dataFlow = r.data_flow_explanation || '';
-        const updateExpl = r.update_explanation || '';
-        const loginExpl = r.login_explanation || '';
-        const txExpl = r.transaction_explanation;
-        const blocks = r.explanation_blocks || [];
-        const fileName = r.file_name || (r.table_name ? r.table_name + '.csv' : '');
-        const keys = Object.keys(rec);
-        const pairs = keys.map(k => {
-            const purpose = purposes[k];
-            const purposeLabel = (purpose && purpose.purpose) || k;
-            const val = rec[k] || '—';
-            const isNull = !rec[k] || String(rec[k]).trim() === '';
-            const valStyle = isNull ? 'color: #94a3b8; font-style: italic;' : '';
-            return '<strong>' + purposeLabel + ':</strong> <span style="' + valStyle + '">' + val + '</span>';
-        }).join(' · ');
-        let body = '<div style="padding-top: 0.5rem;">';
-        body += '<div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.35rem;">' + workSummary + '</div>';
-        body += '<div style="font-size: 0.82rem; color: #64748b;">' + timeLogExplanation + '</div>';
-        if (dataFlow) {
-            body += '<div style="font-size: 0.88rem; color: #0f172a; line-height: 1.5; margin-top: 0.5rem; padding: 0.5rem; background: rgba(15,118,110,0.06); border-radius: 8px;">' + dataFlow + '</div>';
-        }
-        if (loginExpl) {
-            body += '<div style="font-size: 0.82rem; margin-top: 0.35rem; color: #475569;">' + loginExpl + '</div>';
-        }
-        if (txExpl && txExpl.explanation) {
-            body += '<div style="font-size: 0.85rem; margin-top: 0.4rem; padding: 0.4rem; background: #f8fafc; border-left: 3px solid #0F766E; border-radius: 4px;">' + txExpl.explanation + '</div>';
-        }
-        if (updateExpl) {
-            body += '<div style="font-size: 0.8rem; margin-top: 0.3rem; color: #64748b;">' + updateExpl + '</div>';
-        }
-        blocks.forEach(function (b) {
-            const t = b.type || '';
-            let bg = 'rgba(245,158,11,0.1)';
-            let border = '#f59e0b';
-            if (t === 'negative_balance') { bg = 'rgba(239,68,68,0.1)'; border = '#ef4444'; }
-            else if (t === 'credit' || t === 'balance_increase') { bg = 'rgba(34,197,94,0.1)'; border = '#22c55e'; }
-            else if (t === 'debit' || t === 'balance_decrease') { bg = 'rgba(245,158,11,0.1)'; border = '#f59e0b'; }
-            else if (t === 'refund') { bg = 'rgba(59,130,246,0.1)'; border = '#3b82f6'; }
-            body += '<div style="margin-top: 0.5rem; padding: 0.5rem 0.6rem; background: ' + bg + '; border-left: 3px solid ' + border + '; border-radius: 6px; font-size: 0.85rem;">' + b.explanation + '</div>';
-        });
-        body += '<div style="font-size: 0.82rem; margin-top: 0.5rem; color: var(--text-primary);">' + (pairs || '—') + '</div>';
-        body += '</div>';
-        html += '<details style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.7rem;">' +
-            '<summary style="cursor: pointer; list-style: none;"><span style="color: #0F766E; font-weight: 700;">' + r.table_name + '</span>' +
-            (fileName ? ' <span style="font-size: 0.75rem; color: var(--text-muted);">' + fileName + '</span>' : '') + '</summary>' +
-            body + '</details>';
+    activities.forEach((a, idx) => {
+        const ev = a.event || '';
+        const ts = a.timestamp_str || '';
+        const acc = a.account_id || 'â€”';
+        const tbl = a.table_name || '';
+        const rec = a.raw_record || {};
+        const recStr = Object.entries(rec).filter(([k, v]) => v).map(([k, v]) => k + ': ' + v).join(' Â· ');
+        let evColor = '#64748b';
+        if (ev === 'login') evColor = '#059669';
+        else if (ev === 'logout') evColor = '#dc2626';
+        else if (ev === 'credit' || ev === 'deposit' || ev === 'refund') evColor = '#22c55e';
+        else if (ev === 'debit' || ev === 'withdraw') evColor = '#f59e0b';
+        else if (ev === 'invalid_balance' || ev === 'negative_balance') evColor = '#ef4444';
+        html += `
+            <div style="padding: 0.6rem 0.8rem; background: #f8fafc; border-left: 3px solid ${evColor}; border-radius: 8px; font-size: 0.9rem;">
+                <span style="font-weight: 700; color: ${evColor};">${ev}</span>
+                <span style="color: var(--text-muted); margin-left: 0.5rem;">${ts}</span>
+                ${acc ? '<span style="margin-left: 0.5rem;">Â· Account ' + acc + '</span>' : ''}
+                ${tbl ? '<span style="margin-left: 0.5rem; font-size: 0.8rem; color: #94a3b8;">(' + tbl + ')</span>' : ''}
+                ${recStr ? '<div style="font-size: 0.8rem; color: #64748b; margin-top: 0.35rem;">' + recStr + '</div>' : ''}
+            </div>
+        `;
     });
 
     html += '</div></div>';
@@ -796,12 +765,12 @@ function showHealthcareAnalysisResults(profile) {
     if (!hcData || !hcData.success) {
         mainContent.innerHTML = `
             <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
-                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏥</div>
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;"></div>
                 <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #14B8A6;">Healthcare Database Detected</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 2rem;">
                     Unable to perform detailed analysis. ${hcData?.error || 'No date/timestamp columns found (excluding date of birth).'}
                 </p>
-                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+                <button class="btn-secondary" onclick="showDomainSplitView()">â† Back to Database List</button>
             </div>
         `;
         return;
@@ -816,12 +785,12 @@ function showHealthcareAnalysisResults(profile) {
     if (nodes.length === 0) {
         mainContent.innerHTML = `
             <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
-                <div style="font-size: 4rem; margin-bottom: 1.5rem;">🏥</div>
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;"></div>
                 <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #14B8A6;">No Date/Time Data</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 2rem;">
                     No date or timestamp columns found in healthcare tables (date of birth excluded).
                 </p>
-                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+                <button class="btn-secondary" onclick="showDomainSplitView()">â† Back to Database List</button>
             </div>
         `;
         return;
@@ -829,17 +798,17 @@ function showHealthcareAnalysisResults(profile) {
 
     let html = `
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
-            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">â† Back</button>
             
-            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #14B8A6;">🏥 Healthcare Data Timeline</h1>
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #14B8A6;"> Healthcare Data Timeline</h1>
             <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
-                ${profile.database_name} • ${totalRecords} records • Click any box to see column explanations
+                ${profile.database_name} â€¢ ${totalRecords} records â€¢ Click any box to see column explanations
             </p>
             
             <!-- Diagram: Start ----|----|---- End -->
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">
-                    📅 Sorted Timeline (${firstDate} → ${lastDate})
+                    ðŸ“… Sorted Timeline (${firstDate} â†’ ${lastDate})
                 </h2>
                 <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
                     Click any box to see column explanations (admission, appointment, discharge, lab, etc.) from your uploaded files.
@@ -929,8 +898,8 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
     let html = `
         <div style="background: var(--bg-card); border: 2px solid #14B8A6; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(20,184,166,0.15);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">📅 ${dateStr} ${timeStr || ''}</h3>
-                <button class="btn-secondary" onclick="showHealthcareNodeDetails(${nodeIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
+                <h3 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">ðŸ“… ${dateStr} ${timeStr || ''}</h3>
+                <button class="btn-secondary" onclick="showHealthcareNodeDetails(${nodeIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">âœ• Close</button>
             </div>
             <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
                 <strong>${records.length}</strong> record(s) from table(s): ${tableNames.join(', ')}
@@ -962,19 +931,19 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
             const isNull = !rec[k] || String(rec[k]).trim() === '' || val === 'Not recorded' || val === 'Empty or not recorded' || val === 'Not recorded or missing';
             const valStyle = isNull ? 'color: #94a3b8; font-style: italic;' : '';
             return '<strong title="' + (classification || k) + '">' + purposeLabel + '</strong>' + tag + ': <span style="' + valStyle + '">' + val + '</span>';
-        }).join(' · ');
+        }).join(' Â· ');
         const rowNum = (r.source_row_number !== undefined && r.source_row_number !== null) ? ('<span style="font-size: 0.75rem; color: var(--text-muted);">row ' + r.source_row_number + '</span>') : '';
         const fileLabel = fileName ? '<span style="font-size: 0.75rem; color: var(--text-muted);">' + fileName + '</span>' : '';
         const roleLabel = tableRole.role ? '<span style="font-size: 0.7rem; background: rgba(20,184,166,0.2); color: #0d9488; padding: 0.15rem 0.4rem; border-radius: 4px;">' + tableRole.role + '</span>' : '';
         const roleExplDiv = tableRole.role_explanation ? '<div style="font-size: 0.78rem; color: #64748b; margin-bottom: 0.35rem;">' + tableRole.role_explanation + '</div>' : '';
         const eventLine = (timeLogExplanation && rowEventStory)
-            ? ('<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.3rem;">' + timeLogExplanation + ' — ' + rowEventStory + '</div>')
+            ? ('<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.3rem;">' + timeLogExplanation + ' â€” ' + rowEventStory + '</div>')
             : (rowEventStory ? ('<div style="font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 0.3rem;">' + rowEventStory + '</div>') : '') +
               (timeLogExplanation ? ('<div style="font-size: 0.82rem; color: #64748b;">' + timeLogExplanation + '</div>') : '');
         let linksDiv = '';
         if (crossTableLinks.length > 0) {
             linksDiv = '<div style="margin: 0.35rem 0 0; padding: 0.4rem 0.55rem; background: #f1f5f9; border-radius: 8px; font-size: 0.8rem;"><strong>Links (FK):</strong><ul style="margin: 0.25rem 0 0 1rem; padding: 0;">' +
-                crossTableLinks.map(function (link) { return '<li><strong>' + link.column + '</strong> = ' + link.value + ' → ' + link.link_explanation + '</li>'; }).join('') + '</ul></div>';
+                crossTableLinks.map(function (link) { return '<li><strong>' + link.column + '</strong> = ' + link.value + ' â†’ ' + link.link_explanation + '</li>'; }).join('') + '</ul></div>';
         }
         const workDiv = workSummary && !rowEventStory ? '<div style="font-size: 0.86rem; font-weight: 600; color: #0f172a; margin-bottom: 0.35rem;">' + workSummary + '</div>' : '';
         let stayDiv = '';
@@ -1008,7 +977,7 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
             eventLine + workDiv +
             (delayDiv || '') + (stayDiv || '') +
             '<div style="margin: 0.35rem 0 0.25rem; font-size: 0.82rem; color: #0f172a;"><strong>3) Column values (with meaning):</strong></div>' +
-            '<div style="font-size: 0.82rem; color: var(--text-primary); line-height: 1.45;">' + (pairs || '—') + '</div>' +
+            '<div style="font-size: 0.82rem; color: var(--text-primary); line-height: 1.45;">' + (pairs || 'â€”') + '</div>' +
             linksDiv +
             (flowDiv || '') +
             '</div>' +
@@ -1032,7 +1001,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
 
     const isAppointment = window.healthcareIsAppointmentMode === true;
 
-    // Toggle behaviour: same date click → hide panel
+    // Toggle behaviour: same date click â†’ hide panel
     const prevSelected = window.healthcareSelectedDateIndex;
     if (prevSelected === dateIndex) {
         container.style.display = 'none';
@@ -1050,7 +1019,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
         if (el) el.style.display = 'none';
     });
 
-    const slotIcons = { Morning: '🌅', Afternoon: '🕑', Evening: '🌆', Night: '🌙' };
+    const slotIcons = { Morning: 'ðŸŒ…', Afternoon: 'ðŸ•‘', Evening: 'ðŸŒ†', Night: 'ðŸŒ™' };
     const slotColors = { Morning: '#F59E0B', Afternoon: '#0EA5E9', Evening: '#8B5CF6', Night: '#3B82F6' };
 
     let html = `
@@ -1072,13 +1041,13 @@ window.showHealthcareDateDetails = function (dateIndex) {
         ">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
                 <h2 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">
-                    📅 ${dateInfo.date} ${isAppointment ? '(Appointments)' : '(Visits)'}
+                    ðŸ“… ${dateInfo.date} ${isAppointment ? '(Appointments)' : '(Visits)'}
                 </h2>
                 <button 
                     onclick="showHealthcareDateDetails(window.healthcareSelectedDateIndex);"
                     class="btn-secondary"
                     style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
-                    ✕ Hide
+                    âœ• Hide
                 </button>
             </div>
             
@@ -1088,9 +1057,9 @@ window.showHealthcareDateDetails = function (dateIndex) {
             
             <!-- TIME SLOTS -->
             <section style="margin-bottom: 1.1rem;">
-                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary);">⏰ ${isAppointment ? 'Appointment Times' : 'Visit Times'} (Time Slots)</h3>
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary);">â° ${isAppointment ? 'Appointment Times' : 'Visit Times'} (Time Slots)</h3>
                 <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.8rem;">
-                    Morning = 5–12, Afternoon = 12–17, Evening = 17–21, Night = 21–5.
+                    Morning = 5â€“12, Afternoon = 12â€“17, Evening = 17â€“21, Night = 21â€“5.
                 </p>
                 <div style="display: grid; grid-template-columns: 1fr; gap: 0.6rem;">
     `;
@@ -1100,7 +1069,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
 
     ['Morning', 'Afternoon', 'Evening', 'Night'].forEach((slot) => {
         const count = timeSlots[slot] || 0;
-        const icon = slotIcons[slot] || '⏰';
+        const icon = slotIcons[slot] || 'â°';
         const color = slotColors[slot] || '#64748B';
         const detail = slotDetails[slot] || {};
         const topDept = detail.top_department || 'N/A';
@@ -1142,12 +1111,12 @@ window.showHealthcareDateDetails = function (dateIndex) {
         const minStay = typeof stay.min_stay_days === 'number' ? `${stay.min_stay_days} day(s)` : null;
         html += `
             <section style="margin-bottom: 1.1rem;">
-                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary);">🏥 Stay Duration (Admit &amp; Discharge)</h3>
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-primary);"> Stay Duration (Admit &amp; Discharge)</h3>
                 <p style="color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.4rem;">
                     <strong>${admissions}</strong> patient(s) were admitted on this date and <strong>${discharges}</strong> patient(s) were discharged.
                 </p>
                 <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.2rem;">
-                    Average stay: <strong>${avgStay}</strong>${maxStay !== null ? ` · Longest stay: <strong>${maxStay}</strong>` : ''}${minStay !== null ? ` · Shortest stay: <strong>${minStay}</strong>` : ''}.
+                    Average stay: <strong>${avgStay}</strong>${maxStay !== null ? ` Â· Longest stay: <strong>${maxStay}</strong>` : ''}${minStay !== null ? ` Â· Shortest stay: <strong>${minStay}</strong>` : ''}.
                 </p>
                 <p style="color: var(--text-muted); font-size: 0.8rem;">
                     We calculate stay length from <code>admission_date_time</code> to <code>discharge_date_time</code> for each patient, then compute average and range in days so you can quickly see how long patients stayed in the hospital.
@@ -1159,7 +1128,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
     html += `
             <!-- GENDER BREAKDOWN -->
             <section style="margin-bottom: 1.1rem;">
-                <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">👥 Male / Female</h3>
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">ðŸ‘¥ Male / Female</h3>
     `;
 
     const gender = dateInfo.gender_breakdown || {};
@@ -1195,7 +1164,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
             
             <!-- VISIT / APPOINTMENT LIST WITH TIME -->
             <section style="margin-bottom: 1.1rem;">
-                <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">🕒 Each ${isAppointment ? 'Appointment' : 'Visit'} (Time & Slot)</h3>
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: var(--text-primary);">ðŸ•’ Each ${isAppointment ? 'Appointment' : 'Visit'} (Time & Slot)</h3>
     `;
 
     const visits = (dateInfo.visits || []).slice(0, 60);
@@ -1226,7 +1195,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
                         <tbody>
         `;
         visits.forEach(v => {
-            const t = v.time || '—';
+            const t = v.time || 'â€”';
             const s = v.time_slot || '';
             const d = v.department || '';
             const r = v.reason || '';
@@ -1279,7 +1248,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
             
             <!-- DEPARTMENTS -->
             <section style="margin-bottom: 1.75rem;">
-                <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-primary);">🏥 Departments</h3>
+                <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-primary);"> Departments</h3>
     `;
 
     const depts = dateInfo.departments || {};
@@ -1305,7 +1274,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
             
             <!-- DIAGNOSES -->
             <section>
-                <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-primary);">💊 Reasons for Visit</h3>
+                <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-primary);">ðŸ’Š Reasons for Visit</h3>
     `;
 
     const diagnoses = dateInfo.diagnoses || {};
@@ -1343,438 +1312,24 @@ window.showHealthcareDateDetails = function (dateIndex) {
 };
 
 
-// Account Analysis Flow - AUTO-DETECT and ANALYZE
-window.proceedToAccountAnalysis = async function () {
+// Show Account Analysis Results - REMOVED (use Banking Case ID from domain split)
+function showAccountAnalysisResults(data, dateColumn, idColumn) {
     const mainContent = document.getElementById('mainContent');
-
+    if (!mainContent) return;
     mainContent.innerHTML = `
-        <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;">
-            <div class="loading-spinner"></div>
-            <h3 style="color: var(--text-primary); font-size: 1.5rem;">🔍 Auto-Detecting Columns</h3>
-            <p style="color: var(--text-muted);">Using fuzzy logic to find account open date...</p>
+        <div style="padding: 3rem; text-align: center;">
+            <p style="color: var(--text-muted); margin-bottom: 1rem;">Account analysis has been replaced with Banking Case ID analysis.</p>
+            <button class="btn-secondary" onclick="showDomainSplitView()">â† Back to Databases</button>
         </div>
     `;
-
-    try {
-        // Auto-detect columns using fuzzy logic
-        const detectResponse = await fetch(`${API_BASE_URL}/detect-date-columns/${sessionId}`, {
-            method: 'POST'
-        });
-
-        if (!detectResponse.ok) {
-            throw new Error('Column detection failed');
-        }
-
-        const detectData = await detectResponse.json();
-
-        if (!detectData.success || !detectData.date_candidates || detectData.date_candidates.length === 0) {
-            mainContent.innerHTML = `
-                <div style="max-width: 600px; margin: 0 auto; padding: 3rem; text-align: center;">
-                    <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #ef4444;">❌ No Date Column Found</h2>
-                    <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
-                        Could not automatically detect a date column for account opening.
-                    </p>
-                    <p style="color: var(--text-muted); margin-bottom: 2rem;">
-                        We looked for columns like: open_date, created_at, signup_date, account_date, etc.
-                    </p>
-                    <button class="btn-secondary" onclick="location.reload()" style="padding: 1rem 2rem;">
-                        ← Try Different Files
-                    </button>
-                </div>
-            `;
-            return;
-        }
-
-        const loginCandidates = detectData.login_candidates || [];
-        const loginColNames = new Set((loginCandidates || []).map(c => c.column_name));
-        // Prefer open_date/open_time for "open"; avoid using login_timestamp as open column
-        const openCandidate = detectData.date_candidates.find(c => !loginColNames.has(c.column_name)) || detectData.date_candidates[0];
-        const dateColumn = openCandidate.column_name;
-        const dateConfidence = openCandidate.confidence;
-        const dateTable = openCandidate.table;
-
-        const idColumn = detectData.id_candidates.length > 0 ? detectData.id_candidates[0].column : '';
-        if (!idColumn) {
-            throw new Error('Could not detect customer ID column');
-        }
-
-        const loginCol = loginCandidates.length > 0 ? loginCandidates[0].column_name : null;
-        const loginTable = loginCandidates.length > 0 ? loginCandidates[0].table_name : null;
-
-        updateAppUrl('#columns');
-
-        // Only 2 boxes: 1 = open_timestamp, 2 = login_timestamp. Click inside each to expand (explanations). Customer ID shown as small text.
-        mainContent.innerHTML = `
-            <div style="padding: 2rem; max-width: 700px; margin: 0 auto;">
-                <div style="text-align: center; margin-bottom: 1.5rem;">
-                    <div style="font-size: 3rem; margin-bottom: 0.5rem;">✅</div>
-                    <h3 style="color: var(--accent-primary-dark); font-size: 1.5rem;">Columns Detected!</h3>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">Customer ID for analysis: <strong>${idColumn}</strong></p>
-                </div>
-                <div class="timestamp-boxes" style="margin-bottom: 2rem;">
-                    <div class="feature-card" style="background: linear-gradient(135deg, rgba(15,118,110,0.1), rgba(15,118,110,0.05)); border: 1px solid rgba(15,118,110,0.3); border-radius: 12px; padding: 1.25rem;">
-                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">📅 Open timestamp</div>
-                        <div style="font-size: 1.1rem; color: var(--accent-primary-dark); font-weight: 600;">${dateColumn}</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;">${dateConfidence}% · ${dateTable}</div>
-                        <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('col-open-expl', this)" style="margin-top: 0.75rem;">Show explanation</button>
-                        <div class="explanation-content" id="col-open-expl" style="margin-top: 0.5rem;">Column for when the account was created (open_date / open_time). Used for account age.</div>
-                    </div>
-                </div>
-                <div style="text-align: center;">
-                    <button type="button" class="btn-primary" id="runAnalysisBtn" style="margin-top: 1rem; max-width: 320px;">
-                        Run Analysis →
-                    </button>
-                </div>
-            </div>
-        `;
-
-        document.getElementById('runAnalysisBtn').addEventListener('click', async function runAnalysis() {
-            const btn = this;
-            btn.disabled = true;
-            btn.textContent = 'Analyzing...';
-            try {
-                const response = await fetch(`${API_BASE_URL}/analyze-accounts/${sessionId}?date_column=${encodeURIComponent(dateColumn)}&id_column=${encodeURIComponent(idColumn)}`, {
-                    method: 'POST'
-                });
-                if (!response.ok) throw new Error('Account analysis failed');
-                const data = await response.json();
-                if (!data.success) throw new Error(data.error || 'Analysis failed');
-                showAccountAnalysisResults(data, dateColumn, idColumn);
-            } catch (error) {
-                console.error('Error:', error);
-                mainContent.innerHTML = `
-                    <div style="max-width: 600px; margin: 0 auto; padding: 3rem; text-align: center;">
-                        <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #ef4444;">⚠️ Analysis Failed</h2>
-                        <p style="color: var(--text-secondary); margin-bottom: 2rem;">${error.message}</p>
-                        <button class="btn-secondary" onclick="location.reload()" style="padding: 1rem 2rem;">← Start Over</button>
-                    </div>
-                `;
-            }
-        });
-
-    } catch (error) {
-        console.error('Error:', error);
-        mainContent.innerHTML = `
-            <div style="max-width: 600px; margin: 0 auto; padding: 3rem; text-align: center;">
-                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #ef4444;">❌ Detection Error</h2>
-                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
-                    ${error.message}
-                </p>
-                <button class="btn-secondary" onclick="location.reload()" style="padding: 1rem 2rem;">
-                    ← Try Again
-                </button>
-            </div>
-        `;
-    }
-};
-
-// Show Account Analysis Results - 5 Features with Clean UI
-function showAccountAnalysisResults(data, dateColumn, idColumn) {
-    updateAppUrl('#analysis');
-    const mainContent = document.getElementById('mainContent');
-    const ageAnalysis = data.age_analysis;
-    const inactiveCustomers = data.inactive_customers;
-    const multiAccount = data.multi_account_holders;
-    const firstDate = ageAnalysis.first_date_str || 'N/A';
-    const lastDate = ageAnalysis.last_date_str || 'N/A';
-    const peakDate = ageAnalysis.peak_date_str || 'N/A';
-    const peakCount = ageAnalysis.peak_count != null ? ageAnalysis.peak_count : 0;
-    const totalAccounts = ageAnalysis.total_accounts != null ? ageAnalysis.total_accounts : (ageAnalysis.counts.NEW + ageAnalysis.counts.ACTIVE + ageAnalysis.counts.TRUSTED);
-
-    mainContent.innerHTML = `
-        <div style="padding: 2rem; max-width: 1400px; margin: 0 auto;">
-            <div style="margin-bottom: 2rem; text-align: center;">
-                <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem;">📊 Account Analysis Results</h1>
-                <p style="color: var(--text-secondary); font-size: 1.1rem;">
-                    Based on <strong>${ageAnalysis.analyzed_table}</strong> using column: <code style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;">${dateColumn}</code>
-                </p>
-            </div>
-
-            <!-- 5 Features Grid -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
-                
-                <!-- Feature 1: Customer Status (click to show explanation) -->
-                <div class="feature-card" style="background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.05)); border: 1px solid rgba(16,185,129,0.3); border-radius: 16px; padding: 1.5rem;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 2rem;">👶</span>
-                            <h3 style="font-size: 1.3rem; color: #10b981;">Feature 1: Customer Status</h3>
-                        </div>
-                        <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('expl-customer-status', this)">Show explanation</button>
-                    </div>
-                    <div class="explanation-content" id="expl-customer-status" style="margin-bottom: 1rem;"><strong>Time &amp; date in your data:</strong> from ${firstDate} to ${lastDate}. <strong>Workflow:</strong> We use each open_date to compute age in days. NEW = ≤30 days (${ageAnalysis.counts.NEW}), ACTIVE = 30–365 days (${ageAnalysis.counts.ACTIVE}), TRUSTED = &gt;365 days (${ageAnalysis.counts.TRUSTED}). All ${totalAccounts} accounts are classified by when they were opened.</div>
-                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.7rem; background: rgba(16,185,129,0.1); border-radius: 8px;">
-                            <span style="font-weight: 600;">NEW (≤30 days)</span>
-                            <span style="font-size: 1.3rem; color: #10b981;">${ageAnalysis.counts.NEW}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.7rem; background: rgba(59,130,246,0.1); border-radius: 8px;">
-                            <span style="font-weight: 600;">ACTIVE (30-365 days)</span>
-                            <span style="font-size: 1.3rem; color: #3b82f6;">${ageAnalysis.counts.ACTIVE}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.7rem; background: rgba(245,158,11,0.1); border-radius: 8px;">
-                            <span style="font-weight: 600;">TRUSTED (>365 days)</span>
-                            <span style="font-size: 1.3rem; color: #f59e0b;">${ageAnalysis.counts.TRUSTED}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Feature 2: Growth Trends (click to show explanation) -->
-                <div class="feature-card" style="background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(59,130,246,0.05)); border: 1px solid rgba(59,130,246,0.3); border-radius: 16px; padding: 1.5rem;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 2rem;">📈</span>
-                            <h3 style="font-size: 1.3rem; color: #3b82f6;">Feature 2: Growth Trends</h3>
-                        </div>
-                        <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('expl-growth', this)">Show explanation</button>
-                    </div>
-                    <div class="explanation-content" id="expl-growth" style="margin-bottom: 1rem;"><strong>Time &amp; date:</strong> First account opened on <strong>${firstDate}</strong>. Most recent on <strong>${lastDate}</strong>. <strong>Workflow:</strong> We take the min and max of the open_date column. Total accounts in this period: <strong>${totalAccounts}</strong>. This is your growth window.</div>
-                    <div style="padding: 1rem; background: rgba(59,130,246,0.1); border-radius: 8px;">
-                        ${ageAnalysis.narrative_steps.filter(s => s.title === 'Timeline').map(s => `<div style="color: var(--text-primary);">${s.text}</div>`).join('')}
-                        ${(ageAnalysis.growth_summary) ? `
-                        <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(255,255,255,0.1); display: flex; flex-wrap: wrap; gap: 1rem;">
-                            <span><strong style="color: #3b82f6;">Total Accounts:</strong> ${ageAnalysis.counts.NEW + ageAnalysis.counts.ACTIVE + ageAnalysis.counts.TRUSTED}</span>
-                            <span><strong style="color: #3b82f6;">Accounts per day (avg):</strong> ${ageAnalysis.growth_summary.accounts_per_day}</span>
-                            <span><strong style="color: #3b82f6;">Accounts per month (avg):</strong> ${ageAnalysis.growth_summary.accounts_per_month}</span>
-                        </div>
-                        ` : `
-                        <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(255,255,255,0.1);">
-                            <strong style="color: #3b82f6;">Total Accounts:</strong> ${ageAnalysis.counts.NEW + ageAnalysis.counts.ACTIVE + ageAnalysis.counts.TRUSTED}
-                        </div>
-                        `}
-                    </div>
-                </div>
-
-                <!-- Feature 3: Peak Activity (click to show explanation) -->
-                <div class="feature-card" style="background: linear-gradient(135deg, rgba(168,85,247,0.1), rgba(168,85,247,0.05)); border: 1px solid rgba(168,85,247,0.3); border-radius: 16px; padding: 1.5rem;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 2rem;">🚀</span>
-                            <h3 style="font-size: 1.3rem; color: #a855f7;">Feature 3: Peak Activity</h3>
-                        </div>
-                        <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('expl-peak', this)">Show explanation</button>
-                    </div>
-                    <div class="explanation-content" id="expl-peak" style="margin-bottom: 1rem;"><strong>Time &amp; date:</strong> Peak day is <strong>${peakDate}</strong> with <strong>${peakCount}</strong> account(s) opened. <strong>Workflow:</strong> We group by open_date and find the day with the highest count. That date is your peak — often linked to a campaign or promotion.</div>
-                    <div style="padding: 1rem; background: rgba(168,85,247,0.1); border-radius: 8px;">
-                        ${ageAnalysis.narrative_steps.filter(s => s.title === 'Peak Activity').map(s => `<div style="color: var(--text-primary); font-size: 1.05rem;">${s.text}</div>`).join('') || '<p style="color: var(--text-muted);">No significant peak detected</p>'}
-                        <p style="margin-top: 0.8rem; color: var(--text-muted); font-size: 0.9rem;">💡 This likely indicates a successful marketing campaign or promotion</p>
-                    </div>
-                </div>
-
-                <!-- Feature 5: Login Efficiency -->
-                <!-- Feature 5: Login Efficiency -->
-                ${data.login_column ? `
-                <div class="feature-card" style="background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(139,92,246,0.05)); border: 1px solid rgba(139,92,246,0.3); border-radius: 16px; padding: 1.5rem;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 2rem;">⚡</span>
-                            <h3 style="font-size: 1.3rem; color: #8b5cf6;">Feature 5: Login Efficiency</h3>
-                        </div>
-                        <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('expl-login', this)">Show explanation</button>
-                    </div>
-                    <div class="explanation-content" id="expl-login" style="margin-bottom: 1rem;"><strong>Time &amp; date:</strong> Using login column <code>${data.login_column}</code>. <strong>Workflow:</strong> We calculate the delay between 'open_date' and 'first_login'. Short delay = high engagement.</div>
-                    
-                    <div style="padding: 1rem; background: rgba(139,92,246,0.1); border-radius: 8px;">
-                        ${data.login_metrics && data.login_metrics.has_login_data ? `
-                        <div style="font-size: 1.5rem; font-weight: 700; color: #8b5cf6; margin-bottom: 0.5rem;">
-                            ${data.login_metrics.engagement_score}
-                        </div>
-                        <p style="color: var(--text-primary); margin-bottom: 1rem;">${data.login_metrics.engagement_story}</p>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; text-align: center;">
-                            <div style="background: rgba(255,255,255,0.1); padding: 0.5rem; border-radius: 6px;">
-                                <div style="font-size: 1.1rem; font-weight: 600;">${data.login_metrics.same_day_logins}</div>
-                                <div style="font-size: 0.75rem; opacity: 0.8;">Same Day</div>
-                            </div>
-                            <div style="background: rgba(255,255,255,0.1); padding: 0.5rem; border-radius: 6px;">
-                                <div style="font-size: 1.1rem; font-weight: 600;">${data.login_metrics.delayed_logins}</div>
-                                <div style="font-size: 0.75rem; opacity: 0.8;">Delayed</div>
-                            </div>
-                             <div style="background: rgba(255,255,255,0.1); padding: 0.5rem; border-radius: 6px;">
-                                <div style="font-size: 1.1rem; font-weight: 600;">${data.login_metrics.never_logged_in}</div>
-                                <div style="font-size: 0.75rem; opacity: 0.8;">No Login</div>
-                            </div>
-                        </div>
-                        <p style="margin-top: 0.8rem; color: #c4b5fd; font-size: 0.9rem;">💡 Indicates how quickly users activate their accounts</p>
-                        ` : `
-                        <div style="color: var(--text-muted); text-align: center; padding: 1rem;">
-                             <p>Login column detected, but no matching user IDs found in account data.</p>
-                             <p style="font-size: 0.8rem; margin-top: 0.5rem;">Ensure customer IDs match between files (including case sensitivity).</p>
-                        </div>
-                        `}
-                    </div>
-                </div>
-                ` : ''}
-
-                <!-- Feature 6: Inactive Status (click to show explanation) -->
-                <div class="feature-card" style="background: linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05)); border: 1px solid rgba(239,68,68,0.3); border-radius: 16px; padding: 1.5rem;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 2rem;">⚠️</span>
-                            <h3 style="font-size: 1.3rem; color: #ef4444;">Feature 6: Inactive Status</h3>
-                        </div>
-                        <button type="button" class="explanation-trigger" onclick="toggleTimestampExplanation('expl-inactive', this)">Show explanation</button>
-                    </div>
-                    <div class="explanation-content" id="expl-inactive" style="margin-bottom: 1rem;"><strong>Time &amp; date:</strong> Your open_date range is ${firstDate} to ${lastDate}. <strong>Workflow:</strong> We flag accounts opened more than 365 days ago with no recent activity. ${data.used_multi_table_activity ? ' We used customer_id to link activity from other uploaded files (logical join, not SQL). ' : ''}${inactiveCustomers.count > 0 ? `We found ${inactiveCustomers.count} inactive — good candidates for re-engagement.` : 'No accounts older than 365 days, so all are considered active.'}</div>
-                    <div style="padding: 1rem; background: rgba(239,68,68,0.1); border-radius: 8px;">
-                        ${data.used_multi_table_activity ? '<p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">🔗 Multi-table: activity (login/transaction) was linked from other files by customer_id.</p>' : ''}
-                        ${inactiveCustomers.count > 0 ? `
-                            <div style="font-size: 2rem; color: #ef4444; font-weight: 700; margin-bottom: 0.5rem;">${inactiveCustomers.count} inactive</div>
-                            <div style="color: var(--text-primary);">${inactiveCustomers.insight}</div>
-                            <p style="margin-top: 0.8rem; color: #fca5a5; font-size: 0.9rem;">💡 Consider a re-engagement email campaign</p>
-                        ` : `
-                            <div style="color: #10b981; font-weight: 600; font-size: 1.1rem;">✓ All Customers Active</div>
-                            <p style="color: var(--text-muted); margin-top: 0.5rem;">${inactiveCustomers.insight}</p>
-                        `}
-                    </div>
-                </div>
-
-                <!-- Multi-Account Holders -->
-                ${multiAccount && multiAccount.length > 0 ? `
-                    <div class="feature-card" style="background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(102,126,234,0.05)); border: 1px solid rgba(102,126,234,0.3); border-radius: 16px; padding: 1.5rem;">
-                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                            <span style="font-size: 2rem;">👥</span>
-                            <h3 style="font-size: 1.3rem; color: #667eea;">Bonus: Multi-Account</h3>
-                        </div>
-                        <p style="color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.6;">
-                            Customers managing multiple accounts:
-                        </p>
-                        <div style="padding: 1rem; background: rgba(102,126,234,0.1); border-radius: 8px;">
-                            <div style="font-size: 2rem; color: #667eea; font-weight: 700; margin-bottom: 0.5rem;">
-                                ${multiAccount.length}
-                            </div>
-                            <p style="color: var(--text-muted); font-size: 0.9rem;">
-                                These customers likely have savings + current accounts
-                            </p>
-                        </div>
-                    </div>
-                ` : ''}
-                
-                <!-- Feature 7: Same-Day Multiple Accounts (NEW) -->
-                ${data.same_day_accounts && data.same_day_accounts.total_affected > 0 ? `
-                    <div class="feature-card" style="background: linear-gradient(135deg, rgba(236,72,153,0.1), rgba(236,72,153,0.05)); border: 1px solid rgba(236,72,153,0.3); border-radius: 16px; padding: 1.5rem;">
-                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                            <span style="font-size: 2rem;">🕐</span>
-                            <h3 style="font-size: 1.3rem; color: #ec4899;">Feature 7: Same-Day Accounts</h3>
-                        </div>
-                        <p style="color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.6;">
-                            Customers who created multiple accounts on the same day:
-                        </p>
-                        <div style="padding: 1rem; background: rgba(236,72,153,0.1); border-radius: 8px;">
-                            <div style="font-size: 2rem; color: #ec4899; font-weight: 700; margin-bottom: 0.5rem;">
-                                ${data.same_day_accounts.total_affected}
-                            </div>
-                            <p style="color: var(--text-primary); margin-bottom: 0.8rem;">${data.same_day_accounts.explanation}</p>
-                            
-                            ${data.same_day_accounts.same_day_customers.length > 0 ? `
-                                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
-                                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.5rem;">Top examples:</p>
-                                    ${data.same_day_accounts.same_day_customers.slice(0, 3).map(c => `
-                                        <div style="background: rgba(236,72,153,0.15); padding: 0.6rem; border-radius: 6px; margin-bottom: 0.5rem;">
-                                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                                <span style="font-weight: 600; color: #ec4899;">Customer ${c.customer_id}</span>
-                                                <span style="color: var(--text-muted); font-size: 0.85rem;">${c.date}</span>
-                                            </div>
-                                            <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.3rem;">
-                                                ${c.account_count} accounts at: ${c.timestamps.join(', ')}
-                                                ${c.suspicious ? ' <span style="color: #f87171;">⚠️ Suspicious</span>' : ''}
-                                            </div>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                ` : ''}
-                
-
-            </div>
-
-            <!-- Detailed Account Table -->
-            <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;">
-                <div style="padding: 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-                    <h2 style="font-size: 1.5rem;">📋 Detailed Account Table</h2>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button class="seg-tab active" onclick="renderAgeTable('ALL')">All (${ageAnalysis.counts.NEW + ageAnalysis.counts.ACTIVE + ageAnalysis.counts.TRUSTED})</button>
-                        <button class="seg-tab" onclick="renderAgeTable('NEW')">👶 New (${ageAnalysis.counts.NEW})</button>
-                        <button class="seg-tab" onclick="renderAgeTable('ACTIVE')">✅ Active (${ageAnalysis.counts.ACTIVE})</button>
-                        <button class="seg-tab" onclick="renderAgeTable('TRUSTED')">🏆 Trusted (${ageAnalysis.counts.TRUSTED})</button>
-                    </div>
-                </div>
-                <div id="ageTableContainer" style="max-height: 500px; overflow: auto;">
-                    <!-- Table will be inserted here -->
-                </div>
-            </div>
-
-            <div style="margin-top: 2rem; text-align: center;">
-                <button class="btn-secondary" onclick="location.reload()" style="padding: 1rem 2rem;">
-                    ← Start New Analysis
-                </button>
-            </div>
-        </div >
-    `;
-
-    // Store data globally for table rendering
-    window.accountAgeData = data;
-
-    // Render initial table
-    renderAgeTable('ALL');
+    return;
 }
 
-// Render Age Table
+// Render Age Table - stub (legacy, use Banking Case ID)
 window.renderAgeTable = function (filter) {
-    const data = window.accountAgeData;
-    if (!data) return;
-
-    const ageAnalysis = data.age_analysis;
     const container = document.getElementById('ageTableContainer');
-
-    // Update button states
-    document.querySelectorAll('.seg-tab').forEach(btn => btn.classList.remove('active'));
-    event?.target?.classList?.add('active') || document.querySelector('.seg-tab').classList.add('active');
-
-    let rows = [];
-    if (filter === 'ALL') {
-        rows = [...ageAnalysis.segments.NEW, ...ageAnalysis.segments.ACTIVE, ...ageAnalysis.segments.TRUSTED];
-    } else {
-        rows = ageAnalysis.segments[filter] || [];
-    }
-
-    rows.sort((a, b) => (a.__age_days || 0) - (b.__age_days || 0));
-
-    if (rows.length === 0) {
-        container.innerHTML = `<div style="padding: 2rem; color: var(--text-muted); text-align: center;">No accounts in this category</div>`;
-        return;
-    }
-
-    const keys = Object.keys(rows[0]).filter(k => !['group', 'meaning', 'action', '__age_days'].includes(k));
-
-    container.innerHTML = `
-    <table class="data-table">
-            <thead style="position: sticky; top: 0; background: var(--bg-card); z-index: 10;">
-                <tr>
-                    ${keys.map(k => `<th>${k}</th>`).join('')}
-                    <th>Status</th>
-                    <th>Business Meaning</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rows.map(row => {
-        const g = row.group;
-        const colors = { NEW: '#059669', ACTIVE: '#1E40AF', OLD: '#D97706' };
-        const color = colors[g] || '#64748B';
-
-        return `
-                        <tr>
-                            ${keys.map(k => `<td>${row[k]}</td>`).join('')}
-                            <td><span style="background: ${color}20; color: ${color}; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">${g}</span></td>
-                            <td style="color: var(--text-secondary); font-size: 0.9rem;">${row.meaning}</td>
-                            <td style="font-weight: 500; font-size: 0.9rem; color: ${color};">${row.action}</td>
-                        </tr>
-                    `;
-    }).join('')}
-            </tbody>
-        </table>
-    `;
+    if (container) container.innerHTML = '<div style="padding: 2rem; color: var(--text-muted); text-align: center;">Use Banking Case ID analysis from domain split.</div>';
 };
+
+// --- REMOVED: Old account analysis UI (proceedToAccountAnalysis, showAccountAnalysisResults, renderAgeTable full) ---
+
