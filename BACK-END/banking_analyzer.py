@@ -380,10 +380,39 @@ class BankingAnalyzer:
                 'raw_record': {c: str(row[c]) if pd.notna(row.get(c)) else '' for c in df.columns}
             }
 
+        # If this table clearly has explicit login and logout timestamps
+        # (e.g. login_time + logout_time), we treat it as a pure
+        # "session table": each row becomes a login event plus a logout
+        # event, and we ignore any generic "credit/debit" logic here.
+        # In addition to the inferred purpose from _find_timestamp_cols,
+        # we also fall back to simple column-name detection so that files
+        # like banking/three.csv (user_id, username, login_time, logout_time)
+        # are always handled as login/logout tables.
+        has_login_col_name = any('login' in str(c).lower() for c in df.columns)
+        has_logout_col_name = any('logout' in str(c).lower() for c in df.columns)
+        is_login_logout_table = (
+            (ts_purpose == 'login' and alt_logout_col is not None)
+            or (has_login_col_name and has_logout_col_name)
+        )
+
         activities = []
         for idx, row in df.iterrows():
             ts = get_ts(row, date_col, time_col)
             if pd.isna(ts):
+                continue
+
+            # Pure login/logout session rows: emit login + logout only.
+            if is_login_logout_table:
+                # Login at the main timestamp column
+                found_event_types.add('login')
+                activities.append(make_act(row, ts, 'login', idx))
+
+                # Logout from the dedicated logout column (if present and valid)
+                if alt_logout_col and alt_logout_col in row.index:
+                    logout_ts = _parse_datetime_cell(row[alt_logout_col])
+                    if pd.notna(logout_ts):
+                        found_event_types.add('logout')
+                        activities.append(make_act(row, logout_ts, 'logout', idx))
                 continue
 
             event = None
@@ -402,7 +431,7 @@ class BankingAnalyzer:
                 event = ts_purpose if ts_purpose in ('login', 'logout', 'open', 'created', 'transaction') else 'credit'
                 if event == 'transaction':
                     event = 'credit'
-            
+
             if event:
                 found_event_types.add(event)
                 activities.append(make_act(row, ts, event, idx))
@@ -527,11 +556,18 @@ class BankingAnalyzer:
 
             if ev in MIDDLE_EVENTS or ev in ('credit', 'debit', 'refund', 'deposit', 'withdraw',
                                              'invalid_balance', 'negative_balance'):
+                # For the first middle-event in a new or gap-separated session,
+                # create an implicit login event *before* the actual event
+                # instead of converting the event itself into "login".
+                # This keeps credit/debit/refund as their own steps while still
+                # marking a clear session start.
                 if not current and not pending:
-                    current = [{
-                        **act, 'event': 'login',
+                    login_act = {
+                        **act,
+                        'event': 'login',
                         'raw_record': {**(act.get('raw_record', {})), 'inferred': 'implicit_session_start'}
-                    }]
+                    }
+                    current = [login_act, act]
                     last_ts = ts
                     continue
                 if current:
@@ -539,10 +575,12 @@ class BankingAnalyzer:
                         gap_hours = (ts - last_ts).total_seconds() / 3600
                         if gap_hours >= session_gap_hours:
                             sessions.append(current)
-                            current = [{
-                                **act, 'event': 'login',
+                            login_act = {
+                                **act,
+                                'event': 'login',
                                 'raw_record': {**(act.get('raw_record', {})), 'inferred': 'implicit_session_start'}
-                            }]
+                            }
+                            current = [login_act, act]
                             last_ts = ts
                             continue
                     current.append(act)
@@ -557,14 +595,10 @@ class BankingAnalyzer:
             else:
                 pending.append(act)
 
+        # Do NOT fabricate implicit logout events at the time of the last
+        # transaction. Logout steps must come only from real logout columns
+        # (e.g. a logout_time field) that were parsed into activities earlier.
         if current:
-            if current[-1].get('event') not in SESSION_END:
-                last_act = current[-1]
-                current.append({
-                    **last_act,
-                    'event': 'logout',
-                    'raw_record': {**(last_act.get('raw_record', {})), 'inferred': 'implicit_session_end'}
-                })
             sessions.append(current)
         elif pending:
             sessions.append(pending)

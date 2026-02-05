@@ -1,6 +1,0 @@
-account_id,transaction_type,amount,transaction_date,transaction_time,remarks
-ACC001,Credit,10000,2026-02-01,10:30,Salary deposit
-ACC001,Debit,2000,2026-02-01,15:10,ATM withdrawal
-ACC001,Refund,500,2026-02-01,18:00,Failed POS txn
-ACC002,Credit,15000,2026-02-02,11:00,Interest credit
-ACC002,Debit,3000,2026-02-02,14:30,Online shopping

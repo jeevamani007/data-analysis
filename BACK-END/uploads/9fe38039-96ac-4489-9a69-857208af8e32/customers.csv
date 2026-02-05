@@ -1,5 +1,0 @@
-account_id,transaction_type,amount,transaction_date,transaction_time,remarks
-LN001,Debit,20000,2026-02-01,10:00,Loan disbursement
-LN001,Credit,5000,2026-02-02,11:00,EMI payment
-LN002,Debit,100000,2026-02-01,12:30,Home loan disbursement
-LN002,Credit,10000,2026-02-02,15:00,EMI payment

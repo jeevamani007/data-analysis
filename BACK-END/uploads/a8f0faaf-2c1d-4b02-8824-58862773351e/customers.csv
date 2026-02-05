@@ -1,6 +1,0 @@
-customer_id,name,kyc_status
-CUST01,Ravi,VERIFIED
-CUST02,Anitha,PENDING
-CUST03,Kumar,VERIFIED
-CUST04,Priya,REJECTED
-CUST05,Suresh,VERIFIED

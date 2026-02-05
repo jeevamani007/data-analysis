@@ -1,3 +1,0 @@
-refund_id,original_txn_id,account_id,refund_amount,refund_date
-RF001,TXN002,ACC001,500,2026-02-02
-RF002,TXN003,ACC002,1000,2026-02-03

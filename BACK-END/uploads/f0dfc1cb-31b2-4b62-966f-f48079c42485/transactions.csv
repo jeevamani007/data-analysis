@@ -1,5 +1,0 @@
-account_id,timestamp,amount,transaction_type
-101,2023-10-27 08:45:00,5000,Credit
-101,2023-10-27 09:00:00,2000,Debit
-101,2023-10-27 14:15:00,100,Debit
-101,2023-10-27 14:16:00,100,Declined

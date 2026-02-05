@@ -1,4 +1,0 @@
-bill_id,admission_id,patient_id,bill_amount,bill_date,bill_timestamp
-B001,ADM001,P001,5000,2026-02-02,2026-02-02 13:00:00
-B002,ADM002,P002,3500,2026-02-02,2026-02-02 13:30:00
-B003,ADM003,P003,4500,2026-02-03,2026-02-03 12:00:00

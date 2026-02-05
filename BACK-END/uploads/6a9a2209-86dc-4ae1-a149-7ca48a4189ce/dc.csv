@@ -1,4 +1,0 @@
-card_id,customer_id,card_type,limit_amount,status
-CC301,CUST01,Visa,200000,ACTIVE
-CC302,CUST02,MasterCard,150000,ACTIVE
-CC303,CUST04,RuPay,100000,BLOCKED

@@ -1,6 +1,0 @@
-patient_id,name,age,gender,blood_group,phone,city
-P001,Ravi Kumar,45,M,O+,9876543210,Chennai
-P002,Anitha Devi,32,F,B+,9123456780,Coimbatore
-P003,Suresh,60,M,A+,9988776655,Madurai
-P004,Meena,28,F,O-,9090909090,Salem
-P005,Arun,50,M,AB+,9345678123,Trichy

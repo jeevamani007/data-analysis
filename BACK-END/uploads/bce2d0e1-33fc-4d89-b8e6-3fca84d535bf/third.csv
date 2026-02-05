@@ -1,4 +1,0 @@
-treatment_id,admission_id,doctor_id,treatment_type,treatment_date,treatment_timestamp
-T001,ADM001,D001,ECG Test,2026-02-02,2026-02-02 11:00:00
-T002,ADM002,D002,CT Scan,2026-02-02,2026-02-02 12:00:00
-T003,ADM003,D003,X-Ray,2026-02-03,2026-02-03 10:30:00
