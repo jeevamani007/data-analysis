@@ -244,22 +244,114 @@ class BankingAnalyzer:
             return (date_col, time_col, best_purpose or 'event', None)
         return (None, None, None, None)
 
+    def _detect_event_columns_for_table(self, df: pd.DataFrame, table_name: str) -> Dict[str, List[str]]:
+        """
+        Detect event-related columns for a single table using only column names and simple patterns.
+        This is used to build the Event Columns Blueprint for the UI.
+        It does not read any row values.
+        Enhanced to detect more column name variations and support columns without strict date/time suffixes.
+        """
+        events: Dict[str, List[str]] = {
+            'account_open': [],
+            'login': [],
+            'logout': [],
+            'deposit': [],
+            'withdraw': [],
+            'refund': [],
+            'failed': [],
+            'check_balance': [],
+        }
+
+        for col in df.columns:
+            name = str(col)
+            c = name.lower().replace('-', '_').replace(' ', '_')
+
+            # Time-based purpose (login / logout / open / created / transaction)
+            purpose = self._infer_time_purpose(name)
+            if purpose == 'login':
+                events['login'].append(name)
+            elif purpose == 'logout':
+                events['logout'].append(name)
+            elif purpose in ('open', 'created'):
+                events['account_open'].append(name)
+
+            # Deposit / credit columns - broader matching
+            # Support columns with date/time OR just the event name
+            if 'deposit' in c or ('credit' in c and 'card' not in c):
+                # Already added by time purpose above, or add if has timestamp keywords or is event-type column
+                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or c in ('deposit', 'credit', 'deposit_amount', 'credit_amount'):
+                    if name not in events['deposit']:
+                        events['deposit'].append(name)
+
+            # Withdraw / debit columns - broader matching
+            if ('withdraw' in c or 'withdrawal' in c or 'debit' in c):
+                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or c in ('withdraw', 'withdrawal', 'debit', 'withdraw_amount', 'debit_amount'):
+                    if name not in events['withdraw']:
+                        events['withdraw'].append(name)
+
+            # Refund columns - broader matching
+            if 'refund' in c:
+                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or c in ('refund', 'refund_amount'):
+                    if name not in events['refund']:
+                        events['refund'].append(name)
+
+            # Failed / declined / blocked / invalid indicators - add status columns
+            if any(k in c for k in ('failed', 'declined', 'blocked', 'invalid', 'negative', 'status', 'result')):
+                # Also check for status-related event detection
+                if 'status' in c or 'result' in c or any(k in c for k in ('failed', 'declined', 'blocked', 'invalid', 'negative')):
+                    if name not in events['failed']:
+                        events['failed'].append(name)
+
+            # Balance columns (used for Check Balance)
+            if 'balance' in c:
+                if name not in events['check_balance']:
+                    events['check_balance'].append(name)
+            
+            # Special handling for event/transaction_type columns
+            # These columns contain the event type as values, not in the column name
+            if c in ('event', 'transaction_type', 'txn_type', 'type', 'activity', 'action'):
+                # Add to all relevant event types since this column can indicate any event
+                # We'll mark it specially so the UI knows it's a multi-purpose event indicator
+                for event_type in ['login', 'logout', 'deposit', 'withdraw', 'refund', 'failed']:
+                    if name not in events[event_type]:
+                        events[event_type].append(name)
+
+        # Build mapping event_type -> [Table.Column] and remove duplicates
+        result: Dict[str, List[str]] = {}
+        for ev_type, cols in events.items():
+            if not cols:
+                continue
+            full_names: List[str] = []
+            for col_name in cols:
+                full = f"{table_name}.{col_name}"
+                if full not in full_names:
+                    full_names.append(full)
+            if full_names:
+                result[ev_type] = full_names
+        return result
+
     def _extract_activities(
         self,
         df: pd.DataFrame,
         table_name: str,
         file_name: str,
         account_to_user: Dict[str, str]
-    ) -> List[Dict[str, Any]]:
-        """Extract activities. Correctly maps open_date, created_date, login_time, logout_time. No mismatch."""
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, List[str]]]:
+        """
+        Extract activities and identifying the columns actually used for each event type.
+        Returns (activities_list, used_columns_map).
+        """
         user_col = self._find_user_col(df)
         account_col = self._find_account_col(df)
         event_col = self._find_event_col(df)
         date_col, time_col, ts_purpose, alt_logout_col = self._find_timestamp_cols(df)
 
         if not date_col:
-            return []
+            return [], {}
 
+        # Track which event types are actually found
+        found_event_types = set()
+        
         def get_ts(row, dcol, tcol):
             if tcol and tcol in row.index and pd.notna(row.get(tcol)) and str(row[tcol]).strip():
                 date_part = str(row.get(dcol, '')).split()[0] if dcol in row.index else ''
@@ -310,15 +402,65 @@ class BankingAnalyzer:
                 event = ts_purpose if ts_purpose in ('login', 'logout', 'open', 'created', 'transaction') else 'credit'
                 if event == 'transaction':
                     event = 'credit'
-
-            activities.append(make_act(row, ts, event, idx))
+            
+            if event:
+                found_event_types.add(event)
+                activities.append(make_act(row, ts, event, idx))
 
             if alt_logout_col and alt_logout_col in row.index:
                 logout_ts = _parse_datetime_cell(row[alt_logout_col])
                 if pd.notna(logout_ts):
+                    found_event_types.add('logout')
                     activities.append(make_act(row, logout_ts, 'logout', idx))
 
-        return activities
+        # Build map of event_type -> [columns used]
+        # This reflects strictly what was used to generate the Case ID data
+        used_cols_map: Dict[str, List[str]] = {}
+        
+        # Helper to add columns uniquely
+        def add_cols(ev, cols):
+            if ev not in used_cols_map:
+                used_cols_map[ev] = []
+            for c in cols:
+                full_c = f"{table_name}.{c}"
+                if full_c not in used_cols_map[ev]:
+                    used_cols_map[ev].append(full_c)
+
+        for ev in found_event_types:
+            # If this is a logout event derived from a specific logout column, 
+            # we handle it separately below (do not add the main date/time cols which are usually login time)
+            if ev == 'logout' and alt_logout_col:
+                continue
+
+            # All events use the date/time columns
+            cols_to_add = []
+            if date_col: cols_to_add.append(date_col)
+            if time_col: cols_to_add.append(time_col)
+            
+            # If we used an event column to find this event, add it
+            # But ONLY if it's not the generic time purpose
+            # (e.g. if purpose is 'login', we didn't use event_col for it)
+            if ev != ts_purpose and ev != 'logout' and event_col: 
+                 cols_to_add.append(event_col)
+            
+            # Detect amount column usage inferred for this event type
+            # (We didn't explicitly use it for the event *name*, but it's part of the "event data")
+            # We can optionally add it for completeness if the user wants "columns used"
+            
+            # Map internal event names to UI buckets
+            ui_bucket = ev
+            if ev == 'created': ui_bucket = 'account_open'
+            if ev == 'open': ui_bucket = 'account_open'
+            if ev == 'invalid_balance': ui_bucket = 'failed'
+            if ev == 'negative_balance': ui_bucket = 'failed'
+            
+            add_cols(ui_bucket, cols_to_add)
+
+        # Handle alt_logout_col separately
+        if alt_logout_col and 'logout' in found_event_types:
+             add_cols('logout', [alt_logout_col])
+
+        return activities, used_cols_map
 
     def _build_account_to_user_map(self, dataframes: Dict[str, pd.DataFrame]) -> Dict[str, str]:
         """Build account_id -> user_id mapping from account/customer tables."""
@@ -530,23 +672,52 @@ class BankingAnalyzer:
         account_to_user = self._build_account_to_user_map(dataframes)
 
         all_activities = []
+        # Aggregate event columns across all tables for the blueprint UI
+        # We now use the DYNAMIC filtered columns from data extraction, not static pattern matching
+        event_columns: Dict[str, List[str]] = {}
+
         for table in tables:
             df = dataframes.get(table.table_name)
             if df is None or df.empty:
                 continue
+
+            # Extract per-row activities for Case IDs
+            # This also returns the columns that were ACTUALLY used for the analysis
             file_name = getattr(table, 'file_name', '') or f"{table.table_name}.csv"
-            activities = self._extract_activities(df, table.table_name, file_name, account_to_user)
+            activities, used_cols = self._extract_activities(df, table.table_name, file_name, account_to_user)
             all_activities.extend(activities)
 
+            # Merge used columns into the global blueprint
+            for ev_type, cols in used_cols.items():
+                if ev_type not in event_columns:
+                    event_columns[ev_type] = []
+                for c in cols:
+                     if c not in event_columns[ev_type]:
+                         event_columns[ev_type].append(c)
+        
+        # If no activities found, fallback to static detection so we can at least show
+        # "No columns detected" based on names, or hint what we found
         if not all_activities:
-            return {
+             # Repopulate event_columns statically as fallback so UI shows SOMETHING
+             for table in tables:
+                df = dataframes.get(table.table_name)
+                if df is not None:
+                     static_events = self._detect_event_columns_for_table(df, table.table_name)
+                     for ev, cols in static_events.items():
+                         if ev not in event_columns: event_columns[ev] = []
+                         for c in cols:
+                             if c not in event_columns[ev]: event_columns[ev].append(c)
+
+             return {
                 'success': False,
                 'error': 'No activities found. We look for columns that contain login time, logout time, created time, or open time (and user or account).',
-                'tables_checked': [t.table_name for t in tables]
+                'tables_checked': [t.table_name for t in tables],
+                'event_columns': event_columns
             }
 
         # Group by user
         by_user: Dict[str, List[Dict]] = {}
+
         for act in all_activities:
             uid = act.get('user_id') or 'unknown'
             if uid not in by_user:
@@ -589,5 +760,6 @@ class BankingAnalyzer:
             'total_users': total_users,
             'users': users_with_cases,
             'explanations': explanations,
-            'total_activities': len(all_activities)
+            'total_activities': len(all_activities),
+            'event_columns': event_columns,
         }

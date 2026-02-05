@@ -182,7 +182,10 @@ async def analyze_database(session_id: str):
         all_relationships = relationship_detector.detect_relationships(tables, dataframes)
         
         # Group tables into clusters (logical databases)
-        clusters = relationship_detector.group_tables_into_clusters(tables, all_relationships)
+        # NOTE: To avoid unnecessary splits when the user uploads a single logical database,
+        # we keep all tables in one cluster. If you later need multi-database support again,
+        # re-enable group_tables_into_clusters here.
+        clusters = [tables]
         
         profiles = []
         
