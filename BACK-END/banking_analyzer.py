@@ -766,26 +766,25 @@ class BankingAnalyzer:
                 except:
                     ts = None
                 
-                # Calculate duration from previous event
+                # Calculate duration from previous event (user-friendly: hours, minutes, seconds)
                 if prev_ts is not None and ts is not None:
                     duration_seconds = int((ts - prev_ts).total_seconds())
-                    # Format as mm:ss
+                    duration_seconds = max(0, duration_seconds)
                     days = duration_seconds // 86400
                     hours = (duration_seconds % 86400) // 3600
                     minutes = (duration_seconds % 3600) // 60
                     seconds = duration_seconds % 60
-                    
                     if days > 0:
-                        time_label = f"{days}d {hours}h"
+                        time_label = f"{days} day{'s' if days != 1 else ''} {hours} hr"
                     elif hours > 0:
-                        time_label = f"{hours}h {minutes}m"
+                        time_label = f"{hours} hr {minutes} min" if minutes else f"{hours} hr"
                     elif minutes > 0:
-                        time_label = f"{minutes}m {seconds}s"
+                        time_label = f"{minutes} min {seconds} sec" if seconds else f"{minutes} min"
                     else:
-                        time_label = f"{seconds}s"
+                        time_label = f"{seconds} sec"
                 else:
                     duration_seconds = 0
-                    time_label = "00:00"
+                    time_label = 'Start' if prev_event_name == 'Process' else '0 sec'
                 
                 path_sequence.append(event_display)
                 timings.append({
@@ -794,19 +793,26 @@ class BankingAnalyzer:
                     'duration_seconds': duration_seconds,
                     'label': time_label,
                     'start_time': prev_ts.strftime('%H:%M:%S') if prev_ts else '',
-                    'end_time': ts.strftime('%H:%M:%S') if ts else ''
+                    'end_time': ts.strftime('%H:%M:%S') if ts else '',
+                    'start_datetime': prev_ts.strftime('%Y-%m-%d %H:%M:%S') if prev_ts else '',
+                    'end_datetime': ts.strftime('%Y-%m-%d %H:%M:%S') if ts else ''
                 })
                 
                 prev_ts = ts
                 prev_event_name = event_display
             
-            # Add End node
+            # Add End node with last event datetime so UI can show "End" + full date-time
             path_sequence.append('End')
+            last_ts = prev_ts
             timings.append({
                 'from': prev_event_name,
                 'to': 'End',
                 'duration_seconds': 0,
-                'label': '00:00'
+                'label': 'End',
+                'start_time': last_ts.strftime('%H:%M:%S') if last_ts else '',
+                'end_time': last_ts.strftime('%H:%M:%S') if last_ts else '',
+                'start_datetime': last_ts.strftime('%Y-%m-%d %H:%M:%S') if last_ts else '',
+                'end_datetime': last_ts.strftime('%Y-%m-%d %H:%M:%S') if last_ts else ''
             })
             
             case_paths.append({

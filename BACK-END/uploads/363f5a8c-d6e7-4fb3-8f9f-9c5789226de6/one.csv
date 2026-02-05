@@ -1,0 +1,5 @@
+account_id,user_id,account_type,created_time
+1001,101,Savings,2026-01-20 10:15:00
+1002,102,Checking,2026-01-22 11:30:00
+1003,103,Savings,2026-01-25 09:45:00
+1004,104,Checking,2026-02-01 14:20:00

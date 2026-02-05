@@ -6,6 +6,44 @@
 // API Configuration
 const API_BASE_URL = 'http://localhost:8000/api';
 
+// Format 24h "HH:MM:SS" or "HH:MM" to readable "10:30 AM" / "10:30:45 AM"
+function formatTimeReadable(str) {
+    if (!str || typeof str !== 'string') return str;
+    var parts = str.trim().split(':');
+    var h = parseInt(parts[0], 10);
+    var m = parts[1] ? parseInt(parts[1], 10) : 0;
+    var s = parts[2] ? parseInt(parts[2], 10) : 0;
+    if (isNaN(h)) return str;
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (h === 0) h = 12;
+    var mStr = m < 10 ? '0' + m : String(m);
+    if (s > 0) {
+        var sStr = s < 10 ? '0' + s : String(s);
+        return h + ':' + mStr + ':' + sStr + ' ' + ampm;
+    }
+    return h + ':' + mStr + ' ' + ampm;
+}
+
+// Format "YYYY-MM-DD HH:MM:SS" or ISO to readable date-time (DB timestamp)
+// full: "Jan 15, 2025 10:30 AM" | compact: "15 Jan 10:30 AM" for diagram
+function formatDateTimeReadable(str, compact) {
+    if (!str || typeof str !== 'string') return str;
+    str = str.trim();
+    var d = new Date(str.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return str;
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var datePart = compact
+        ? (d.getDate() + ' ' + months[d.getMonth()])
+        : (months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear());
+    var h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (h === 0) h = 12;
+    var timePart = h + ':' + (m < 10 ? '0' + m : m) + (s > 0 ? ':' + (s < 10 ? '0' + s : s) : '') + ' ' + ampm;
+    return datePart + ' ' + timePart;
+}
+
 // State Management
 let uploadedFiles = [];
 let sessionId = null;
@@ -80,8 +118,8 @@ window.onDrag = function (e) {
         window.diagramState.positions[eventName].x = newX;
         window.diagramState.positions[eventName].y = newY;
 
-        // Render paths
-        window.renderDiagramPaths();
+        // Redraw paths on next frame so lines follow the moved box
+        requestAnimationFrame(function () { window.renderDiagramPaths(); });
     }
 };
 
@@ -89,6 +127,48 @@ window.endDrag = function () {
     window.draggedEvent = null;
     document.removeEventListener('mousemove', window.onDrag);
     document.removeEventListener('mouseup', window.endDrag);
+};
+
+// Diagram pan (drag-to-pan) state and handlers for Unified Case Flow Diagram
+window.diagramPan = { active: false, startX: 0, startY: 0, translateX: 0, translateY: 0 };
+
+window.startDiagramPan = function (e) {
+    if (e.button !== 0) return;
+    var wrapper = document.getElementById('diagram-pan-wrapper');
+    if (!wrapper || e.target !== wrapper) return;
+    window.diagramPan.active = true;
+    window.diagramPan.startX = e.clientX;
+    window.diagramPan.startY = e.clientY;
+    window.diagramPan.translateX = window.diagramPan.translateX || 0;
+    window.diagramPan.translateY = window.diagramPan.translateY || 0;
+    wrapper.style.cursor = 'grabbing';
+    document.addEventListener('mousemove', window.onDiagramPan);
+    document.addEventListener('mouseup', window.endDiagramPan);
+    e.preventDefault();
+};
+
+window.onDiagramPan = function (e) {
+    if (!window.diagramPan.active) return;
+    var dx = e.clientX - window.diagramPan.startX;
+    var dy = e.clientY - window.diagramPan.startY;
+    window.diagramPan.translateX += dx;
+    window.diagramPan.translateY += dy;
+    window.diagramPan.startX = e.clientX;
+    window.diagramPan.startY = e.clientY;
+    var tx = window.diagramPan.translateX;
+    var ty = window.diagramPan.translateY;
+    var content = document.getElementById('diagram-pan-content');
+    if (content) content.style.transform = 'translate3d(' + tx + 'px, ' + ty + 'px, 0)';
+    var pathsGroup = document.getElementById('diagram-paths-container');
+    if (pathsGroup) pathsGroup.setAttribute('transform', 'translate(' + tx + ',' + ty + ')');
+};
+
+window.endDiagramPan = function () {
+    window.diagramPan.active = false;
+    var wrapper = document.getElementById('diagram-pan-wrapper');
+    if (wrapper) wrapper.style.cursor = 'grab';
+    document.removeEventListener('mousemove', window.onDiagramPan);
+    document.removeEventListener('mouseup', window.endDiagramPan);
 };
 
 window.renderDiagramPaths = function () {
@@ -100,6 +180,21 @@ window.renderDiagramPaths = function () {
 
     const state = window.diagramState;
     if (!state || !state.paths) return;
+
+    var contentEl = document.getElementById('diagram-pan-content');
+    if (contentEl) {
+        var contentRect = contentEl.getBoundingClientRect();
+        Object.keys(state.positions || {}).forEach(function (eventName) {
+            var boxId = 'box-' + eventName.replace(/\s+/g, '-');
+            var boxEl = document.getElementById(boxId);
+            if (boxEl) {
+                var boxRect = boxEl.getBoundingClientRect();
+                if (!state.positions[eventName]) state.positions[eventName] = {};
+                state.positions[eventName].x = Math.round(boxRect.left - contentRect.left);
+                state.positions[eventName].y = Math.round(boxRect.top - contentRect.top);
+            }
+        });
+    }
 
     let pathsHTML = '';
     const boxWidth = state.boxWidth;
@@ -171,21 +266,37 @@ window.renderDiagramPaths = function () {
                 </text>
             `;
 
-                // Time Label (t=0.7)
+                // Time Label (t=0.7): duration (event-to-event) + DB date-time per segment
                 const timing = timings[i];
-                if (timing && timing.label !== '00:00' && timing.label !== '0s') {
+                if (timing) {
                     const tTime = 0.7;
                     const lxTime = (1 - tTime) * (1 - tTime) * x1 + 2 * (1 - tTime) * tTime * cpx + tTime * tTime * x2;
                     const lyTime = (1 - tTime) * (1 - tTime) * y1 + 2 * (1 - tTime) * tTime * cpy + tTime * tTime * y2;
-                    const dbTime = timing.start_time || '';
-
-                    pathsHTML += `
+                    var line1 = timing.label || '';
+                    var dbDateTime = timing.end_datetime || timing.start_datetime || '';
+                    var line2 = dbDateTime ? formatDateTimeReadable(dbDateTime, true) : formatTimeReadable(timing.start_time || timing.end_time || '');
+                    if (timing.label === 'Start') {
+                        line1 = 'Start';
+                        if (timing.end_datetime) line2 = formatDateTimeReadable(timing.end_datetime, true);
+                        else if (timing.end_time) line2 = formatTimeReadable(timing.end_time);
+                    } else if (timing.label === 'End') {
+                        line1 = 'End';
+                        if (timing.end_datetime) line2 = formatDateTimeReadable(timing.end_datetime, true);
+                        else line2 = formatTimeReadable(timing.end_time || timing.start_time || '');
+                    } else if (timing.label === '00:00' || timing.label === '0s' || timing.label === '0 sec') {
+                        line1 = '0 sec';
+                    }
+                    if (line1 || line2) {
+                        var boxH = line2 ? 38 : 18;
+                        var boxW = 102;
+                        pathsHTML += `
                     <g>
-                        <rect x="${lxTime - 35}" y="${lyTime - 14}" width="70" height="28" rx="6" fill="white" stroke="${color}" stroke-width="1" opacity="0.95" style="filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.1));"/>
-                        <text x="${lxTime}" y="${lyTime - 1}" text-anchor="middle" font-size="10" font-weight="700" fill="${color}">${timing.label}</text>
-                        <text x="${lxTime}" y="${lyTime + 9}" text-anchor="middle" font-size="8.5" font-weight="500" fill="#64748b">${dbTime}</text>
+                        <rect x="${lxTime - boxW/2}" y="${lyTime - 16}" width="${boxW}" height="${boxH}" rx="6" fill="white" stroke="${color}" stroke-width="1" opacity="0.95" style="filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.1));"/>
+                        <text x="${lxTime}" y="${lyTime - 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${color}">${line1}</text>
+                        ${line2 ? '<text x="' + lxTime + '" y="' + (lyTime + 10) + '" text-anchor="middle" font-size="7.5" font-weight="500" fill="#64748b">' + line2 + '</text>' : ''}
                     </g>
                 `;
+                    }
                 }
             }
         }); // End foreach
@@ -195,6 +306,11 @@ window.renderDiagramPaths = function () {
 
     if (container) {
         container.innerHTML = pathsHTML;
+        if (window.diagramPan && (window.diagramPan.translateX || window.diagramPan.translateY)) {
+            var tx = window.diagramPan.translateX || 0;
+            var ty = window.diagramPan.translateY || 0;
+            container.setAttribute('transform', 'translate(' + tx + ',' + ty + ')');
+        }
     }
 };
 
@@ -1095,8 +1211,8 @@ function showBankingAnalysisResults(profile) {
         });
         legendHTML += '</div>';
 
-        // Create event boxes layout
-        let diagramHTML = '<div style="position: relative; min-height: 500px; padding: 1rem; overflow-x: auto; overflow-y: hidden;">';
+        // Create event boxes layout (pan wrapper added after svgWidth/svgHeight are computed)
+        let diagramHTML = '';
 
         // Standard Banking Flow Layout (Fixed positions for "Neat" look)
         // Coordinates: x, y
@@ -1162,7 +1278,12 @@ function showBankingAnalysisResults(profile) {
         const svgWidth = Math.max(900, maxX);
         const svgHeight = Math.max(500, maxY);
 
-        diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1;">
+        // Outer container (scroll) + pan wrapper (hit area) + pan content (SVG + boxes move together)
+        diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: 500px; max-height: 75vh; padding: 1rem; overflow: auto;">';
+        diagramHTML += '<div id="diagram-pan-wrapper" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="if(event.target===this) startDiagramPan(event)">';
+        diagramHTML += '<div id="diagram-pan-content" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; will-change: transform;">';
+
+        diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; transform-origin: 0 0;">
             <defs>
                 <!-- Marker for arrows -->
                 <marker id="arrowhead" markerWidth="10" markerHeight="7" 
@@ -1197,6 +1318,7 @@ function showBankingAnalysisResults(profile) {
         window.diagramState.positions = eventPositions;
         window.diagramState.paths = sequences;
         window.diagramState.timings = timingMap;
+        if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
 
         setTimeout(() => window.renderDiagramPaths(), 100);
 
@@ -1372,7 +1494,7 @@ function showBankingAnalysisResults(profile) {
 
         diagramHTML += '</svg>';
 
-        // Draw event boxes
+        // Draw event boxes (inside pan content so they move with arrows when panning)
         eventTypes.forEach(event => {
             const pos = eventPositions[event];
             if (!pos) return;
@@ -1421,7 +1543,7 @@ function showBankingAnalysisResults(profile) {
             `;
         });
 
-        diagramHTML += '</div>';
+        diagramHTML += '</div></div></div>'; // close diagram-pan-content, diagram-pan-wrapper, diagram-outer-container
 
         return `
             <section style="margin-bottom: 2.5rem;">
@@ -1430,6 +1552,9 @@ function showBankingAnalysisResults(profile) {
                 </h2>
                 <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem; text-align: center;">
                     All ${totalCases} Case IDs shown in one unified flow. Each colored path represents one Case ID. Time labels show duration between events.
+                </p>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.85rem; text-align: center;">
+                    Drag empty area to pan • Drag event boxes to reposition
                 </p>
                 
                 <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
