@@ -395,6 +395,16 @@ class BankingAnalyzer:
             or (has_login_col_name and has_logout_col_name)
         )
 
+        # Determine which column to use for logout events in session tables.
+        # Prefer the explicit alt_logout_col detected by _find_timestamp_cols;
+        # otherwise, fall back to the first column whose name contains "logout".
+        logout_event_col = alt_logout_col
+        if is_login_logout_table and logout_event_col is None:
+            for c in df.columns:
+                if 'logout' in str(c).lower():
+                    logout_event_col = c
+                    break
+
         activities = []
         for idx, row in df.iterrows():
             ts = get_ts(row, date_col, time_col)
@@ -408,8 +418,8 @@ class BankingAnalyzer:
                 activities.append(make_act(row, ts, 'login', idx))
 
                 # Logout from the dedicated logout column (if present and valid)
-                if alt_logout_col and alt_logout_col in row.index:
-                    logout_ts = _parse_datetime_cell(row[alt_logout_col])
+                if logout_event_col and logout_event_col in row.index:
+                    logout_ts = _parse_datetime_cell(row[logout_event_col])
                     if pd.notna(logout_ts):
                         found_event_types.add('logout')
                         activities.append(make_act(row, logout_ts, 'logout', idx))
@@ -458,7 +468,7 @@ class BankingAnalyzer:
         for ev in found_event_types:
             # If this is a logout event derived from a specific logout column, 
             # we handle it separately below (do not add the main date/time cols which are usually login time)
-            if ev == 'logout' and alt_logout_col:
+            if ev == 'logout' and logout_event_col:
                 continue
 
             # All events use the date/time columns
@@ -485,9 +495,10 @@ class BankingAnalyzer:
             
             add_cols(ui_bucket, cols_to_add)
 
-        # Handle alt_logout_col separately
-        if alt_logout_col and 'logout' in found_event_types:
-             add_cols('logout', [alt_logout_col])
+        # Handle logout_event_col separately so the blueprint knows which column
+        # actually supplied real logout timestamps (login_time vs logout_time).
+        if logout_event_col and 'logout' in found_event_types:
+             add_cols('logout', [logout_event_col])
 
         return activities, used_cols_map
 
