@@ -16,7 +16,8 @@ SESSION_END = {'logout', 'session_end'}
 PRE_LOGIN_EVENTS = {'open', 'created'}
 MIDDLE_EVENTS = {
     'credit', 'deposit', 'withdraw', 'debit', 'refund',
-    'invalid_balance', 'negative_balance', 'invalid', 'negative'
+    'invalid_balance', 'negative_balance', 'invalid', 'negative',
+    'check_balance', 'balance_check', 'balance_inquiry', 'inquiry'
 }
 
 EVENT_MAP = {
@@ -27,6 +28,8 @@ EVENT_MAP = {
     'invalid_balance': 'invalid_balance', 'invalid': 'invalid_balance',
     'negative_balance': 'negative_balance', 'negative': 'negative_balance',
     'declined': 'invalid_balance', 'blocked': 'invalid_balance',
+    'check_balance': 'check_balance', 'balance_check': 'check_balance',
+    'balance_inquiry': 'check_balance', 'inquiry': 'check_balance',
 }
 
 # Time formats to try (with and without AM/PM)
@@ -160,6 +163,8 @@ class BankingAnalyzer:
             return 'event'
         if re.search(r'date|time|stamp', c) and 'dob' not in c and 'birth' not in c:
             return 'event'
+        if 'balance' in c and (re.search(r'check|inquiry', c) or c == 'balance'):
+             return 'check_balance'
         return None
 
     def _find_date_time_pair(self, df: pd.DataFrame, base: str) -> Tuple[Optional[str], Optional[str]]:
@@ -437,6 +442,8 @@ class BankingAnalyzer:
                     event = 'refund'
                 elif raw in ('DECLINED', 'BLOCKED', 'INVALID'):
                     event = 'invalid_balance'
+                elif raw in ('CHECK_BALANCE', 'BALANCE_INQUIRY', 'BALANCE_CHECK', 'CHECK BALANCE', 'BALANCE'):
+                    event = 'check_balance'
             if not event:
                 event = ts_purpose if ts_purpose in ('login', 'logout', 'open', 'created', 'transaction') else 'credit'
                 if event == 'transaction':
@@ -704,6 +711,140 @@ class BankingAnalyzer:
         steps = [self._event_display_name(a['event']) for a in activities]
         return f"Case {case_id}: User {user_id}. From {start_str} to {end_str}. Steps: {', '.join(steps)}."
 
+    def _generate_unified_flow_data(self, case_details: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Generate unified flow data for all Case IDs to be displayed in a single diagram."""
+        # Predefined color palette for Case IDs
+        colors = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+            '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788',
+            '#E63946', '#F1FAEE', '#A8DADC', '#457B9D', '#1D3557'
+        ]
+        
+        # Collect all unique events across all cases
+        all_events = set()
+        for case in case_details:
+            for event in case.get('event_sequence', []):
+                all_events.add(event)
+        
+        # Map event names to display names
+        event_display_map = {
+            'login': 'Login',
+            'logout': 'Logout',
+            'created': 'Created Account',
+            'open': 'Created Account',
+            'credit': 'Credit',
+            'deposit': 'Deposit',
+            'debit': 'Withdrawal Transaction',
+            'withdraw': 'Withdrawal Transaction',
+            'refund': 'Refund',
+            'invalid_balance': 'Check Balance',
+            'negative_balance': 'Check Balance',
+        }
+        
+        # Build case paths with timing information
+        case_paths = []
+        for idx, case in enumerate(case_details):
+            activities = case.get('activities', [])
+            if not activities:
+                continue
+                
+            case_color = colors[idx % len(colors)]
+            path_sequence = ['Process']  # Start with Process
+            timings = []
+            
+            prev_ts = None
+            prev_event_name = 'Process'
+            
+            for i, activity in enumerate(activities):
+                event = activity.get('event', '')
+                event_display = event_display_map.get(event, event.title())
+                ts_str = activity.get('timestamp_str', '')
+                
+                # Parse timestamp
+                try:
+                    ts = pd.to_datetime(ts_str)
+                except:
+                    ts = None
+                
+                # Calculate duration from previous event
+                if prev_ts is not None and ts is not None:
+                    duration_seconds = int((ts - prev_ts).total_seconds())
+                    # Format as mm:ss
+                    days = duration_seconds // 86400
+                    hours = (duration_seconds % 86400) // 3600
+                    minutes = (duration_seconds % 3600) // 60
+                    seconds = duration_seconds % 60
+                    
+                    if days > 0:
+                        time_label = f"{days}d {hours}h"
+                    elif hours > 0:
+                        time_label = f"{hours}h {minutes}m"
+                    elif minutes > 0:
+                        time_label = f"{minutes}m {seconds}s"
+                    else:
+                        time_label = f"{seconds}s"
+                else:
+                    duration_seconds = 0
+                    time_label = "00:00"
+                
+                path_sequence.append(event_display)
+                timings.append({
+                    'from': prev_event_name,
+                    'to': event_display,
+                    'duration_seconds': duration_seconds,
+                    'label': time_label,
+                    'start_time': prev_ts.strftime('%H:%M:%S') if prev_ts else '',
+                    'end_time': ts.strftime('%H:%M:%S') if ts else ''
+                })
+                
+                prev_ts = ts
+                prev_event_name = event_display
+            
+            # Add End node
+            path_sequence.append('End')
+            timings.append({
+                'from': prev_event_name,
+                'to': 'End',
+                'duration_seconds': 0,
+                'label': '00:00'
+            })
+            
+            case_paths.append({
+                'case_id': case.get('case_id'),
+                'user_id': case.get('user_id'),
+                'color': case_color,
+                'path_sequence': path_sequence,
+                'timings': timings,
+                'total_duration': sum(t['duration_seconds'] for t in timings)
+            })
+        
+        # Define all possible event types in order
+        all_event_types = [
+            'Process',
+            'Created Account',
+            'Login',
+            'Withdrawal Transaction',
+            'Credit',
+            'Deposit',
+            'Refund',
+            'Check Balance',
+            'Logout',
+            'End'
+        ]
+        
+        # Filter to only include events that actually appear in the data
+        used_events = set()
+        for path in case_paths:
+            used_events.update(path['path_sequence'])
+        
+        filtered_event_types = [e for e in all_event_types if e in used_events]
+        
+        return {
+            'all_event_types': filtered_event_types,
+            'case_paths': case_paths,
+            'total_cases': len(case_paths)
+        }
+
     def analyze_cluster(
         self,
         tables: List[TableAnalysis],
@@ -797,6 +938,9 @@ class BankingAnalyzer:
             "Times use the columns we detected (login time, logout time, created time, or open time) from your files."
         ]
 
+        # Generate unified flow data for visualization
+        unified_flow_data = self._generate_unified_flow_data(case_details)
+        
         return {
             'success': True,
             'case_ids': case_ids_asc,
@@ -807,4 +951,5 @@ class BankingAnalyzer:
             'explanations': explanations,
             'total_activities': len(all_activities),
             'event_columns': event_columns,
+            'unified_flow_data': unified_flow_data,
         }
