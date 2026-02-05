@@ -1,0 +1,6 @@
+transaction_id,account_id,user_id,transaction_type,amount,transaction_time
+5001,1001,101,Deposit,1000,2026-02-01 08:45:00
+5002,1002,102,Deposit,1500,2026-02-01 09:15:00
+5003,1001,101,Withdrawal,200,2026-02-01 09:50:00
+5004,1003,103,Deposit,2500,2026-02-01 10:30:00
+5005,1002,102,Withdrawal,500,2026-02-01 16:00:00

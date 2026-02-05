@@ -12,6 +12,192 @@ let sessionId = null;
 let analysisResults = null;
 let dateColumnInfo = null;
 
+// Diagram State for Interactivity
+window.diagramState = {
+    positions: {}, // { 'Login': {x, y}, ... }
+    paths: [],     // [{ case_id: 1, sequence: [...] }, ...]
+    timings: {},   // { pathIdx_stepIdx: timingObj }
+    boxWidth: 160,
+    boxHeight: 70
+};
+
+// Drag Handlers
+window.draggedEvent = null;
+window.dragOffsetX = 0;
+window.dragOffsetY = 0;
+
+window.startDrag = function (e, eventName) {
+    if (e.button !== 0) return; // Left click only
+    // console.log('Start Drag:', eventName);
+    window.draggedEvent = eventName;
+    const el = document.getElementById('box-' + eventName.replace(/\s+/g, '-'));
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect(); // Get absolute position
+    // Handle case where offsetParent might be null or different
+    window.dragOffsetX = e.clientX - rect.left;
+    window.dragOffsetY = e.clientY - rect.top;
+
+    // Add global listeners
+    document.addEventListener('mousemove', window.onDrag);
+    document.addEventListener('mouseup', window.endDrag);
+    e.preventDefault();
+};
+
+window.onDrag = function (e) {
+    if (!window.draggedEvent) return;
+
+    const eventName = window.draggedEvent;
+    const el = document.getElementById('box-' + eventName.replace(/\s+/g, '-'));
+    if (!el) return;
+
+    const container = el.offsetParent; // Should be the relative container
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+
+    // Calculate new relative coordinates
+    let newX = e.clientX - containerRect.left - window.dragOffsetX;
+    let newY = e.clientY - containerRect.top - window.dragOffsetY;
+
+    // Snap to grid (5px)
+    newX = Math.round(newX / 5) * 5;
+    newY = Math.round(newY / 5) * 5;
+
+    // Boundary checks (optional, but good to keep inside container)
+    newX = Math.max(0, newX);
+    newY = Math.max(0, newY);
+
+    // Update DOM
+    el.style.left = newX + 'px';
+    el.style.top = newY + 'px';
+
+    // Update State
+    if (window.diagramState && window.diagramState.positions) {
+        if (!window.diagramState.positions[eventName]) {
+            window.diagramState.positions[eventName] = {};
+        }
+        window.diagramState.positions[eventName].x = newX;
+        window.diagramState.positions[eventName].y = newY;
+
+        // Render paths
+        window.renderDiagramPaths();
+    }
+};
+
+window.endDrag = function () {
+    window.draggedEvent = null;
+    document.removeEventListener('mousemove', window.onDrag);
+    document.removeEventListener('mouseup', window.endDrag);
+};
+
+window.renderDiagramPaths = function () {
+    const svg = document.getElementById('diagram-svg-layer');
+    if (!svg) return;
+
+    const container = document.getElementById('diagram-paths-container');
+    if (!container) return; // Safety check
+
+    const state = window.diagramState;
+    if (!state || !state.paths) return;
+
+    let pathsHTML = '';
+    const boxWidth = state.boxWidth;
+    const boxHeight = state.boxHeight;
+    const totalInDiagram = state.paths.length;
+
+    try {
+        state.paths.forEach((path, pathIdx) => {
+            const sequence = path.sequence;
+            const color = path.color;
+            const timings = state.timings[pathIdx] || [];
+
+            for (let i = 0; i < sequence.length - 1; i++) {
+                const fromEvent = sequence[i];
+                const toEvent = sequence[i + 1];
+
+                const fromPos = state.positions[fromEvent];
+                const toPos = state.positions[toEvent];
+
+                if (!fromPos || !toPos) continue;
+
+                const x1 = fromPos.x + boxWidth / 2;
+                const y1 = fromPos.y + boxHeight / 2;
+                const x2 = toPos.x + boxWidth / 2;
+                const y2 = toPos.y + boxHeight / 2;
+
+                const deltaX = x2 - x1;
+                const deltaY = y2 - y1;
+
+                // Offset Logic
+                const offsetStep = 6;
+                const offset = (pathIdx - (totalInDiagram - 1) / 2) * offsetStep;
+
+                // Curve Logic
+                const mx = (x1 + x2) / 2;
+                const my = (y1 + y2) / 2;
+                const nx = -deltaY;
+                const ny = deltaX;
+                const len = Math.sqrt(nx * nx + ny * ny) || 1;
+                const curveAmt = 50 + Math.abs(offset * 2);
+
+                const cpx = mx + (nx / len) * curveAmt * (i % 2 === 0 ? 1 : -1);
+                const cpy = my + (ny / len) * curveAmt * (i % 2 === 0 ? 1 : -1);
+
+                // Path
+                pathsHTML += `
+                <path d="M ${x1},${y1} Q ${cpx},${cpy} ${x2},${y2}" 
+                      stroke="${color}" 
+                      stroke-width="3" 
+                      fill="none" 
+                      marker-end="url(#arrow-${path.case_id})"
+                      opacity="0.9" />
+            `;
+
+                // Case ID Label (t=0.3)
+                const tCase = 0.3;
+                const lxCase = (1 - tCase) * (1 - tCase) * x1 + 2 * (1 - tCase) * tCase * cpx + tCase * tCase * x2;
+                const lyCase = (1 - tCase) * (1 - tCase) * y1 + 2 * (1 - tCase) * tCase * cpy + tCase * tCase * y2;
+
+                pathsHTML += `
+                <rect x="${lxCase - 25}" y="${lyCase - 8}" width="50" height="16" rx="4" fill="${color}" opacity="1"/>
+                <text x="${lxCase}" y="${lyCase + 4}" 
+                      text-anchor="middle" 
+                      font-size="10" 
+                      font-weight="800"
+                      fill="white"
+                      style="text-shadow: 0px 0px 2px rgba(0,0,0,0.2);">
+                    Case ${path.case_id}
+                </text>
+            `;
+
+                // Time Label (t=0.7)
+                const timing = timings[i];
+                if (timing && timing.label !== '00:00' && timing.label !== '0s') {
+                    const tTime = 0.7;
+                    const lxTime = (1 - tTime) * (1 - tTime) * x1 + 2 * (1 - tTime) * tTime * cpx + tTime * tTime * x2;
+                    const lyTime = (1 - tTime) * (1 - tTime) * y1 + 2 * (1 - tTime) * tTime * cpy + tTime * tTime * y2;
+                    const dbTime = timing.start_time || '';
+
+                    pathsHTML += `
+                    <g>
+                        <rect x="${lxTime - 35}" y="${lyTime - 14}" width="70" height="28" rx="6" fill="white" stroke="${color}" stroke-width="1" opacity="0.95" style="filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.1));"/>
+                        <text x="${lxTime}" y="${lyTime - 1}" text-anchor="middle" font-size="10" font-weight="700" fill="${color}">${timing.label}</text>
+                        <text x="${lxTime}" y="${lyTime + 9}" text-anchor="middle" font-size="8.5" font-weight="500" fill="#64748b">${dbTime}</text>
+                    </g>
+                `;
+                }
+            }
+        }); // End foreach
+    } catch (e) {
+        console.error("Path Render Error:", e);
+    }
+
+    if (container) {
+        container.innerHTML = pathsHTML;
+    }
+};
+
 // DOM Elements
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
@@ -887,6 +1073,377 @@ function showBankingAnalysisResults(profile) {
         return html;
     }
 
+    // Render Unified Case Flow Diagram - ALL Case IDs in ONE diagram
+    function renderUnifiedCaseFlowDiagram(flowData) {
+        if (!flowData || !flowData.case_paths || flowData.case_paths.length === 0) {
+            return '';
+        }
+
+        const eventTypes = flowData.all_event_types || [];
+        const casePaths = flowData.case_paths || [];
+        const totalCases = flowData.total_cases || 0;
+
+        // Build legend
+        let legendHTML = '<div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">';
+        casePaths.forEach((path, idx) => {
+            legendHTML += `
+                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                    <div style="width: 24px; height: 3px; background: ${path.color}; border-radius: 2px;"></div>
+                    <span style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600;">Case ${String(path.case_id).padStart(3, '0')}</span>
+                </div>
+            `;
+        });
+        legendHTML += '</div>';
+
+        // Create event boxes layout
+        let diagramHTML = '<div style="position: relative; min-height: 500px; padding: 1rem; overflow-x: auto; overflow-y: hidden;">';
+
+        // Standard Banking Flow Layout (Fixed positions for "Neat" look)
+        // Coordinates: x, y
+        const fixedPositions = {
+            'Process': { x: 50, y: 150 },
+            'Created Account': { x: 400, y: 150 },
+            'Account Open': { x: 400, y: 150 },
+            'Login': { x: 750, y: 150 },
+            'Check Balance': { x: 1100, y: 150 },          // New event
+            'Balance Inquiry': { x: 1100, y: 150 },        // Alias
+            'Withdrawal Transaction': { x: 1450, y: 150 }, // Shifted right
+            'Credit': { x: 400, y: 450 },                  // Bottom row start
+            'Deposit': { x: 400, y: 450 },
+            'Logout': { x: 750, y: 450 },
+            'End': { x: 1450, y: 450 }                     // Shifted right
+        };
+
+        const boxWidth = 160;
+        const boxHeight = 70; // Slightly shorter boxes
+
+        // Calculate positions
+        const eventPositions = {};
+
+        // Dynamic placement for events not in fixedPositions
+        let dynamicX = 50;
+        let dynamicY = 350; // Start looking in bottom row
+        const takenPositions = Object.values(fixedPositions).map(p => `${p.x},${p.y}`);
+
+        eventTypes.forEach(event => {
+            if (fixedPositions[event]) {
+                eventPositions[event] = fixedPositions[event];
+            } else if (fixedPositions[event.replace('Transaction', '').trim()]) {
+                // Fuzzy match for 'Withdrawal' vs 'Withdrawal Transaction' if needed
+                eventPositions[event] = fixedPositions[event.replace('Transaction', '').trim()];
+            } else {
+                // Find a spot
+                let placed = false;
+                // Try to place in empty spots on a simple grid
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 5; c++) {
+                        const tx = 50 + c * 350; // Wider spacing
+                        const ty = 150 + r * 300; // Taller spacing
+                        const key = `${tx},${ty}`;
+                        if (!takenPositions.includes(key) && !placed) {
+                            eventPositions[event] = { x: tx, y: ty };
+                            takenPositions.push(key);
+                            placed = true;
+                        }
+                    }
+                }
+                // Fallback if grid full
+                if (!placed) {
+                    eventPositions[event] = { x: dynamicX, y: 750 };
+                    dynamicX += 350;
+                }
+            }
+        });
+
+        // SVG for paths
+        // Calculate bounding box
+        const maxX = Math.max(...Object.values(eventPositions).map(p => p.x)) + 250;
+        const maxY = Math.max(...Object.values(eventPositions).map(p => p.y)) + 150;
+        const svgWidth = Math.max(900, maxX);
+        const svgHeight = Math.max(500, maxY);
+
+        diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1;">
+            <defs>
+                <!-- Marker for arrows -->
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" opacity="0.8" />
+                </marker>
+            </defs>
+            <g id="diagram-paths-container"></g>
+        `;
+
+        // Generate markers for all cases (Must be outside the disabled loop)
+        casePaths.forEach(path => {
+            diagramHTML += `
+                <defs>
+                    <marker id="arrow-${path.case_id}" markerWidth="8" markerHeight="6" 
+                    refX="7" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill="${path.color}" />
+                    </marker>
+                </defs>
+            `;
+        });
+
+        // Initialize Global State
+        const sequences = casePaths.map(p => ({
+            case_id: p.case_id,
+            sequence: p.path_sequence,
+            color: p.color
+        }));
+        const timingMap = {};
+        casePaths.forEach((p, idx) => { timingMap[idx] = p.timings || {}; });
+
+        window.diagramState.positions = eventPositions;
+        window.diagramState.paths = sequences;
+        window.diagramState.timings = timingMap;
+
+        setTimeout(() => window.renderDiagramPaths(), 100);
+
+        // Legacy loop disabled
+        if (false) {
+            // Draw paths for each case
+            casePaths.forEach((path, pathIdx) => {
+                const sequence = path.path_sequence;
+                const timings = path.timings;
+                const color = path.color;
+
+                // Define specific marker for this color
+                diagramHTML += `
+                <defs>
+                    <marker id="arrow-${path.case_id}" markerWidth="8" markerHeight="6" 
+                    refX="7" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill="${color}" />
+                    </marker>
+                </defs>
+            `;
+
+                for (let i = 0; i < sequence.length - 1; i++) {
+                    const fromEvent = sequence[i];
+                    const toEvent = sequence[i + 1];
+
+                    const fromPos = eventPositions[fromEvent];
+                    const toPos = eventPositions[toEvent];
+
+                    if (!fromPos || !toPos) continue;
+
+                    // Center points
+                    const x1 = fromPos.x + boxWidth / 2;
+                    const y1 = fromPos.y + boxHeight / 2;
+                    const x2 = toPos.x + boxWidth / 2;
+                    const y2 = toPos.y + boxHeight / 2;
+
+                    // Adjust start/end points to be on the edge of the box
+                    // Simple approx: closest box edge
+                    // Actually, let's just use center-to-center but mask lines behind boxes? 
+                    // No, better to draw to edges.
+                    // Let's stick to simple center-to-center with logic for offset.
+
+                    // Calculate offset to separate multiple lines
+                    // Spread lines by 4px
+                    const totalInDiagram = casePaths.length;
+                    const offsetStep = 6;
+                    const offset = (pathIdx - (totalInDiagram - 1) / 2) * offsetStep;
+
+                    // Control points for curvature
+                    // New logic: Use distinct curves for overlap avoidance
+                    // If y1 == y2 (same row), curve arc up or down
+                    // If x1 == x2 (same col), curve out
+
+                    const deltaX = x2 - x1;
+                    const deltaY = y2 - y1;
+                    const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+                    let cx, cy;
+
+                    // Curvature strategy
+                    if (Math.abs(deltaY) < 10) {
+                        // Horizontal
+                        cx = (x1 + x2) / 2;
+                        cy = y1 + (pathIdx % 2 === 0 ? -40 - Math.abs(offset) : 40 + Math.abs(offset));
+                    } else if (Math.abs(deltaX) < 10) {
+                        // Vertical
+                        cx = x1 + (pathIdx % 2 === 0 ? -40 - Math.abs(offset) : 40 + Math.abs(offset));
+                        cy = (y1 + y2) / 2;
+                    } else {
+                        // Diagonal
+                        cx = (x1 + x2) / 2 + (pathIdx % 2 === 0 ? -30 : 30);
+                        cy = (y1 + y2) / 2 + (pathIdx % 2 === 0 ? 30 : -30);
+                    }
+
+                    // Make path data
+                    // Shift start/end slightly by offset perpendicular to line? 
+                    // Let's just shift the whole curve by offset in logic if possible, 
+                    // but simpler is just varying control point `cx, cy` slightly works too.
+                    // Actually simpler: just offset the control point significantly per index
+
+                    // Refinining curvature:
+                    // Use a quadratic bezier Q.
+                    // Control point depends on pathIdx to separate bundles
+
+                    const cpOffsetX = (pathIdx - (totalInDiagram) / 2) * 15;
+                    const cpOffsetY = (pathIdx - (totalInDiagram) / 2) * 15;
+
+                    // Basic control point is midpoint + some normal vector
+                    const mx = (x1 + x2) / 2;
+                    const my = (y1 + y2) / 2;
+                    // Normal vector (-dy, dx)
+                    const nx = -deltaY;
+                    const ny = deltaX;
+                    // Normalize
+                    const len = Math.sqrt(nx * nx + ny * ny) || 1;
+                    // Curvature amount
+                    const curveAmt = 50 + Math.abs(offset * 2);
+
+                    // Final Control Point
+                    const cpx = mx + (nx / len) * curveAmt * (i % 2 === 0 ? 1 : -1);
+                    const cpy = my + (ny / len) * curveAmt * (i % 2 === 0 ? 1 : -1);
+
+                    // Shift final line slightly parallel?
+                    // For simplicity, just draw from center to center with distinct curves
+
+                    // Draw individual segment with arrowhead
+                    diagramHTML += `
+                    <path d="M ${x1},${y1} Q ${cpx},${cpy} ${x2},${y2}" 
+                          stroke="${color}" 
+                          stroke-width="3" 
+                          fill="none" 
+                          marker-end="url(#arrow-${path.case_id})"
+                          opacity="0.9" />
+                `;
+
+                    // CASE ID LABEL (On EVERY segment now)
+                    // Place label closer to start (t = 0.3)
+                    const tCase = 0.3;
+                    const lxCase = (1 - tCase) * (1 - tCase) * x1 + 2 * (1 - tCase) * tCase * cpx + tCase * tCase * x2;
+                    const lyCase = (1 - tCase) * (1 - tCase) * y1 + 2 * (1 - tCase) * tCase * cpy + tCase * tCase * y2;
+
+                    diagramHTML += `
+                    <rect x="${lxCase - 25}" y="${lyCase - 8}" width="50" height="16" rx="4" fill="${color}" opacity="1"/>
+                    <text x="${lxCase}" y="${lyCase + 4}" 
+                          text-anchor="middle" 
+                          font-size="10" 
+                          font-weight="800"
+                          fill="white"
+                          style="text-shadow: 0px 0px 2px rgba(0,0,0,0.2);">
+                        Case ${path.case_id}
+                    </text>
+                `;
+
+                    // Time label
+                    const timing = timings[i];
+                    if (timing && timing.label !== '00:00' && timing.label !== '0s') {
+                        // Position label at peak of curve (approx t=0.7)
+                        const t = 0.7;
+                        const lx = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * cpx + t * t * x2;
+                        const ly = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * cpy + t * t * y2;
+
+                        const dbTime = timing.start_time || '';
+
+                        // Detailed Label: Duration + DB Time
+                        // Increase box size to fit two lines
+                        diagramHTML += `
+                        <g>
+                            <rect x="${lx - 35}" y="${ly - 14}" width="70" height="28" rx="6" fill="white" stroke="${color}" stroke-width="1" opacity="0.95" style="filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.1));"/>
+                            
+                            <!-- Duration -->
+                            <text x="${lx}" y="${ly - 1}" 
+                                  text-anchor="middle" 
+                                  font-size="10" 
+                                  font-weight="700"
+                                  fill="${color}">
+                                ${timing.label}
+                            </text>
+                            
+                            <!-- DB Timestamp -->
+                            <text x="${lx}" y="${ly + 9}" 
+                                  text-anchor="middle" 
+                                  font-size="8.5" 
+                                  font-weight="500"
+                                  fill="#64748b">
+                                ${dbTime}
+                            </text>
+                        </g>
+                    `;
+                    }
+                }
+            });
+        } // End disabled loop
+
+        diagramHTML += '</svg>';
+
+        // Draw event boxes
+        eventTypes.forEach(event => {
+            const pos = eventPositions[event];
+            if (!pos) return;
+
+            let boxColor = '#1e3a8a'; // Darker blue
+            let boxBg = '#2563eb'; // Blue
+
+            if (event === 'Process') { boxBg = '#1e40af'; }
+            else if (event === 'End') { boxBg = '#ffffff'; boxColor = '#1e40af'; }
+            else if (['Login', 'Logout'].includes(event)) { boxBg = '#2563eb'; }
+            else if (['Created Account', 'Account Open'].includes(event)) { boxBg = '#2563eb'; }
+            else if (['Withdrawal Transaction', 'Debit'].includes(event)) { boxBg = '#0f766e'; } // Teal
+            else if (['Credit', 'Deposit'].includes(event)) { boxBg = '#0f766e'; }
+            else if (['Refund'].includes(event)) { boxBg = '#059669'; } // Green
+            else { boxBg = '#475569'; } // Slate
+
+            const isEnd = event === 'End';
+            const borderStyle = isEnd
+                ? `border: 3px solid ${boxColor}; background: white; color: ${boxColor};`
+                : `background: ${boxBg}; color: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);`;
+
+            diagramHTML += `
+                <div id="box-${event.replace(/\s+/g, '-')}" 
+                     onmousedown="startDrag(event, '${event}')"
+                     style="
+                    cursor: move;
+                    position: absolute;
+                    left: ${pos.x}px;
+                    top: ${pos.y}px;
+                    width: ${boxWidth}px;
+                    height: ${boxHeight}px;
+                    ${borderStyle}
+                    border-radius: ${isEnd ? '50px' : '12px'};
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    text-align: center;
+                    font-weight: 700;
+                    font-size: 0.95rem;
+                    z-index: 2;
+                    padding: 0.5rem;
+                    line-height: 1.2;
+                ">
+                    ${event}
+                </div>
+            `;
+        });
+
+        diagramHTML += '</div>';
+
+        return `
+            <section style="margin-bottom: 2.5rem;">
+                <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center;">
+                    🔄 Unified Case Flow Diagram
+                </h2>
+                <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem; text-align: center;">
+                    All ${totalCases} Case IDs shown in one unified flow. Each colored path represents one Case ID. Time labels show duration between events.
+                </p>
+                
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
+                    <div style="margin-bottom: 1rem;">
+                        <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Legend</div>
+                        ${legendHTML}
+                    </div>
+                    
+                    ${diagramHTML}
+                </div>
+            </section>
+        `;
+    }
+
     const caseDetails = bkData.case_details || [];
     const caseIds = bkData.case_ids || [];
     const totalCases = bkData.total_cases || 0;
@@ -922,6 +1479,8 @@ function showBankingAnalysisResults(profile) {
             </p>
 
             ${buildEventBlueprintFromBackend(bkData.event_columns, caseDetails)}
+            
+            ${renderUnifiedCaseFlowDiagram(bkData.unified_flow_data)}
             
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">‹ Explanations</h2>
