@@ -543,7 +543,7 @@ async def detect_date_columns(session_id: str):
 
 
 @app.post("/api/analyze-accounts/{session_id}")
-async def analyze_accounts(session_id: str, date_column: str = None, id_column: str = None, activity_column: str = None):
+async def _analyze_accounts_deprecated(session_id: str, date_column: str = None, id_column: str = None, activity_column: str = None):
     """
     Analyze account age, growth trends, and inactive customers.
     
