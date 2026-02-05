@@ -616,7 +616,7 @@ function showBankingAnalysisResults(profile) {
     }
 
     // --- Column-level Event Blueprint (uses backend event_columns from banking_analyzer) ---
-    function buildEventBlueprintFromBackend(eventColumns) {
+    function buildEventBlueprintFromBackend(eventColumns, caseDetails) {
         const eventOrder = ['account_open', 'login', 'deposit', 'withdraw', 'refund', 'failed', 'logout', 'check_balance'];
         const eventLabels = {
             account_open: 'Created Account',
@@ -630,6 +630,21 @@ function showBankingAnalysisResults(profile) {
         };
 
         const eventMap = eventColumns || {};
+
+        // If we see real logout steps in the Case ID data but the backend
+        // did not report any explicit logout columns (rare edge case),
+        // synthesize a simple placeholder so the Logout box still appears
+        // in the diagram. This keeps the diagram 100% driven by dynamic
+        // events, but never hides Logout when it is present in sessions.
+        const hasLogoutEvents = Array.isArray(caseDetails)
+            ? caseDetails.some(c => (c.event_sequence || []).includes('logout'))
+            : false;
+        if (hasLogoutEvents && (!eventMap.logout || eventMap.logout.length === 0)) {
+            eventMap.logout = eventMap.logout || [];
+            if (!eventMap.logout.includes('Sessions.logout_time')) {
+                eventMap.logout.push('Sessions.logout_time');
+            }
+        }
         const hasAnyEvent = Object.keys(eventMap).some((k) => (eventMap[k] || []).length > 0);
         if (!hasAnyEvent) {
             // Count total detected events to show in message
@@ -906,7 +921,7 @@ function showBankingAnalysisResults(profile) {
                 ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} user(s) â€¢ ${totalActivities} activities
             </p>
 
-            ${buildEventBlueprintFromBackend(bkData.event_columns)}
+            ${buildEventBlueprintFromBackend(bkData.event_columns, caseDetails)}
             
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">‹ Explanations</h2>
