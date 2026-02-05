@@ -43,7 +43,7 @@ window.showOpenDateExplanation = function (index, nodeEl) {
     if (!entry) return;
     const creations = entry.creations || [];
     const multiCusts = entry.multi_create_customers || [];
-    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">ðŸ“… Date: ' + entry.date + '</div><button type="button" onclick="showOpenDateExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
+    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">… Date: ' + entry.date + '</div><button type="button" onclick="showOpenDateExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
     html += '<div style="font-size: 0.95rem; color: #475569; margin-bottom: 1rem;">' + entry.count + ' account(s) created on this date.</div>';
     if (entry.multi_create_same_day && multiCusts.length) {
         html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">âš ï¸ One customer created 2+ accounts this day: ' + multiCusts.join(', ') + '.</div>';
@@ -83,7 +83,7 @@ window.showLoginDayExplanation = function (index, nodeEl) {
     const entry = index === -1 ? daily[0] : index === -2 ? daily[daily.length - 1] : daily[index];
     if (!entry) return;
     const logins = entry.logins || [];
-    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">ðŸ“… Date: ' + entry.date + '</div><button type="button" onclick="showLoginDayExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
+    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">… Date: ' + entry.date + '</div><button type="button" onclick="showLoginDayExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
     html += '<div style="font-size: 0.95rem; color: #475569; margin-bottom: 1rem;">' + entry.login_count + ' login(s). New: ' + entry.new_account_logins + ', Old: ' + entry.old_account_logins + '.</div>';
     if (entry.multi_login_same_day && (entry.multi_login_accounts || []).length) {
         html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">âš ï¸ One user logged in 2+ times on this day: ' + entry.multi_login_accounts.join(', ') + '.</div>';
@@ -127,7 +127,7 @@ window.showTxnDayExplanation = function (index, nodeEl) {
     if (!entry) return;
     const txns = entry.transactions || [];
     const multiAccs = entry.multi_accounts || [];
-    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">ðŸ“… Date: ' + entry.date + '</div><button type="button" onclick="showTxnDayExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
+    let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;"><div style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">… Date: ' + entry.date + '</div><button type="button" onclick="showTxnDayExplanation(null, null); event.stopPropagation();" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #475569;">â† Back</button></div>';
     html += '<div style="font-size: 0.95rem; color: #475569; margin-bottom: 1rem;">' + entry.transaction_count + ' transaction(s). Credits: ' + entry.credits + ', Debits: ' + entry.debits + ', Refunds: ' + entry.refunds + ', Blocked: ' + entry.declined + '. <strong>PASS: ' + (entry.pass_count || 0) + '</strong> Â· <strong style="color: #dc2626;">FAIL: ' + (entry.fail_count || 0) + '</strong></div>';
     if (entry.multi_user_same_day && multiAccs.length) html += '<div style="padding: 0.6rem 1rem; background: rgba(236,72,153,0.15); border-radius: 8px; margin-bottom: 1rem; font-size: 1rem; font-weight: 600; color: #be185d;">âš ï¸ ' + multiAccs.join(', ') + ' performed 2+ transactions on this day.</div>';
     html += '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
@@ -220,7 +220,7 @@ function displayFileList() {
         const fileItem = document.createElement('div');
         fileItem.className = 'file-item';
         fileItem.innerHTML = `
-            <div class="file-icon">ðŸ“„</div>
+            <div class="file-icon">„</div>
             <div class="file-info">
                 <div class="file-name">${file.name}</div>
                 <div class="file-size">${formatFileSize(file.size)}</div>
@@ -365,7 +365,7 @@ function showDomainSplitView() {
     if (!analysisResults || analysisResults.length === 0) {
         mainContent.innerHTML = `
             <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center;">
-                <div style="font-size: 4rem; margin-bottom: 1rem;">ðŸ“Š</div>
+                <div style="font-size: 4rem; margin-bottom: 1rem;"></div>
                 <h2 style="font-size: 1.8rem; margin-bottom: 1rem; color: var(--text-primary);">No Databases Detected</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 2rem; max-width: 500px;">
                     We could not detect distinct data groups. Try uploading CSV files with clear table structure.
@@ -404,7 +404,7 @@ function showDomainSplitView() {
         const cardColor = isBanking ? '#0F766E' : (isHealthcare ? '#14B8A6' : '#64748B');
         const cardLabel = isBanking ? ` ${profile.database_name}` :
             (isHealthcare ? ` Healthcare Database ${index + 1}` :
-                `ðŸ“Š Database ${index + 1}: General / Mixed`);
+                ` Database ${index + 1}: General / Mixed`);
 
         if (!domainData || !domainData.chart_data) return;
 
@@ -483,7 +483,7 @@ function showDomainSplitView() {
                                 id="analyze-btn-${index}"
                                 onclick="startDatabaseAnalysis(${index})"
                                 style="width: 100%; padding: 1rem 2rem; font-size: 1.1rem; position: relative;">
-                                ${isBanking ? '¦ Analyze Banking Data' : (isHealthcare ? ' Analyze Healthcare Data' : 'ðŸ“Š Analyze Data')} â†’
+                                ${isBanking ? '¦ Analyze Banking Data' : (isHealthcare ? ' Analyze Healthcare Data' : ' Analyze Data')} â†’
                             </button>
                             <div id="analyze-status-${index}" style="margin-top: 0.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; display: none;">
                                 Processing...
@@ -909,7 +909,7 @@ function showBankingAnalysisResults(profile) {
             ${buildEventBlueprintFromBackend(bkData.event_columns)}
             
             <section style="margin-bottom: 2rem;">
-                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">ðŸ“‹ Explanations</h2>
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">‹ Explanations</h2>
                 <div style="background: ${BANK_BG}; border: 1px solid ${BANK_BORDER}; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem;">
                     <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-primary); line-height: 1.8;">
                         ${explanations.map(e => '<li>' + e + '</li>').join('')}
@@ -932,7 +932,7 @@ function showBankingAnalysisResults(profile) {
             </section>
 
             <section style="margin-bottom: 2rem;">
-                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">ðŸ“Œ Case IDs (Ascending)</h2>
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Case IDs (Ascending)</h2>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
                     ${caseDetails.map((c, i) => `
                         <div class="banking-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, ${BANK_COLOR}, #0D5C54); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(15,118,110,0.3); transition: all 0.2s;"
@@ -1067,7 +1067,7 @@ function showHealthcareAnalysisResults(profile) {
             <!-- Diagram: Start ----|----|---- End -->
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">
-                    ðŸ“… Sorted Timeline (${firstDate} â†’ ${lastDate})
+                    … Sorted Timeline (${firstDate} â†’ ${lastDate})
                 </h2>
                 <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
                     Click any box to see column explanations (admission, appointment, discharge, lab, etc.) from your uploaded files.
@@ -1157,7 +1157,7 @@ window.showHealthcareNodeDetails = function (nodeIndex) {
     let html = `
         <div style="background: var(--bg-card); border: 2px solid #14B8A6; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(20,184,166,0.15);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">ðŸ“… ${dateStr} ${timeStr || ''}</h3>
+                <h3 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">… ${dateStr} ${timeStr || ''}</h3>
                 <button class="btn-secondary" onclick="showHealthcareNodeDetails(${nodeIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">âœ• Close</button>
             </div>
             <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
@@ -1300,7 +1300,7 @@ window.showHealthcareDateDetails = function (dateIndex) {
         ">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
                 <h2 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">
-                    ðŸ“… ${dateInfo.date} ${isAppointment ? '(Appointments)' : '(Visits)'}
+                    … ${dateInfo.date} ${isAppointment ? '(Appointments)' : '(Visits)'}
                 </h2>
                 <button 
                     onclick="showHealthcareDateDetails(window.healthcareSelectedDateIndex);"
