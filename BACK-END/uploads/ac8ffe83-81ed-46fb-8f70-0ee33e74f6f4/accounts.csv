@@ -1,6 +1,0 @@
-account_id,customer_id,account_type,balance,last_transaction,rule_effect,login_date
-ACC001,CUST001,Savings,500,CREDIT 500,No rule triggered,2026-02-01 09:15:00
-ACC002,CUST002,Current,0,DEBIT 2000,Rule Alert: Insufficient Funds,2026-02-01 10:30:00
-ACC003,CUST003,Savings,1000,CREDIT 1000,No rule triggered,2026-01-28 14:22:00
-ACC004,CUST004,Current,1500,CREDIT 1500,No rule triggered,2026-01-30 16:50:00
-ACC005,CUST005,Savings,-500,DEBIT 500,Rule Alert: Negative Balance Detected,2026-02-02 11:00:00

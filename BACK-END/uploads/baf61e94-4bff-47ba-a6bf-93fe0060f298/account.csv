@@ -1,4 +1,0 @@
-account_number,customer_id,account_type,account_status,open_date,branch_code,current_balance
-ACC101,CUST01,LOAN,ACTIVE,2023-01-10,BR001,1500000
-ACC102,CUST03,LOAN,CLOSED,2022-05-15,BR002,0
-ACC103,CUST04,LOAN,ACTIVE,2024-03-20,BR001,500000

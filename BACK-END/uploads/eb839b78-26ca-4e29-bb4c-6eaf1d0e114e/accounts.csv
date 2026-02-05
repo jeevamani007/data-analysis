@@ -1,5 +1,0 @@
-account_id,customer_id,account_type,balance,status,login_date
-ACC001,CUST001,Savings,50000,Active,2026-02-01 09:15:23
-ACC002,CUST002,Current,150000,Active,2026-02-01 10:30:45
-ACC003,CUST003,Savings,25000,Inactive,2026-01-28 14:22:10
-ACC004,CUST004,Current,75000,Active,2026-01-30 16:50:12

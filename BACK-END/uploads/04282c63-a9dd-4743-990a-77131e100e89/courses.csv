@@ -1,5 +1,0 @@
-card_id,customer_id,card_type,card_limit,status,issued_on
-CARD001,CUST001,Credit,100000,Active,2026-01-05 09:00:00
-CARD002,CUST002,Debit,50000,Active,2026-01-06 10:10:10
-CARD003,CUST003,Credit,75000,Inactive,2026-01-08 11:20:20
-CARD004,CUST004,Debit,30000,Active,2026-01-10 12:30:30

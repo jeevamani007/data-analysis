@@ -1,4 +1,0 @@
-card_txn_id,card_id,txn_date,amount,merchant
-CTX01,CC301,2024-01-03,2500,Amazon
-CTX02,CC302,2024-01-04,5000,Flipkart
-CTX03,CC303,2024-01-05,1200,Swiggy

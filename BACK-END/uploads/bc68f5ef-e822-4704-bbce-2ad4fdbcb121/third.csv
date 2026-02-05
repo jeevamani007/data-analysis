@@ -1,4 +1,0 @@
-appointment_id,patient_id,doctor_id,appointment_date,appointment_time,created_timestamp
-A001,P001,D001,2026-02-02,10:00,2026-02-02 09:50:00
-A002,P002,D002,2026-02-02,11:00,2026-02-02 10:45:00
-A003,P003,D003,2026-02-03,09:00,2026-02-03 08:50:00

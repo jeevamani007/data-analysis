@@ -1,5 +1,0 @@
-customer_id,customer_name,email,phone,kyc_status,created_at
-CUST001,John Doe,john@example.com,9876543210,Verified,2026-01-01 08:15:10
-CUST002,Jane Smith,jane@example.com,9876543211,Pending,2026-01-05 09:25:30
-CUST003,Robert Brown,robert@example.com,9876543212,Verified,2026-01-10 10:35:45
-CUST004,Linda Green,linda@example.com,9876543213,Rejected,2026-01-12 11:45:55
