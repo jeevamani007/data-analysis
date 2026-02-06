@@ -254,7 +254,7 @@ class BankingAnalyzer:
         Detect event-related columns for a single table using only column names and simple patterns.
         This is used to build the Event Columns Blueprint for the UI.
         It does not read any row values.
-        Enhanced to detect more column name variations and support columns without strict date/time suffixes.
+        Enhanced to require banking context and exclude healthcare patterns.
         """
         events: Dict[str, List[str]] = {
             'account_open': [],
@@ -267,9 +267,32 @@ class BankingAnalyzer:
             'check_balance': [],
         }
 
+        # Helper function to check if column has healthcare context
+        def has_healthcare_context(col_name: str) -> bool:
+            c = col_name.lower().replace('-', '_').replace(' ', '_')
+            healthcare_keywords = [
+                'patient', 'doctor', 'diagnosis', 'treatment', 'admission', 'discharge',
+                'hospital', 'medical', 'prescription', 'lab', 'test', 'appointment',
+                'ward', 'bed', 'clinic', 'blood', 'donor', 'medication', 'surgery'
+            ]
+            return any(kw in c for kw in healthcare_keywords)
+
+        # Helper function to check if column has banking context
+        def has_banking_context(col_name: str) -> bool:
+            c = col_name.lower().replace('-', '_').replace(' ', '_')
+            banking_keywords = [
+                'account', 'transaction', 'banking', 'payment', 'transfer',
+                'loan', 'card', 'branch', 'customer', 'user', 'session'
+            ]
+            return any(kw in c for kw in banking_keywords)
+
         for col in df.columns:
             name = str(col)
             c = name.lower().replace('-', '_').replace(' ', '_')
+
+            # EXCLUDE healthcare columns immediately
+            if has_healthcare_context(name):
+                continue
 
             # Time-based purpose (login / logout / open / created / transaction)
             purpose = self._infer_time_purpose(name)
@@ -280,44 +303,38 @@ class BankingAnalyzer:
             elif purpose in ('open', 'created'):
                 events['account_open'].append(name)
 
-            # Deposit / credit columns - broader matching
-            # Support columns with date/time OR just the event name
+            # Deposit / credit columns - require banking context OR explicit timestamp keywords
             if 'deposit' in c or ('credit' in c and 'card' not in c):
-                # Already added by time purpose above, or add if has timestamp keywords or is event-type column
-                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or c in ('deposit', 'credit', 'deposit_amount', 'credit_amount'):
+                # Only add if it has timestamp keywords OR banking context
+                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or has_banking_context(name):
                     if name not in events['deposit']:
                         events['deposit'].append(name)
 
-            # Withdraw / debit columns - broader matching
+            # Withdraw / debit columns - require banking context OR explicit timestamp keywords
             if ('withdraw' in c or 'withdrawal' in c or 'debit' in c):
-                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or c in ('withdraw', 'withdrawal', 'debit', 'withdraw_amount', 'debit_amount'):
+                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or has_banking_context(name):
                     if name not in events['withdraw']:
                         events['withdraw'].append(name)
 
-            # Refund columns - broader matching
+            # Refund columns - require banking context OR explicit timestamp keywords
             if 'refund' in c:
-                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or c in ('refund', 'refund_amount'):
+                if any(k in c for k in ('date', 'time', 'timestamp', 'at', 'on')) or has_banking_context(name):
                     if name not in events['refund']:
                         events['refund'].append(name)
 
-            # Failed / declined / blocked / invalid indicators - add status columns
-            if any(k in c for k in ('failed', 'declined', 'blocked', 'invalid', 'negative', 'status', 'result')):
-                # Also check for status-related event detection
-                if 'status' in c or 'result' in c or any(k in c for k in ('failed', 'declined', 'blocked', 'invalid', 'negative')):
-                    if name not in events['failed']:
-                        events['failed'].append(name)
-
-            # Balance columns (used for Check Balance)
-            if 'balance' in c:
+            # Balance columns - ONLY if banking context (avoid healthcare "patient balance" etc.)
+            if 'balance' in c and has_banking_context(name):
                 if name not in events['check_balance']:
                     events['check_balance'].append(name)
             
+            # REMOVED: Generic status/result/invalid/negative matching
+            # These are too broad and capture healthcare columns
+            
             # Special handling for event/transaction_type columns
-            # These columns contain the event type as values, not in the column name
-            if c in ('event', 'transaction_type', 'txn_type', 'type', 'activity', 'action'):
+            # Only add if it has clear banking context
+            if c in ('transaction_type', 'txn_type', 'banking_activity', 'activity_type'):
                 # Add to all relevant event types since this column can indicate any event
-                # We'll mark it specially so the UI knows it's a multi-purpose event indicator
-                for event_type in ['login', 'logout', 'deposit', 'withdraw', 'refund', 'failed']:
+                for event_type in ['login', 'logout', 'deposit', 'withdraw', 'refund']:
                     if name not in events[event_type]:
                         events[event_type].append(name)
 
