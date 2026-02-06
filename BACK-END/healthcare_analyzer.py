@@ -27,6 +27,9 @@ COLUMN_CLASS_AMOUNT = "Amount column"
 COLUMN_CLASS_DESCRIPTION = "Description column"
 COLUMN_CLASS_OTHER = "Other"
 
+# Case split: gap (hours) between events above this = new Case ID for same patient
+HEALTHCARE_CASE_GAP_HOURS = 24.0
+
 
 class HealthcareAnalyzer:
     """
@@ -795,6 +798,7 @@ class HealthcareAnalyzer:
                 'table_workflow_role': table_workflow_role,
                 '_patient_id': patient_id,
                 '_event_datetime': dt,
+                'patient_id': patient_id or 'unknown',
             }
             if adm_col and adm_col in row.index:
                 rec['_admission_datetime'] = pd.to_datetime(row[adm_col], errors='coerce')
@@ -804,6 +808,199 @@ class HealthcareAnalyzer:
                 rec['stay_duration'] = stay_duration
             records.append(rec)
         return records
+
+    def _record_to_step_name(self, rec: Dict[str, Any]) -> str:
+        """Event/step name for this record: workflow role or table name (title case)."""
+        role_info = rec.get('table_workflow_role') or {}
+        role = (role_info.get('role') or '').strip()
+        if role:
+            return role.replace('_', ' ').title()
+        return (rec.get('table_name') or 'Step').replace('_', ' ').title()
+
+    def _identify_healthcare_cases(
+        self,
+        all_records: List[Dict[str, Any]],
+        gap_hours: float = HEALTHCARE_CASE_GAP_HOURS,
+    ) -> List[List[Dict[str, Any]]]:
+        """
+        Group records by patient_id, sort by time, split by gap. Repeated pattern (same patient, later) = new case.
+        Returns list of cases, each case = list of records in time order.
+        """
+        by_patient: Dict[str, List[Dict]] = {}
+        for r in all_records:
+            pid = r.get('patient_id') or r.get('_patient_id') or 'unknown'
+            if pid not in by_patient:
+                by_patient[pid] = []
+            by_patient[pid].append(r)
+
+        cases: List[List[Dict]] = []
+        for pid, recs in by_patient.items():
+            recs_sorted = sorted(recs, key=lambda x: x.get('datetime_sort') or pd.Timestamp.min)
+            current: List[Dict] = []
+            last_ts: Optional[pd.Timestamp] = None
+            for r in recs_sorted:
+                ts = r.get('datetime_sort')
+                if ts is None:
+                    try:
+                        ts = pd.to_datetime(r.get('event_datetime', ''))
+                    except Exception:
+                        ts = pd.Timestamp.min
+                if last_ts is not None and ts is not None:
+                    gap_h = (ts - last_ts).total_seconds() / 3600
+                    if gap_h >= gap_hours:
+                        if current:
+                            cases.append(current)
+                        current = []
+                current.append(r)
+                last_ts = ts
+            if current:
+                cases.append(current)
+
+        cases.sort(key=lambda c: (c[0].get('datetime_sort') or pd.Timestamp.min))
+        return cases
+
+    def _assign_healthcare_case_ids(
+        self,
+        cases: List[List[Dict[str, Any]]],
+    ) -> List[Dict[str, Any]]:
+        """Assign case_id to each case, build case_details (activities, event_sequence, explanation)."""
+        case_details = []
+        for i, case_recs in enumerate(cases):
+            case_id = i + 1
+            activities = []
+            for r in case_recs:
+                ts = r.get('datetime_sort')
+                ts_str = r.get('event_datetime', '') or ''
+                if hasattr(ts, 'strftime'):
+                    ts_str = ts.strftime('%Y-%m-%d %H:%M:%S')
+                step = self._record_to_step_name(r)
+                raw = r.get('record') or {}
+            activities.append({
+                    'event': step,
+                    'timestamp_str': ts_str,
+                    'user_id': r.get('patient_id') or 'unknown',
+                    'table_name': r.get('table_name'),
+                    'file_name': r.get('file_name'),
+                    'source_row': r.get('source_row_index'),
+                    'raw_record': {k: str(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else '' for k, v in raw.items()},
+                })
+            user_id = (case_recs[0].get('patient_id') or case_recs[0].get('_patient_id') or 'unknown')
+            event_sequence = [self._record_to_step_name(r) for r in case_recs]
+            explanation = self._build_healthcare_case_explanation(case_id, user_id, case_recs)
+            case_details.append({
+                'case_id': case_id,
+                'user_id': user_id,
+                'patient_id': user_id,
+                'first_activity_timestamp': activities[0]['timestamp_str'] if activities else '',
+                'last_activity_timestamp': activities[-1]['timestamp_str'] if activities else '',
+                'activity_count': len(activities),
+                'activities': activities,
+                'event_sequence': event_sequence,
+                'explanation': explanation,
+            })
+        return case_details
+
+    def _build_healthcare_case_explanation(
+        self,
+        case_id: int,
+        patient_id: str,
+        case_recs: List[Dict[str, Any]],
+    ) -> str:
+        """Short explanation for this case: patient, date range, steps."""
+        if not case_recs:
+            return f"Case {case_id}: Patient {patient_id}. No steps."
+        first = case_recs[0]
+        last = case_recs[-1]
+        start_str = first.get('event_datetime', '') or f"{first.get('date', '')} {first.get('time', '')}".strip()
+        end_str = last.get('event_datetime', '') or f"{last.get('date', '')} {last.get('time', '')}".strip()
+        steps = [self._record_to_step_name(r) for r in case_recs]
+        return f"Case {case_id}: Patient {patient_id}. From {start_str} to {end_str}. Steps: {', '.join(steps)}."
+
+    def _generate_unified_flow_data_healthcare(
+        self,
+        case_details: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Unified flow for healthcare: Process → steps → End with timings (same structure as banking)."""
+        colors = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+            '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788',
+            '#E63946', '#F1FAEE', '#A8DADC', '#457B9D', '#1D3557'
+        ]
+        case_paths = []
+        for idx, case in enumerate(case_details):
+            activities = case.get('activities', [])
+            if not activities:
+                continue
+            case_color = colors[idx % len(colors)]
+            path_sequence = ['Process']
+            timings = []
+            prev_ts = None
+            prev_event_name = 'Process'
+            for i, act in enumerate(activities):
+                event_display = act.get('event', 'Step')
+                ts_str = act.get('timestamp_str', '')
+                try:
+                    ts = pd.to_datetime(ts_str)
+                except Exception:
+                    ts = None
+                if prev_ts is not None and ts is not None:
+                    duration_seconds = max(0, int((ts - prev_ts).total_seconds()))
+                    days = duration_seconds // 86400
+                    hours = (duration_seconds % 86400) // 3600
+                    minutes = (duration_seconds % 3600) // 60
+                    seconds = duration_seconds % 60
+                    if days > 0:
+                        time_label = f"{days} day{'s' if days != 1 else ''} {hours} hr"
+                    elif hours > 0:
+                        time_label = f"{hours} hr {minutes} min" if minutes else f"{hours} hr"
+                    elif minutes > 0:
+                        time_label = f"{minutes} min {seconds} sec" if seconds else f"{minutes} min"
+                    else:
+                        time_label = f"{seconds} sec"
+                else:
+                    duration_seconds = 0
+                    time_label = 'Start' if prev_event_name == 'Process' else '0 sec'
+                path_sequence.append(event_display)
+                timings.append({
+                    'from': prev_event_name,
+                    'to': event_display,
+                    'duration_seconds': duration_seconds,
+                    'label': time_label,
+                    'start_time': prev_ts.strftime('%H:%M:%S') if prev_ts else '',
+                    'end_time': ts.strftime('%H:%M:%S') if ts else '',
+                    'start_datetime': prev_ts.strftime('%Y-%m-%d %H:%M:%S') if prev_ts else '',
+                    'end_datetime': ts.strftime('%Y-%m-%d %H:%M:%S') if ts else '',
+                })
+                prev_ts = ts
+                prev_event_name = event_display
+            path_sequence.append('End')
+            last_ts = prev_ts
+            timings.append({
+                'from': prev_event_name,
+                'to': 'End',
+                'duration_seconds': 0,
+                'label': 'End',
+                'start_time': last_ts.strftime('%H:%M:%S') if last_ts else '',
+                'end_time': last_ts.strftime('%H:%M:%S') if last_ts else '',
+                'start_datetime': last_ts.strftime('%Y-%m-%d %H:%M:%S') if last_ts else '',
+                'end_datetime': last_ts.strftime('%Y-%m-%d %H:%M:%S') if last_ts else '',
+            })
+            case_paths.append({
+                'case_id': case.get('case_id'),
+                'user_id': case.get('user_id'),
+                'color': case_color,
+                'path_sequence': path_sequence,
+                'timings': timings,
+                'total_duration': sum(t['duration_seconds'] for t in timings),
+            })
+        all_event_types = ['Process'] + list(dict.fromkeys(
+            s for path in case_paths for s in path['path_sequence'] if s not in ('Process', 'End')
+        )) + ['End']
+        return {
+            'all_event_types': all_event_types,
+            'case_paths': case_paths,
+            'total_cases': len(case_paths),
+        }
 
     def analyze_cluster(
         self,
@@ -867,6 +1064,19 @@ class HealthcareAnalyzer:
         # Appointment–admission gap: if gap > 2 hours, mark as hospital delay
         self._add_appointment_admission_gap_analysis(all_records)
 
+        # Case ID logic (same idea as banking): split by patient + time gap, full sorted case list, explanation per case
+        cases = self._identify_healthcare_cases(all_records)
+        case_details = self._assign_healthcare_case_ids(cases)
+        unified_flow_data = self._generate_unified_flow_data_healthcare(case_details)
+        case_ids_asc = [c['case_id'] for c in case_details]
+        users_with_cases = list(dict.fromkeys(c['user_id'] for c in case_details))
+        explanations = [
+            f"We found {len(case_details)} case(s). Each case is one patient journey (steps in time order).",
+            f"Case IDs are numbered 1 to {len(case_details)} in order of first event time.",
+            "Same patient with a gap of 24 hours or more starts a new Case ID.",
+            "Each case lists steps (e.g. Registration, Appointment, Admission, Treatment, Discharge) from your files.",
+        ]
+
         for r in all_records:
             del r['datetime_sort']
             for k in list(r.keys()):
@@ -914,4 +1124,12 @@ class HealthcareAnalyzer:
             'last_datetime': f"{last_date} {last_time}".strip(),
             'total_records': len(all_records),
             'total_tables_with_dates': len(tables_summary),
+            'case_ids': case_ids_asc,
+            'case_details': case_details,
+            'total_cases': len(case_details),
+            'total_users': len(users_with_cases),
+            'users': users_with_cases,
+            'explanations': explanations,
+            'total_activities': len(all_records),
+            'unified_flow_data': unified_flow_data,
         }

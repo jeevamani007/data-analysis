@@ -314,6 +314,220 @@ window.renderDiagramPaths = function () {
     }
 };
 
+// Render Unified Case Flow Diagram - ALL Case IDs in ONE diagram
+// (Global so both Banking and Healthcare screens can use it)
+function renderUnifiedCaseFlowDiagram(flowData) {
+    if (!flowData || !flowData.case_paths || flowData.case_paths.length === 0) {
+        return '';
+    }
+
+    const eventTypes = flowData.all_event_types || [];
+    const casePaths = flowData.case_paths || [];
+    const totalCases = flowData.total_cases || 0;
+
+    // Build legend
+    let legendHTML = '<div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">';
+    casePaths.forEach((path, idx) => {
+        legendHTML += `
+                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                    <div style="width: 24px; height: 3px; background: ${path.color}; border-radius: 2px;"></div>
+                    <span style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600;">Case ${String(path.case_id).padStart(3, '0')}</span>
+                </div>
+            `;
+    });
+    legendHTML += '</div>';
+
+    // Create event boxes layout (pan wrapper added after svgWidth/svgHeight are computed)
+    let diagramHTML = '';
+
+    // Standard Banking Flow Layout (Fixed positions for "Neat" look)
+    // Coordinates: x, y
+    const fixedPositions = {
+        'Process': { x: 50, y: 150 },
+        'Created Account': { x: 400, y: 150 },
+        'Account Open': { x: 400, y: 150 },
+        'Login': { x: 750, y: 150 },
+        'Check Balance': { x: 1100, y: 150 },          // New event
+        'Balance Inquiry': { x: 1100, y: 150 },        // Alias
+        'Withdrawal Transaction': { x: 1450, y: 150 }, // Shifted right
+        'Credit': { x: 400, y: 450 },                  // Bottom row start
+        'Deposit': { x: 400, y: 450 },
+        'Logout': { x: 750, y: 450 },
+        'End': { x: 1450, y: 450 }                     // Shifted right
+    };
+
+    const boxWidth = 160;
+    const boxHeight = 70; // Slightly shorter boxes
+
+    // Calculate positions
+    const eventPositions = {};
+
+    // Dynamic placement for events not in fixedPositions
+    let dynamicX = 50;
+    let dynamicY = 350; // Start looking in bottom row
+    const takenPositions = Object.values(fixedPositions).map(p => `${p.x},${p.y}`);
+
+    eventTypes.forEach(event => {
+        if (fixedPositions[event]) {
+            eventPositions[event] = fixedPositions[event];
+        } else if (fixedPositions[event.replace('Transaction', '').trim()]) {
+            // Fuzzy match for 'Withdrawal' vs 'Withdrawal Transaction' if needed
+            eventPositions[event] = fixedPositions[event.replace('Transaction', '').trim()];
+        } else {
+            // Find a spot
+            let placed = false;
+            // Try to place in empty spots on a simple grid
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 5; c++) {
+                    const tx = 50 + c * 350; // Wider spacing
+                    const ty = 150 + r * 300; // Taller spacing
+                    const key = `${tx},${ty}`;
+                    if (!takenPositions.includes(key) && !placed) {
+                        eventPositions[event] = { x: tx, y: ty };
+                        takenPositions.push(key);
+                        placed = true;
+                    }
+                }
+            }
+            // Fallback if grid full
+            if (!placed) {
+                eventPositions[event] = { x: dynamicX, y: 750 };
+                dynamicX += 350;
+            }
+        }
+    });
+
+    // SVG for paths
+    // Calculate bounding box
+    const maxX = Math.max(...Object.values(eventPositions).map(p => p.x)) + 250;
+    const maxY = Math.max(...Object.values(eventPositions).map(p => p.y)) + 150;
+    const svgWidth = Math.max(900, maxX);
+    const svgHeight = Math.max(500, maxY);
+
+    // Outer container (scroll) + pan wrapper (hit area) + pan content (SVG + boxes move together)
+    diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: 500px; max-height: 75vh; padding: 1rem; overflow: auto;">';
+    diagramHTML += '<div id="diagram-pan-wrapper" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="if(event.target===this) startDiagramPan(event)">';
+    diagramHTML += '<div id="diagram-pan-content" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; will-change: transform;">';
+
+    diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; transform-origin: 0 0;">
+            <defs>
+                <!-- Marker for arrows -->
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" opacity="0.8" />
+                </marker>
+            </defs>
+            <g id="diagram-paths-container"></g>
+        `;
+
+    // Generate markers for all cases
+    casePaths.forEach(path => {
+        diagramHTML += `
+                <defs>
+                    <marker id="arrow-${path.case_id}" markerWidth="8" markerHeight="6" 
+                    refX="7" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill="${path.color}" />
+                    </marker>
+                </defs>
+            `;
+    });
+
+    // Initialize Global State
+    const sequences = casePaths.map(p => ({
+        case_id: p.case_id,
+        sequence: p.path_sequence,
+        color: p.color
+    }));
+    const timingMap = {};
+    casePaths.forEach((p, idx) => { timingMap[idx] = p.timings || {}; });
+
+    window.diagramState.positions = eventPositions;
+    window.diagramState.paths = sequences;
+    window.diagramState.timings = timingMap;
+    if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
+
+    setTimeout(() => window.renderDiagramPaths(), 100);
+
+    diagramHTML += '</svg>';
+
+    // Draw event boxes (inside pan content so they move with arrows when panning)
+    eventTypes.forEach(event => {
+        const pos = eventPositions[event];
+        if (!pos) return;
+
+        let boxColor = '#1e3a8a'; // Darker blue
+        let boxBg = '#2563eb'; // Blue
+
+        if (event === 'Process') { boxBg = '#1e40af'; }
+        else if (event === 'End') { boxBg = '#ffffff'; boxColor = '#1e40af'; }
+        else if (['Login', 'Logout'].includes(event)) { boxBg = '#2563eb'; }
+        else if (['Created Account', 'Account Open'].includes(event)) { boxBg = '#2563eb'; }
+        else if (['Withdrawal Transaction', 'Debit'].includes(event)) { boxBg = '#0f766e'; } // Teal
+        else if (['Credit', 'Deposit'].includes(event)) { boxBg = '#0f766e'; }
+        else if (['Refund'].includes(event)) { boxBg = '#059669'; } // Green
+        else { boxBg = '#475569'; } // Slate
+
+        const isEnd = event === 'End';
+        const borderStyle = isEnd
+            ? `border: 3px solid ${boxColor}; background: white; color: ${boxColor};`
+            : `background: ${boxBg}; color: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);`;
+
+        diagramHTML += `
+                <div id="box-${event.replace(/\s+/g, '-')}" 
+                     onmousedown="startDrag(event, '${event}')"
+                     style="
+                    cursor: move;
+                    position: absolute;
+                    left: ${pos.x}px;
+                    top: ${pos.y}px;
+                    width: ${boxWidth}px;
+                    height: ${boxHeight}px;
+                    ${borderStyle}
+                    border-radius: ${isEnd ? '50px' : '12px'};
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    text-align: center;
+                    font-weight: 700;
+                    font-size: 0.95rem;
+                    z-index: 2;
+                    padding: 0.5rem;
+                    line-height: 1.2;
+                ">
+                    ${event}
+                </div>
+            `;
+    });
+
+    diagramHTML += '</div></div></div>'; // close diagram-pan-content, diagram-pan-wrapper, diagram-outer-container
+
+    return `
+            <section style="margin-bottom: 2.5rem;">
+                <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center;">
+                    🔄 Unified Case Flow Diagram
+                </h2>
+                <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem; text-align: center;">
+                    All ${totalCases} Case IDs shown in one unified flow. Each colored path represents one Case ID. Time labels show duration between events.
+                </p>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.85rem; text-align: center;">
+                    Drag empty area to pan • Drag event boxes to reposition
+                </p>
+                
+                <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
+                    <div style="margin-bottom: 1rem;">
+                        <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Legend</div>
+                        ${legendHTML}
+                    </div>
+                    
+                    ${diagramHTML}
+                </div>
+            </section>
+        `;
+}
+
+// Make it accessible via window for inline handlers if needed
+window.renderUnifiedCaseFlowDiagram = renderUnifiedCaseFlowDiagram;
+
 // DOM Elements
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
@@ -1714,8 +1928,7 @@ window.showBankingCaseDetails = function (caseIndex) {
     container.style.display = 'block';
 };
 
-// Healthcare Analysis Results - NEW: Diagram format Start ----|----|---- End
-// Tables sorted by date/timestamp ascending, small boxes show date & time
+// Healthcare Analysis Results - Case IDs + full sequence (same logic as banking), or legacy timeline
 function showHealthcareAnalysisResults(profile) {
     const mainContent = document.getElementById('mainContent');
     const hcData = profile.healthcare_analysis;
@@ -1734,11 +1947,74 @@ function showHealthcareAnalysisResults(profile) {
         return;
     }
 
-    const nodes = hcData.diagram_nodes || [];
-    const firstDate = hcData.first_date || '';
-    const lastDate = hcData.last_date || '';
-    const totalRecords = hcData.total_records || 0;
-    const tablesSummary = hcData.tables_summary || [];
+    const caseDetails = hcData.case_details || [];
+    const totalCases = hcData.total_cases || 0;
+    const totalUsers = hcData.total_users || 0;
+    const users = hcData.users || [];
+    const explanations = hcData.explanations || [];
+    const totalActivities = hcData.total_activities || 0;
+    const unifiedFlowData = hcData.unified_flow_data;
+    const HC_COLOR = '#14B8A6';
+    const HC_BG = 'rgba(20,184,166,0.08)';
+    const HC_BORDER = 'rgba(20,184,166,0.3)';
+
+    if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        var html = `
+        <div style="padding: 2rem; overflow-y: auto; height: 100%;">
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">â† Back</button>
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${HC_COLOR};"> Healthcare Case IDs</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+                ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} patient(s) â€¢ ${totalActivities} activities
+            </p>
+
+            ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Explanations</h2>
+                <div style="background: ${HC_BG}; border: 1px solid ${HC_BORDER}; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem;">
+                    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-primary); line-height: 1.8;">
+                        ${(explanations || []).map(function(e) { return '<li>' + e + '</li>'; }).join('')}
+                    </ul>
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Patients & Case IDs</h2>
+                <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;">
+                    Case IDs are in order of first event time. Click a case to see its steps.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
+                    ${(users || []).map(function(u) {
+                        var userCases = caseDetails.filter(function(c) { return c.user_id === u; });
+                        var ids = userCases.map(function(c) { return c.case_id; });
+                        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #14B8A6;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Case IDs (Ascending)</h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                    ${caseDetails.map(function(c, i) {
+                        return '<div class="healthcare-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #14B8A6, #0D9488); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(20,184,166,0.3); transition: all 0.2s;" onclick="showHealthcareCaseDetails(' + i + ')" role="button" tabindex="0">Case #' + c.case_id + '</div>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <div id="healthcare-case-details" style="display: none;">
+                <div id="healthcare-case-details-content"></div>
+            </div>
+        </div>
+        `;
+        mainContent.innerHTML = html;
+        window.healthcareCaseDetails = caseDetails;
+        return;
+    }
+
+    var nodes = hcData.diagram_nodes || [];
+    var firstDate = hcData.first_date || '';
+    var lastDate = hcData.last_date || '';
+    var totalRecords = hcData.total_records || 0;
 
     if (nodes.length === 0) {
         mainContent.innerHTML = `
@@ -1754,26 +2030,20 @@ function showHealthcareAnalysisResults(profile) {
         return;
     }
 
-    let html = `
+    var html = `
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">â† Back</button>
-            
             <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #14B8A6;"> Healthcare Data Timeline</h1>
             <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
                 ${profile.database_name} â€¢ ${totalRecords} records â€¢ Click any box to see column explanations
             </p>
-            
-            <!-- Diagram: Start ----|----|---- End -->
             <section style="margin-bottom: 2rem;">
-                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">
-                    … Sorted Timeline (${firstDate} â†’ ${lastDate})
-                </h2>
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Sorted Timeline (${firstDate} → ${lastDate})</h2>
                 <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
                     Click any box to see column explanations (admission, appointment, discharge, lab, etc.) from your uploaded files.
                 </p>
                 <div style="background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(13,148,136,0.06)); border: 1px solid rgba(20,184,166,0.3); border-radius: 16px; padding: 1.5rem; overflow-x: auto;">
                     <div style="display: flex; align-items: flex-start; min-width: max-content; gap: 0; flex-wrap: nowrap;">
-                        <!-- START -->
                         <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">
                             <div style="width: 14px; height: 14px; border-radius: 50%; background: #10b981; border: 2px solid #059669; margin-bottom: 0.3rem;"></div>
                             <div style="font-size: 0.75rem; font-weight: 700; color: #059669;">START</div>
@@ -1782,49 +2052,67 @@ function showHealthcareAnalysisResults(profile) {
                         <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>
     `;
 
-    nodes.forEach((node, i) => {
-        const dateLabel = node.date ? node.date.split('-').slice(1).join('/') : '';
-        const timeStr = node.time ? node.time.substring(0, 5) : '';
-        const label = timeStr ? `${dateLabel} ${timeStr}` : dateLabel;
-        html += `
-                        <div class="healthcare-node" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 72px; cursor: pointer; padding: 0.35rem;" 
-                            onclick="showHealthcareNodeDetails(${i})" role="button" tabindex="0" data-node-index="${i}">
-                            <div style="width: 48px; min-height: 48px; padding: 0.4rem; border-radius: 10px; background: linear-gradient(135deg, #14B8A6, #0D9488); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(20,184,166,0.3); transition: all 0.2s;"
-                                onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 4px 12px rgba(20,184,166,0.5)';"
-                                onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(20,184,166,0.3)';">
-                                <div style="font-size: 1rem;">${node.count}</div>
-                                <div style="font-size: 0.6rem; opacity: 0.9;">records</div>
-                            </div>
-                            <div style="font-size: 0.7rem; color: var(--text-primary); font-weight: 600; margin-top: 0.35rem; text-align: center; max-width: 80px; overflow: hidden; text-overflow: ellipsis;">${label}</div>
-                        </div>
-                        ${i < nodes.length - 1 ? '<div style="flex: 1; min-width: 16px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>' : ''}
-        `;
+    nodes.forEach(function(node, i) {
+        var dateLabel = node.date ? node.date.split('-').slice(1).join('/') : '';
+        var timeStr = node.time ? node.time.substring(0, 5) : '';
+        var label = timeStr ? dateLabel + ' ' + timeStr : dateLabel;
+        html += '<div class="healthcare-node" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 72px; cursor: pointer; padding: 0.35rem;" onclick="showHealthcareNodeDetails(' + i + ')" role="button" tabindex="0" data-node-index="' + i + '">' +
+            '<div style="width: 48px; min-height: 48px; padding: 0.4rem; border-radius: 10px; background: linear-gradient(135deg, #14B8A6, #0D9488); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(20,184,166,0.3); transition: all 0.2s;" onmouseover="this.style.transform=\'scale(1.08)\'; this.style.boxShadow=\'0 4px 12px rgba(20,184,166,0.5)\';" onmouseout="this.style.transform=\'scale(1)\'; this.style.boxShadow=\'0 2px 8px rgba(20,184,166,0.3)\';">' +
+            '<div style="font-size: 1rem;">' + node.count + '</div><div style="font-size: 0.6rem; opacity: 0.9;">records</div></div>' +
+            '<div style="font-size: 0.7rem; color: var(--text-primary); font-weight: 600; margin-top: 0.35rem; text-align: center; max-width: 80px; overflow: hidden; text-overflow: ellipsis;">' + label + '</div></div>' +
+            (i < nodes.length - 1 ? '<div style="flex: 1; min-width: 16px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>' : '');
     });
 
-    html += `
-                        <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>
-                        <!-- END -->
-                        <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">
-                            <div style="width: 14px; height: 14px; border-radius: 50%; background: #ef4444; border: 2px solid #dc2626; margin-bottom: 0.3rem;"></div>
-                            <div style="font-size: 0.75rem; font-weight: 700; color: #dc2626;">END</div>
-                            <div style="font-size: 0.7rem; color: var(--text-muted);">${lastDate}</div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Node details panel (hidden initially) -->
-            <div id="healthcare-node-details" style="display: none;">
-                <div id="healthcare-node-details-content"></div>
-            </div>
-        </div>
-    `;
-
+    html += '<div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>' +
+        '<div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; min-width: 70px; padding: 0.5rem;">' +
+        '<div style="width: 14px; height: 14px; border-radius: 50%; background: #ef4444; border: 2px solid #dc2626; margin-bottom: 0.3rem;"></div>' +
+        '<div style="font-size: 0.75rem; font-weight: 700; color: #dc2626;">END</div><div style="font-size: 0.7rem; color: var(--text-muted);">' + lastDate + '</div></div></div></div></section>' +
+        '<div id="healthcare-node-details" style="display: none;"><div id="healthcare-node-details-content"></div></div></div>';
     mainContent.innerHTML = html;
-
     window.healthcareDiagramNodes = nodes;
     window.healthcareFullData = hcData;
 }
+
+window.showHealthcareCaseDetails = function (caseIndex) {
+    var container = document.getElementById('healthcare-case-details');
+    var content = document.getElementById('healthcare-case-details-content');
+    var cases = window.healthcareCaseDetails;
+    if (!container || !content || !cases || caseIndex < 0 || caseIndex >= cases.length) return;
+    var c = cases[caseIndex];
+    var prevIdx = window.healthcareSelectedCaseIndex;
+    if (prevIdx === caseIndex) {
+        container.style.display = 'none';
+        window.healthcareSelectedCaseIndex = null;
+        return;
+    }
+    window.healthcareSelectedCaseIndex = caseIndex;
+    var activities = c.activities || [];
+    var seq = (c.event_sequence || []).join(' → ');
+    var html = '<div style="background: var(--bg-card); border: 2px solid #14B8A6; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(20,184,166,0.15);">' +
+        '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">' +
+        '<h3 style="font-size: 1.15rem; color: #14B8A6; margin: 0;">Case ID ' + c.case_id + ' Â· Patient ' + c.user_id + '</h3>' +
+        '<button class="btn-secondary" onclick="showHealthcareCaseDetails(' + caseIndex + ')" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">âœ• Close</button></div>' +
+        '<p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem;">' + c.first_activity_timestamp + ' → ' + c.last_activity_timestamp + ' Â· ' + activities.length + ' steps (in time order)</p>' +
+        '<p style="color: var(--text-primary); font-size: 0.95rem; margin-bottom: 1rem; font-weight: 600;">Steps: ' + seq + '</p>' +
+        '<p style="color: #475569; font-size: 0.88rem; margin-bottom: 1rem;">' + (c.explanation || '') + '</p>' +
+        '<div style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">';
+    activities.forEach(function(a, idx) {
+        var ev = a.event || '';
+        var ts = a.timestamp_str || '';
+        var tbl = a.table_name || '';
+        var rec = a.raw_record || {};
+        var recStr = Object.keys(rec).filter(function(k) { return rec[k]; }).map(function(k) { return k + ': ' + rec[k]; }).join(' Â· ');
+        html += '<div style="padding: 0.6rem 0.8rem; background: #f8fafc; border-left: 3px solid #14B8A6; border-radius: 8px; font-size: 0.9rem;">' +
+            '<span style="font-weight: 700; color: #14B8A6;">' + ev + '</span>' +
+            '<span style="color: var(--text-muted); margin-left: 0.5rem;">' + ts + '</span>' +
+            (tbl ? '<span style="margin-left: 0.5rem; font-size: 0.8rem; color: #94a3b8;">(' + tbl + ')</span>' : '') +
+            (recStr ? '<div style="font-size: 0.8rem; color: #64748b; margin-top: 0.35rem;">' + recStr + '</div>' : '') +
+            '</div>';
+    });
+    html += '</div></div>';
+    content.innerHTML = html;
+    container.style.display = 'block';
+};
 
 // Inline HTML onclick safety: ensure global function name resolves
 function showHealthcareNodeDetails(nodeIndex) {

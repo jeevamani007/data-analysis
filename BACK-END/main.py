@@ -218,15 +218,24 @@ async def analyze_database(session_id: str):
             db_explanation = _generate_database_explanation(cluster_tables, cluster_relationships, db_name)
             relationship_explanation = relationship_detector.generate_relationship_summary(cluster_relationships)
             
-            # Domain Classification (ML) - Enhanced with split summary
+            # Domain Classification (ML) - Enhanced with split summary and sample values
             all_columns = []
+            sample_values = []
             for t in cluster_tables:
                 for c in t.columns:
                     all_columns.append(c.column_name)
+                # Get sample values from dataframes to improve classification
+                table_df = dataframes.get(t.table_name)
+                if table_df is not None and not table_df.empty:
+                    # Sample first few rows from all columns
+                    for col in table_df.columns:
+                        sample_vals = table_df[col].dropna().head(10).astype(str).tolist()
+                        sample_values.extend(sample_vals)
             
             domain_result = domain_classifier.get_domain_split_summary(
                 table_names=[t.table_name for t in cluster_tables],
-                all_columns=all_columns
+                all_columns=all_columns,
+                sample_values=sample_values
             )
             
             # Update DB Name if confident

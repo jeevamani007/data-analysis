@@ -1,0 +1,6 @@
+user_id,user_name,role,login_date,login_time,login_timestamp
+U001,Dr.Arjun,Doctor,2025-01-10,09:05:12,2025-01-10 09:05:12
+U002,Nurse_Priya,Nurse,2025-01-10,09:15:45,2025-01-10 09:15:45
+U003,Admin_Ravi,Admin,2025-01-10,08:55:30,2025-01-10 08:55:30
+U004,Dr.Meena,Doctor,2025-01-11,10:02:18,2025-01-11 10:02:18
+U005,Nurse_Karthi,Nurse,2025-01-11,07:50:10,2025-01-11 07:50:10
