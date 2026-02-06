@@ -1,0 +1,5 @@
+appointment_id,patient_id,doctor_id,appointment_date,appointment_time,appointment_timestamp,reason
+A101,P001,D01,2026-02-01,09:30,2026-02-01 09:30:00,Fever
+A102,P002,D02,2026-02-01,10:15,2026-02-01 10:15:00,Headache
+A103,P001,D01,2026-02-02,11:00,2026-02-02 11:00:00,Follow-up
+A104,P003,D03,2026-02-02,12:30,2026-02-02 12:30:00,Chest pain

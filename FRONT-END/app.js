@@ -52,11 +52,23 @@ let dateColumnInfo = null;
 
 // Diagram State for Interactivity
 window.diagramState = {
-    positions: {}, // { 'Login': {x, y}, ... }
-    paths: [],     // [{ case_id: 1, sequence: [...] }, ...]
-    timings: {},   // { pathIdx_stepIdx: timingObj }
+    positions: {},      // { 'Login': {x, y}, ... }
+    paths: [],          // [{ case_id: 1, sequence: [...] }, ...]
+    timings: {},        // { pathIdx_stepIdx: timingObj }
+    segmentOffsets: {}, // { [pathIdx]: { [segmentIdx]: {dx, dy} } } – manual arrow shifts
     boxWidth: 160,
     boxHeight: 70
+};
+
+// Arrow drag state (for per-connector manual adjustment)
+window.arrowDrag = {
+    active: false,
+    pathIdx: null,
+    segmentIdx: null,
+    startX: 0,
+    startY: 0,
+    origDx: 0,
+    origDy: 0
 };
 
 // Drag Handlers
@@ -135,7 +147,17 @@ window.diagramPan = { active: false, startX: 0, startY: 0, translateX: 0, transl
 window.startDiagramPan = function (e) {
     if (e.button !== 0) return;
     var wrapper = document.getElementById('diagram-pan-wrapper');
-    if (!wrapper || e.target !== wrapper) return;
+    if (!wrapper) return;
+
+    // Do NOT start panning if the user clicked on:
+    // - an event box (div id starts with "box-")
+    // - any arrow / label element that is draggable
+    if (e.target && e.target.closest) {
+        if (e.target.closest('[id^="box-"]') || e.target.closest('[data-arrow-draggable="1"]')) {
+            return;
+        }
+    }
+
     window.diagramPan.active = true;
     window.diagramPan.startX = e.clientX;
     window.diagramPan.startY = e.clientY;
@@ -216,62 +238,87 @@ window.renderDiagramPaths = function () {
 
                 if (!fromPos || !toPos) continue;
 
-                const x1 = fromPos.x + boxWidth / 2;
-                const y1 = fromPos.y + boxHeight / 2;
-                const x2 = toPos.x + boxWidth / 2;
-                const y2 = toPos.y + boxHeight / 2;
+                // Base coordinates from node centers
+                let x1 = fromPos.x + boxWidth / 2;
+                let y1 = fromPos.y + boxHeight / 2;
+                let x2 = toPos.x + boxWidth / 2;
+                let y2 = toPos.y + boxHeight / 2;
 
-                const deltaX = x2 - x1;
-                const deltaY = y2 - y1;
+                let deltaX = x2 - x1;
+                let deltaY = y2 - y1;
 
-                // Offset Logic
+                // Compute perpendicular / tangent vectors once
+                let nx = -deltaY;
+                let ny = deltaX;
+                const len = Math.sqrt(nx * nx + ny * ny) || 1;
+
+                // Small static root offset per case so connectors don’t sit
+                // exactly on top of each other where they touch the event boxes.
+                const idxFromCenterRoot = (pathIdx - (totalInDiagram - 1) / 2);
+                const rootPerpStep = 4; // px spacing at node
+                const rootPerpOffset = idxFromCenterRoot * rootPerpStep;
+                if (len > 0 && rootPerpOffset !== 0) {
+                    const nxUnitRoot = nx / len;
+                    const nyUnitRoot = ny / len;
+                    x1 += nxUnitRoot * rootPerpOffset;
+                    y1 += nyUnitRoot * rootPerpOffset;
+                    x2 += nxUnitRoot * rootPerpOffset;
+                    y2 += nyUnitRoot * rootPerpOffset;
+                    // recompute deltas from adjusted endpoints
+                    deltaX = x2 - x1;
+                    deltaY = y2 - y1;
+                    nx = -deltaY;
+                    ny = deltaX;
+                }
+
+                // Offset Logic (per-case curve separation)
                 const offsetStep = 6;
                 const offset = (pathIdx - (totalInDiagram - 1) / 2) * offsetStep;
 
                 // Curve Logic
                 const mx = (x1 + x2) / 2;
                 const my = (y1 + y2) / 2;
-                const nx = -deltaY;
-                const ny = deltaX;
-                const len = Math.sqrt(nx * nx + ny * ny) || 1;
                 const curveAmt = 50 + Math.abs(offset * 2);
 
                 const cpx = mx + (nx / len) * curveAmt * (i % 2 === 0 ? 1 : -1);
                 const cpy = my + (ny / len) * curveAmt * (i % 2 === 0 ? 1 : -1);
 
-                // Path
+                // Apply any manual drag offset for this specific connector segment.
+                // IMPORTANT: we keep start/end points anchored on the events (x1,y1,x2,y2)
+                // and only move the control point and labels. This keeps the arrow
+                // visually connected to the event boxes while allowing separation.
+                const segOffsetsForPath = state.segmentOffsets && state.segmentOffsets[pathIdx];
+                const segOffset = segOffsetsForPath && segOffsetsForPath[i] ? segOffsetsForPath[i] : { dx: 0, dy: 0 };
+                const offX = segOffset.dx || 0;
+                const offY = segOffset.dy || 0;
+
+                const x1p = x1;
+                const y1p = y1;
+                const x2p = x2;
+                const y2p = y2;
+                const cpxp = cpx + offX;
+                const cpyp = cpy + offY;
+
+                // Path (draggable connector – control point moves, endpoints stay attached)
                 pathsHTML += `
-                <path d="M ${x1},${y1} Q ${cpx},${cpy} ${x2},${y2}" 
+                <path d="M ${x1p},${y1p} Q ${cpxp},${cpyp} ${x2p},${y2p}" 
                       stroke="${color}" 
                       stroke-width="3" 
                       fill="none" 
                       marker-end="url(#arrow-${path.case_id})"
-                      opacity="0.9" />
-            `;
-
-                // Case ID Label (t=0.3)
-                const tCase = 0.3;
-                const lxCase = (1 - tCase) * (1 - tCase) * x1 + 2 * (1 - tCase) * tCase * cpx + tCase * tCase * x2;
-                const lyCase = (1 - tCase) * (1 - tCase) * y1 + 2 * (1 - tCase) * tCase * cpy + tCase * tCase * y2;
-
-                pathsHTML += `
-                <rect x="${lxCase - 25}" y="${lyCase - 8}" width="50" height="16" rx="4" fill="${color}" opacity="1"/>
-                <text x="${lxCase}" y="${lyCase + 4}" 
-                      text-anchor="middle" 
-                      font-size="10" 
-                      font-weight="800"
-                      fill="white"
-                      style="text-shadow: 0px 0px 2px rgba(0,0,0,0.2);">
-                    Case ${path.case_id}
-                </text>
+                      opacity="0.9"
+                      style="cursor: move;"
+                      data-arrow-draggable="1"
+                      data-path-idx="${pathIdx}"
+                      data-seg-idx="${i}" />
             `;
 
                 // Time Label (t=0.7): duration (event-to-event) + DB date-time per segment
                 const timing = timings[i];
                 if (timing) {
                     const tTime = 0.7;
-                    const lxTime = (1 - tTime) * (1 - tTime) * x1 + 2 * (1 - tTime) * tTime * cpx + tTime * tTime * x2;
-                    const lyTime = (1 - tTime) * (1 - tTime) * y1 + 2 * (1 - tTime) * tTime * cpy + tTime * tTime * y2;
+                    const lxTime = (1 - tTime) * (1 - tTime) * x1p + 2 * (1 - tTime) * tTime * cpxp + tTime * tTime * x2p;
+                    const lyTime = (1 - tTime) * (1 - tTime) * y1p + 2 * (1 - tTime) * tTime * cpyp + tTime * tTime * y2p;
                     var line1 = timing.label || '';
                     var dbDateTime = timing.end_datetime || timing.start_datetime || '';
                     var line2 = dbDateTime ? formatDateTimeReadable(dbDateTime, true) : formatTimeReadable(timing.start_time || timing.end_time || '');
@@ -291,13 +338,61 @@ window.renderDiagramPaths = function () {
                         var boxW = 102;
                         pathsHTML += `
                     <g>
-                        <rect x="${lxTime - boxW/2}" y="${lyTime - 16}" width="${boxW}" height="${boxH}" rx="6" fill="white" stroke="${color}" stroke-width="1" opacity="0.95" style="filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.1));"/>
-                        <text x="${lxTime}" y="${lyTime - 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${color}">${line1}</text>
-                        ${line2 ? '<text x="' + lxTime + '" y="' + (lyTime + 10) + '" text-anchor="middle" font-size="7.5" font-weight="500" fill="#64748b">' + line2 + '</text>' : ''}
+                        <rect x="${lxTime - boxW/2}" y="${lyTime - 16}" width="${boxW}" height="${boxH}" rx="6" fill="white" stroke="${color}" stroke-width="1" opacity="0.95" style="filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.1)); cursor: move;" data-arrow-draggable="1" data-path-idx="${pathIdx}" data-seg-idx="${i}" />
+                        <text x="${lxTime}" y="${lyTime - 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${color}" style="cursor: move;" data-arrow-draggable="1" data-path-idx="${pathIdx}" data-seg-idx="${i}">${line1}</text>
+                        ${line2 ? `<text x="${lxTime}" y="${lyTime + 10}" text-anchor="middle" font-size="7.5" font-weight="500" fill="#64748b" style="cursor: move;" data-arrow-draggable="1" data-path-idx="${pathIdx}" data-seg-idx="${i}">${line2}</text>` : ''}
                     </g>
                 `;
                     }
                 }
+
+                // Case ID Label (closer to start of connector for clearer attachment, drawn last so it stays on top)
+                const tCase = 0.18;
+                let lxCase = (1 - tCase) * (1 - tCase) * x1p + 2 * (1 - tCase) * tCase * cpxp + tCase * tCase * x2p;
+                let lyCase = (1 - tCase) * (1 - tCase) * y1p + 2 * (1 - tCase) * tCase * cpyp + tCase * tCase * y2p;
+
+                // Extra offset per case path so labels don't overlap:
+                // - perpendicular to the line to spread them "above/below"
+                // - slightly along the line so pills don't sit exactly on top
+                const idxFromCenter = (pathIdx - (totalInDiagram - 1) / 2);
+                const labelPerpStep = 16;   // distance between stacked labels
+                const labelAlongStep = 6;   // small along-the-line separation
+                const labelPerpOffset = idxFromCenter * labelPerpStep;
+                const labelAlongOffset = idxFromCenter * labelAlongStep;
+
+                if (len > 0) {
+                    const nxUnit = nx / len;
+                    const nyUnit = ny / len;
+                    const txUnit = deltaX / len;
+                    const tyUnit = deltaY / len;
+                    lxCase += nxUnit * labelPerpOffset + txUnit * labelAlongOffset;
+                    lyCase += nyUnit * labelPerpOffset + tyUnit * labelAlongOffset;
+                }
+                const caseLabelText = 'Case ' + String(path.case_id).padStart(3, '0');
+                const caseBoxWidth = Math.max(70, caseLabelText.length * 6.5);
+
+                pathsHTML += `
+                <rect x="${lxCase - caseBoxWidth/2}" y="${lyCase - 10}" width="${caseBoxWidth}" height="20" rx="10"
+                      fill="white"
+                      stroke="${color}"
+                      stroke-width="1.5"
+                      opacity="0.98"
+                      style="cursor: move;"
+                      data-arrow-draggable="1"
+                      data-path-idx="${pathIdx}"
+                      data-seg-idx="${i}" />
+                <text x="${lxCase}" y="${lyCase + 4}" 
+                      text-anchor="middle" 
+                      font-size="10" 
+                      font-weight="800"
+                      fill="${color}"
+                      style="text-shadow: 0px 0px 2px rgba(0,0,0,0.2); cursor: move;"
+                      data-arrow-draggable="1"
+                      data-path-idx="${pathIdx}"
+                      data-seg-idx="${i}">
+                    ${caseLabelText}
+                </text>
+            `;
             }
         }); // End foreach
     } catch (e) {
@@ -306,12 +401,77 @@ window.renderDiagramPaths = function () {
 
     if (container) {
         container.innerHTML = pathsHTML;
+
+        // Attach drag handlers to any arrow / label elements marked as draggable
+        try {
+            const dragEls = container.querySelectorAll('[data-arrow-draggable="1"]');
+            dragEls.forEach(function (el) {
+                el.addEventListener('mousedown', function (ev) {
+                    if (ev.button !== 0) return; // left button only
+                    const pIdx = parseInt(this.getAttribute('data-path-idx'), 10);
+                    const sIdx = parseInt(this.getAttribute('data-seg-idx'), 10);
+                    if (isNaN(pIdx) || isNaN(sIdx)) return;
+
+                    const offsets = (window.diagramState.segmentOffsets &&
+                        window.diagramState.segmentOffsets[pIdx] &&
+                        window.diagramState.segmentOffsets[pIdx][sIdx]) || { dx: 0, dy: 0 };
+
+                    window.arrowDrag.active = true;
+                    window.arrowDrag.pathIdx = pIdx;
+                    window.arrowDrag.segmentIdx = sIdx;
+                    window.arrowDrag.startX = ev.clientX;
+                    window.arrowDrag.startY = ev.clientY;
+                    window.arrowDrag.origDx = offsets.dx || 0;
+                    window.arrowDrag.origDy = offsets.dy || 0;
+
+                    // Global listeners so drag continues even if cursor leaves the path
+                    document.addEventListener('mousemove', window.onArrowDragMove);
+                    document.addEventListener('mouseup', window.endArrowDrag);
+
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                });
+            });
+        } catch (err) {
+            console.error('Failed to wire drag handlers for arrows:', err);
+        }
+
         if (window.diagramPan && (window.diagramPan.translateX || window.diagramPan.translateY)) {
             var tx = window.diagramPan.translateX || 0;
             var ty = window.diagramPan.translateY || 0;
             container.setAttribute('transform', 'translate(' + tx + ',' + ty + ')');
         }
     }
+};
+
+// Global arrow-drag handlers
+window.onArrowDragMove = function (e) {
+    if (!window.arrowDrag || !window.arrowDrag.active) return;
+
+    const state = window.diagramState;
+    if (!state || !state.segmentOffsets) return;
+
+    const pIdx = window.arrowDrag.pathIdx;
+    const sIdx = window.arrowDrag.segmentIdx;
+    if (pIdx == null || sIdx == null) return;
+
+    const dx = (e.clientX - window.arrowDrag.startX) + window.arrowDrag.origDx;
+    const dy = (e.clientY - window.arrowDrag.startY) + window.arrowDrag.origDy;
+
+    if (!state.segmentOffsets[pIdx]) state.segmentOffsets[pIdx] = {};
+    state.segmentOffsets[pIdx][sIdx] = { dx, dy };
+
+    // Re-render paths so only this arrow (and its labels) move visually
+    window.renderDiagramPaths();
+};
+
+window.endArrowDrag = function () {
+    if (!window.arrowDrag) return;
+    window.arrowDrag.active = false;
+    window.arrowDrag.pathIdx = null;
+    window.arrowDrag.segmentIdx = null;
+    document.removeEventListener('mousemove', window.onArrowDragMove);
+    document.removeEventListener('mouseup', window.endArrowDrag);
 };
 
 // Render Unified Case Flow Diagram - ALL Case IDs in ONE diagram
@@ -406,10 +566,10 @@ function renderUnifiedCaseFlowDiagram(flowData) {
 
     // Outer container (scroll) + pan wrapper (hit area) + pan content (SVG + boxes move together)
     diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: 500px; max-height: 75vh; padding: 1rem; overflow: auto;">';
-    diagramHTML += '<div id="diagram-pan-wrapper" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="if(event.target===this) startDiagramPan(event)">';
+    diagramHTML += '<div id="diagram-pan-wrapper" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="startDiagramPan(event)">';
     diagramHTML += '<div id="diagram-pan-content" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; will-change: transform;">';
 
-    diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; transform-origin: 0 0;">
+    diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 1; transform-origin: 0 0;">
             <defs>
                 <!-- Marker for arrows -->
                 <marker id="arrowhead" markerWidth="10" markerHeight="7" 
@@ -1494,10 +1654,10 @@ function showBankingAnalysisResults(profile) {
 
         // Outer container (scroll) + pan wrapper (hit area) + pan content (SVG + boxes move together)
         diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: 500px; max-height: 75vh; padding: 1rem; overflow: auto;">';
-        diagramHTML += '<div id="diagram-pan-wrapper" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="if(event.target===this) startDiagramPan(event)">';
+        diagramHTML += '<div id="diagram-pan-wrapper" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="startDiagramPan(event)">';
         diagramHTML += '<div id="diagram-pan-content" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; will-change: transform;">';
 
-        diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; transform-origin: 0 0;">
+        diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 1; transform-origin: 0 0;">
             <defs>
                 <!-- Marker for arrows -->
                 <marker id="arrowhead" markerWidth="10" markerHeight="7" 
