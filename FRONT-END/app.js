@@ -1069,18 +1069,28 @@ function showDomainSplitView() {
         const profileId = `profile-${index}`;
         const bankingPct = domainData?.percentages?.Banking ?? 0;
         const healthcarePct = domainData?.percentages?.Healthcare ?? 0;
+        const retailPct = domainData?.percentages?.Retail ?? 0;
         const otherPct = domainData?.percentages?.Other ?? 0;
 
         // Determine primary domain
         const primaryDomain = domainData?.primary_domain || 'Other';
         const isBanking = primaryDomain === 'Banking';
         const isHealthcare = primaryDomain === 'Healthcare';
+        const isRetail = primaryDomain === 'Retail';
 
         // Set card colors based on primary domain
-        const cardColor = isBanking ? '#0F766E' : (isHealthcare ? '#14B8A6' : '#64748B');
-        const cardLabel = isBanking ? ` ${profile.database_name}` :
-            (isHealthcare ? ` Healthcare Database ${index + 1}` :
-                ` Database ${index + 1}: General / Mixed`);
+        const cardColor = isBanking
+            ? '#0F766E'
+            : (isHealthcare
+                ? '#14B8A6'
+                : (isRetail ? '#F59E0B' : '#64748B'));
+        const cardLabel = isBanking
+            ? ` ${profile.database_name}`
+            : (isHealthcare
+                ? ` Healthcare Database ${index + 1}`
+                : (isRetail
+                    ? ` Retail Database ${index + 1}`
+                    : ` Database ${index + 1}: General / Mixed`));
 
         if (!domainData || !domainData.chart_data) return;
 
@@ -1125,6 +1135,18 @@ function showDomainSplitView() {
                                 </div>
                                 <div style="font-size: 1.5rem; font-weight: 700; color: ${isHealthcare ? '#14B8A6' : 'var(--text-muted)'};">
                                     ${healthcarePct}%
+                                </div>
+                            </div>
+
+                            <!-- Retail -->
+                            <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: ${isRetail ? 'rgba(245, 158, 11, 0.1)' : 'var(--bg-page)'}; border-radius: 12px; border: 1px solid ${isRetail ? 'rgba(245, 158, 11, 0.3)' : 'var(--border)'};">
+                                <div style="width: 24px; height: 24px; background: #F59E0B; border-radius: 6px;"></div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">Retail Domain</div>
+                                    <div style="color: var(--text-muted); font-size: 0.85rem;">Sales / POS / invoice data</div>
+                                </div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: ${isRetail ? '#F59E0B' : 'var(--text-muted)'};">
+                                    ${retailPct}%
                                 </div>
                             </div>
 
