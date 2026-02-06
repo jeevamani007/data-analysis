@@ -137,9 +137,15 @@ class DatabaseProfile(BaseModel):
 
     # Healthcare Analysis (for healthcare domains)
     healthcare_analysis: Optional[Dict[str, Any]] = Field(None, description="Healthcare visit and department analysis results")
-
+    
     # Banking Timeline Analysis (for banking domains)
     banking_analysis: Optional[Dict[str, Any]] = Field(None, description="Banking timeline sorted ascending for Start----|----|----End diagram")
+
+    # Retail / E-commerce Process Timeline Analysis (for retail domains)
+    retail_analysis: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Retail customer journey timeline with Case IDs and step-by-step order flow"
+    )
 
 
 

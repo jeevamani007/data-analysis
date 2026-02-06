@@ -32,7 +32,7 @@ function formatDateTimeReadable(str, compact) {
     str = str.trim();
     var d = new Date(str.replace(' ', 'T'));
     if (isNaN(d.getTime())) return str;
-    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     var datePart = compact
         ? (d.getDate() + ' ' + months[d.getMonth()])
         : (months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear());
@@ -49,6 +49,33 @@ let uploadedFiles = [];
 let sessionId = null;
 let analysisResults = null;
 let dateColumnInfo = null;
+
+// Retail Event Explanations (Shared)
+const RETAIL_EVENT_EXPLANATIONS = {
+    'User Signed Up': 'Customer created account for the first time',
+    'Customer Registered': 'Customer created account for the first time',
+    'User Logged In': 'Customer opened app/website and logged in',
+    'Customer Login': 'Customer opened app/website and logged in',
+    'Product Viewed': 'Customer viewed a product',
+    'Customer Browsed Product': 'Customer viewed a product',
+    'Added to Cart': 'Customer added product to cart',
+    'Order Created': 'Customer clicked Place Order',
+    'Payment Initiated': 'Customer started payment',
+    'Payment Completed': 'Payment succeeded',
+    'Invoice Generated': 'Invoice was generated for the order',
+    'Order Packed': 'Shop packed the product',
+    'Order Shipped': 'Handed over to courier',
+    'Out for Delivery': 'Courier on the way to customer',
+    'Order Delivered': 'Product reached customer',
+    'Return Requested': 'Customer requested a return',
+    'Product Returned': 'Product was returned',
+    'Refund Initiated': 'Refund process started',
+    'Refund Completed': 'Refund completed',
+    'User Logged Out': 'Customer signed out / exited',
+    'Removed from Cart': 'Customer removed product from cart',
+    'Payment Failed': 'Payment failed'
+};
+
 
 // Diagram State for Interactivity
 window.diagramState = {
@@ -338,7 +365,7 @@ window.renderDiagramPaths = function () {
                         var boxW = 102;
                         pathsHTML += `
                     <g>
-                        <rect x="${lxTime - boxW/2}" y="${lyTime - 16}" width="${boxW}" height="${boxH}" rx="6" fill="white" stroke="${color}" stroke-width="1" opacity="0.95" style="filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.1)); cursor: move;" data-arrow-draggable="1" data-path-idx="${pathIdx}" data-seg-idx="${i}" />
+                        <rect x="${lxTime - boxW / 2}" y="${lyTime - 16}" width="${boxW}" height="${boxH}" rx="6" fill="white" stroke="${color}" stroke-width="1" opacity="0.95" style="filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.1)); cursor: move;" data-arrow-draggable="1" data-path-idx="${pathIdx}" data-seg-idx="${i}" />
                         <text x="${lxTime}" y="${lyTime - 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${color}" style="cursor: move;" data-arrow-draggable="1" data-path-idx="${pathIdx}" data-seg-idx="${i}">${line1}</text>
                         ${line2 ? `<text x="${lxTime}" y="${lyTime + 10}" text-anchor="middle" font-size="7.5" font-weight="500" fill="#64748b" style="cursor: move;" data-arrow-draggable="1" data-path-idx="${pathIdx}" data-seg-idx="${i}">${line2}</text>` : ''}
                     </g>
@@ -372,7 +399,7 @@ window.renderDiagramPaths = function () {
                 const caseBoxWidth = Math.max(70, caseLabelText.length * 6.5);
 
                 pathsHTML += `
-                <rect x="${lxCase - caseBoxWidth/2}" y="${lyCase - 10}" width="${caseBoxWidth}" height="20" rx="10"
+                <rect x="${lxCase - caseBoxWidth / 2}" y="${lyCase - 10}" width="${caseBoxWidth}" height="20" rx="10"
                       fill="white"
                       stroke="${color}"
                       stroke-width="1.5"
@@ -1181,7 +1208,14 @@ function showDomainSplitView() {
                                 id="analyze-btn-${index}"
                                 onclick="startDatabaseAnalysis(${index})"
                                 style="width: 100%; padding: 1rem 2rem; font-size: 1.1rem; position: relative;">
-                                ${isBanking ? '¦ Analyze Banking Data' : (isHealthcare ? ' Analyze Healthcare Data' : ' Analyze Data')} â†’
+                                ${isBanking
+                ? '¦ Analyze Banking Data'
+                : (isHealthcare
+                    ? ' Analyze Healthcare Data'
+                    : (isRetail
+                        ? ' Analyze Retail Data'
+                        : ' Analyze Data'))
+            } â†’
                             </button>
                             <div id="analyze-status-${index}" style="margin-top: 0.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; display: none;">
                                 Processing...
@@ -1272,16 +1306,18 @@ window.startDatabaseAnalysis = async function (profileIndex) {
     try {
         if (primaryDomain === 'Banking') {
             showBankingAnalysisResults(profile);
-        } else if (primaryDomain === 'General/Other') {
-            statusDiv.style.display = 'block';
-            statusDiv.style.color = 'var(--text-muted)';
-            statusDiv.innerHTML = 'Database profile loaded. Timeline analysis is available for Banking and Healthcare domains only.';
-            btn.disabled = false;
-            btn.style.opacity = '1';
-            btn.style.cursor = 'pointer';
+        } else if (primaryDomain === 'Retail') {
+            showRetailAnalysisResults(profile);
         } else if (primaryDomain === 'Healthcare') {
             // Show healthcare analysis with new diagram format
             showHealthcareAnalysisResults(profile);
+        } else {
+            statusDiv.style.display = 'block';
+            statusDiv.style.color = 'var(--text-muted)';
+            statusDiv.innerHTML = 'Database profile loaded. Timeline analysis is currently available for Banking, Healthcare, and Retail domains only.';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
         }
     } catch (error) {
         console.error('Analysis error:', error);
@@ -2048,6 +2084,237 @@ function showBankingAnalysisResults(profile) {
     window.bankingCaseDetails = caseDetails;
 }
 
+// Retail Analysis Results - Case ID per Customer (Order Journeys)
+function showRetailAnalysisResults(profile) {
+    const mainContent = document.getElementById('mainContent');
+    const rtData = profile.retail_analysis;
+
+    if (!rtData || !rtData.success) {
+        mainContent.innerHTML = `
+            <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;"></div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #F59E0B;">Retail / E‑Commerce Database Detected</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                    ${rtData?.error || 'No retail events with usable timestamps found. We look for customer/order/payment/shipping tables with date or timestamp columns.'}
+                </p>
+                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+            </div>
+        `;
+        return;
+    }
+
+    const caseDetails = rtData.case_details || [];
+    const totalCases = rtData.total_cases || 0;
+    const totalCustomers = rtData.total_customers || rtData.total_users || 0;
+    const customers = rtData.customers || rtData.users || [];
+    const totalActivities = rtData.total_activities || rtData.total_events || 0;
+    const unifiedFlowData = rtData.unified_flow_data;
+    const RETAIL_COLOR = '#F59E0B';
+    const RETAIL_BG = 'rgba(245,158,11,0.08)';
+    const RETAIL_BORDER = 'rgba(245,158,11,0.3)';
+
+    if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        let html = `
+        <div style="padding: 2rem; overflow-y: auto; height: 100%;">
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${RETAIL_COLOR};"> Retail Case IDs</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+                ${profile.database_name} • ${totalCases} Case ID(s) • ${totalCustomers} customer(s) • ${totalActivities} events
+            </p>
+
+            ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
+
+            ${(function () {
+                // Build the detected events set from all case activities
+                var detectedEvents = new Set();
+                caseDetails.forEach(function (c) {
+                    (c.activities || []).forEach(function (a) {
+                        if (a.event) detectedEvents.add(a.event);
+                    });
+                });
+
+                // Define event explanations by category
+                var eventExplanations = RETAIL_EVENT_EXPLANATIONS;
+
+                // Group events by category
+                var categories = [
+                    {
+                        label: 'Customer Side Events',
+                        icon: '👤',
+                        color: '#3B82F6',
+                        events: ['User Signed Up', 'Customer Registered', 'User Logged In', 'Customer Login', 'Product Viewed', 'Customer Browsed Product', 'Added to Cart', 'Removed from Cart']
+                    },
+                    {
+                        label: 'Order Side Events (Most Important)',
+                        icon: '🧾',
+                        color: '#F59E0B',
+                        events: ['Order Created', 'Payment Initiated', 'Payment Completed', 'Payment Failed', 'Invoice Generated']
+                    },
+                    {
+                        label: 'Fulfillment Events',
+                        icon: '📦',
+                        color: '#22C55E',
+                        events: ['Order Packed', 'Order Shipped', 'Out for Delivery', 'Order Delivered']
+                    },
+                    {
+                        label: 'Returns & Refunds',
+                        icon: '↩️',
+                        color: '#EF4444',
+                        events: ['Return Requested', 'Product Returned', 'Refund Initiated', 'Refund Completed']
+                    }
+                ];
+
+                // Build HTML for each category that has detected events
+                var html = '<section style="margin-bottom: 2.5rem;">';
+                html += '<h2 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--text-primary);">Retail Event Steps Explained</h2>';
+                html += '<p style="color: var(--text-muted); margin-bottom: 1.25rem; font-size: 0.95rem;">Each step in the workflow represents a specific action. Here are the events detected in your data:</p>';
+                html += '<div style="display: flex; flex-direction: column; gap: 1.25rem;">';
+
+                var hasAnyCategory = false;
+                categories.forEach(function (cat) {
+                    var foundEvents = cat.events.filter(function (ev) { return detectedEvents.has(ev); });
+                    if (foundEvents.length === 0) return;
+                    hasAnyCategory = true;
+
+                    html += '<div style="background: #fefce8; border: 1px solid ' + cat.color + '33; border-radius: 12px; padding: 1rem 1.25rem;">';
+                    html += '<div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">';
+                    html += '<span style="font-size: 1.1rem;">' + cat.icon + '</span>';
+                    html += '<h3 style="font-size: 1.05rem; font-weight: 700; color: ' + cat.color + '; margin: 0;">' + cat.label + '</h3>';
+                    html += '</div>';
+                    html += '<div style="display: flex; flex-direction: column; gap: 0.5rem;">';
+
+                    foundEvents.forEach(function (ev) {
+                        var explanation = eventExplanations[ev] || ev;
+                        html += '<div style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0.75rem; background: white; border-radius: 8px; border-left: 3px solid ' + cat.color + ';">';
+                        html += '<span style="font-weight: 700; color: ' + cat.color + '; min-width: 140px; flex-shrink: 0;">' + ev + '</span>';
+                        html += '<span style="color: #475569; flex: 1;">' + explanation + '</span>';
+                        html += '</div>';
+                    });
+
+                    html += '</div></div>';
+                });
+
+                if (!hasAnyCategory) {
+                    html += '<div style="color: var(--text-muted); font-size: 0.95rem;">No standard retail events detected in the data.</div>';
+                }
+
+                html += '</div></section>';
+                return html;
+            })()}
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">Customers & Case IDs</h2>
+                <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;">
+                    Each Case ID = one order journey. Click a Case to see events with source (table · file · row) across your data.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
+                    ${(customers || []).map(function (u) {
+                var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+                var ids = userCases.map(function (c) { return c.case_id; });
+                return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #F59E0B;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+            }).join('')}
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">Case IDs (Ascending)</h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                    ${caseDetails.map(function (c, i) {
+                return '<div class="retail-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #F59E0B, #D97706); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(245,158,11,0.3); transition: all 0.2s;" onclick="showRetailCaseDetails(' + i + ')" role="button" tabindex="0">Case #' + c.case_id + '</div>';
+            }).join('')}
+                </div>
+            </section>
+
+            <div id="retail-case-details" style="display: none;">
+                <div id="retail-case-details-content"></div>
+            </div>
+        </div>
+        `;
+        mainContent.innerHTML = html;
+        window.retailCaseDetails = caseDetails;
+        return;
+    }
+
+    // Fallback: no case_details / unified flow (very unlikely)
+    mainContent.innerHTML = `
+        <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+            <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #F59E0B;">Retail Data Detected</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                We detected Retail / E‑commerce data, but could not build case-based timelines from the uploaded files.
+            </p>
+            <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+        </div>
+    `;
+}
+
+window.showRetailCaseDetails = function (caseIndex) {
+    const container = document.getElementById('retail-case-details');
+    const content = document.getElementById('retail-case-details-content');
+    const cases = window.retailCaseDetails;
+    if (!container || !content || !cases || caseIndex < 0 || caseIndex >= cases.length) return;
+
+    const c = cases[caseIndex];
+    const prevIdx = window.retailSelectedCaseIndex;
+    if (prevIdx === caseIndex) {
+        container.style.display = 'none';
+        window.retailSelectedCaseIndex = null;
+        return;
+    }
+    window.retailSelectedCaseIndex = caseIndex;
+
+    const activities = c.activities || [];
+    const seq = (c.event_sequence || []).join(' → ');
+    let html = `
+        <div style="background: var(--bg-card); border: 2px solid #F59E0B; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(245,158,11,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.15rem; color: #F59E0B; margin: 0;">Case ID ${c.case_id} · Customer ${c.user_id}</h3>
+                <button class="btn-secondary" onclick="showRetailCaseDetails(${caseIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
+            </div>
+            <p style="color: #475569; font-size: 0.9rem; margin-bottom: 1rem;">
+                ${c.explanation || (c.first_activity_timestamp + ' → ' + c.last_activity_timestamp + ' · ' + activities.length + ' steps')}
+            </p>
+            <div style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+    `;
+
+    activities.forEach(function (a) {
+        const ev = a.event || '';
+        const ts = a.timestamp_str || '';
+        const tbl = a.table_name || '';
+        const orderId = a.order_id || '';
+        const story = a.event_story || '';
+        const rec = a.raw_record || {};
+        const recStr = Object.keys(rec)
+            .filter(function (k) { return rec[k]; })
+            .map(function (k) { return k + ': ' + rec[k]; })
+            .join(' · ');
+
+        // Robust explanation: lookup -> fallback to story core -> fallback to event name
+        let explanation = RETAIL_EVENT_EXPLANATIONS[ev];
+        if (!explanation && story && typeof story === 'string') {
+            explanation = story.split('[')[0].trim();
+        }
+        if (!explanation) explanation = ev;
+
+        html += `
+            <div style="padding: 0.6rem 0.8rem; background: #fffbeb; border-left: 3px solid #F59E0B; border-radius: 8px; font-size: 0.9rem;">
+                <div style="display: flex; flex-direction: column; margin-bottom: 0.3rem;">
+                    <span style="font-weight: 700; color: #F59E0B; font-size: 1rem;">${ev}</span>
+                    <span style="font-size: 0.85rem; color: #1e293b; font-weight: 600; margin-top: 0.1rem;">${explanation}</span>
+                </div>
+                <span style="color: var(--text-muted); font-size: 0.85rem;">${ts}</span>
+                ${orderId ? '<span style="margin-left: 0.5rem; font-size: 0.8rem; color: #94a3b8;">[Order ' + orderId + ']</span>' : ''}
+                ${tbl ? '<span style="margin-left: 0.5rem; font-size: 0.8rem; color: #94a3b8;">(' + tbl + ')</span>' : ''}
+                ${story ? '<div style="font-size: 0.8rem; color: #475569; margin-top: 0.3rem; border-top: 1px dashed rgba(245,158,11,0.2); padding-top: 0.3rem;">Source: ' + story + '</div>' : ''}
+                ${recStr ? '<div style="font-size: 0.8rem; color: #64748b; margin-top: 0.35rem;">' + recStr + '</div>' : ''}
+            </div>
+        `;
+    });
+
+    html += '</div></div>';
+    content.innerHTML = html;
+    container.style.display = 'block';
+};
+
 window.showBankingCaseDetails = function (caseIndex) {
     const container = document.getElementById('banking-case-details');
     const content = document.getElementById('banking-case-details-content');
@@ -2155,7 +2422,7 @@ function showHealthcareAnalysisResults(profile) {
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Explanations</h2>
                 <div style="background: ${HC_BG}; border: 1px solid ${HC_BORDER}; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem;">
                     <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-primary); line-height: 1.8;">
-                        ${(explanations || []).map(function(e) { return '<li>' + e + '</li>'; }).join('')}
+                        ${(explanations || []).map(function (e) { return '<li>' + e + '</li>'; }).join('')}
                     </ul>
                 </div>
             </section>
@@ -2166,20 +2433,20 @@ function showHealthcareAnalysisResults(profile) {
                     Case IDs are in order of first event time. Click a case to see its steps.
                 </p>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
-                    ${(users || []).map(function(u) {
-                        var userCases = caseDetails.filter(function(c) { return c.user_id === u; });
-                        var ids = userCases.map(function(c) { return c.case_id; });
-                        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #14B8A6;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
-                    }).join('')}
+                    ${(users || []).map(function (u) {
+            var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+            var ids = userCases.map(function (c) { return c.case_id; });
+            return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #14B8A6;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+        }).join('')}
                 </div>
             </section>
 
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Case IDs (Ascending)</h2>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
-                    ${caseDetails.map(function(c, i) {
-                        return '<div class="healthcare-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #14B8A6, #0D9488); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(20,184,166,0.3); transition: all 0.2s;" onclick="showHealthcareCaseDetails(' + i + ')" role="button" tabindex="0">Case #' + c.case_id + '</div>';
-                    }).join('')}
+                    ${caseDetails.map(function (c, i) {
+            return '<div class="healthcare-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #14B8A6, #0D9488); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(20,184,166,0.3); transition: all 0.2s;" onclick="showHealthcareCaseDetails(' + i + ')" role="button" tabindex="0">Case #' + c.case_id + '</div>';
+        }).join('')}
                 </div>
             </section>
 
@@ -2234,7 +2501,7 @@ function showHealthcareAnalysisResults(profile) {
                         <div style="flex: 1; min-width: 20px; height: 24px; border-bottom: 3px solid rgba(20,184,166,0.5); align-self: flex-start; margin-top: 6px;"></div>
     `;
 
-    nodes.forEach(function(node, i) {
+    nodes.forEach(function (node, i) {
         var dateLabel = node.date ? node.date.split('-').slice(1).join('/') : '';
         var timeStr = node.time ? node.time.substring(0, 5) : '';
         var label = timeStr ? dateLabel + ' ' + timeStr : dateLabel;
@@ -2278,12 +2545,12 @@ window.showHealthcareCaseDetails = function (caseIndex) {
         '<p style="color: var(--text-primary); font-size: 0.95rem; margin-bottom: 1rem; font-weight: 600;">Steps: ' + seq + '</p>' +
         '<p style="color: #475569; font-size: 0.88rem; margin-bottom: 1rem;">' + (c.explanation || '') + '</p>' +
         '<div style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">';
-    activities.forEach(function(a, idx) {
+    activities.forEach(function (a, idx) {
         var ev = a.event || '';
         var ts = a.timestamp_str || '';
         var tbl = a.table_name || '';
         var rec = a.raw_record || {};
-        var recStr = Object.keys(rec).filter(function(k) { return rec[k]; }).map(function(k) { return k + ': ' + rec[k]; }).join(' Â· ');
+        var recStr = Object.keys(rec).filter(function (k) { return rec[k]; }).map(function (k) { return k + ': ' + rec[k]; }).join(' Â· ');
         html += '<div style="padding: 0.6rem 0.8rem; background: #f8fafc; border-left: 3px solid #14B8A6; border-radius: 8px; font-size: 0.9rem;">' +
             '<span style="font-weight: 700; color: #14B8A6;">' + ev + '</span>' +
             '<span style="color: var(--text-muted); margin-left: 0.5rem;">' + ts + '</span>' +

@@ -138,30 +138,33 @@ class DomainClassifier:
             'medicalrecord', 'vitals', 'symptoms', 'allergies'
         ]
         
-        # Banking EXCLUSIVE patterns - if found, MUST be banking  
+        # Banking EXCLUSIVE patterns - if found, MUST be banking
+        # NOTE: transactionid excluded - POS/retail also uses transaction_id; use retail schema override instead
         banking_force_patterns = [
             'accountnumber', 'accountno', 'accountid',
             'ifsccode', 'ifsc', 'swiftcode', 'swift', 
             'routingnumber', 'routing', 'iban', 'bic',
-            'transactionid', 'transactionno', 'txnid',
             'loanid', 'loannumber', 'branchid', 'branchcode',
             'accountbalance', 'accounttype'
         ]
         
         # Retail EXCLUSIVE patterns - must NOT appear in pure banking/healthcare schemas
+        # Includes: order_id, product_id, product_name, category, quantity, unit_price, discount, tax
         retail_force_patterns = [
             'productname', 'productid', 'sku',
             'unitprice', 'costprice', 'stockqty', 'stockquantity',
             'billno', 'billnumber', 'invoiceno', 'invoicenumber', 'invoicetype',
-            'taxamount', 'discountamount', 'netamount',
+            'taxamount', 'discountamount', 'discount', 'netamount', 'tax',  # discount, tax common in retail line items
             'saleschannel', 'online', 'store',
             'returnflag', 'returndate',
             'cashierid', 'storeid',
+            'category',  # product category is strong retail signal
         ]
         
-        # Strong retail combo (columns that almost surely mean retail POS)
+        # Strong retail combo (columns that almost surely mean retail POS / order line)
         retail_strong_combo_cols = {
-            'productname', 'quantity', 'unitprice', 'totalamount', 'paymentmethod'
+            'productname', 'quantity', 'unitprice', 'totalamount', 'paymentmethod',
+            'orderid', 'productid', 'category'  # order_id + product_id + category = retail
         }
         
         # Check for healthcare patterns (more flexible)
@@ -198,6 +201,22 @@ class DomainClassifier:
         has_retail_exclusive = False
         retail_combo_hits = 0
         cols_joined_clean = ''.join(cols_lower)
+        # Strong retail schema: typical order line / POS tables
+        retail_schema_keys = {
+            'orderid', 'order_no', 'ordernumber',
+            'productid', 'productname', 'sku',
+            'category', 'quantity',
+            'unitprice', 'unit_price',
+            'discount', 'discountamount',
+            'totalamount', 'total_amount', 'netamount',
+            'paymentmethod', 'payment_method',
+            'orderstatus', 'order_status',
+            'tax',  # tax on line items = retail
+        }
+        retail_schema_hits = set()
+        # Observed retail columns: order_id, product_id, product_name, category, quantity, unit_price, discount, tax
+        observed_retail_cols = {'orderid', 'productid', 'productname', 'category', 'quantity', 'unitprice', 'discount', 'tax'}
+        observed_retail_count = sum(1 for oc in observed_retail_cols if any(oc in col for col in cols_lower))
         for col_clean in cols_lower:
             # force patterns
             for pattern in retail_force_patterns:
@@ -210,6 +229,10 @@ class DomainClassifier:
                 if strong_key in col_clean:
                     retail_combo_hits += 1
                     break
+            # schema keys (more tolerant, used for strong retail override)
+            for sk in retail_schema_keys:
+                if sk in col_clean:
+                    retail_schema_hits.add(sk)
             if has_retail_exclusive:
                 break
         
@@ -217,6 +240,10 @@ class DomainClassifier:
         if not has_retail_exclusive and retail_combo_hits >= 3:
             has_retail_exclusive = True
             print(f"[DOMAIN CLASSIFIER] Strong Retail combo detected ({retail_combo_hits} core columns).")
+        # Observed retail columns (order_id, product_id, product_name, category, quantity, unit_price, discount, tax)
+        if not has_retail_exclusive and observed_retail_count >= 4:
+            has_retail_exclusive = True
+            print(f"[DOMAIN CLASSIFIER] Observed Retail columns confirmed ({observed_retail_count}/8: order_id, product_id, product_name, category, quantity, unit_price, discount, tax). Forcing Retail.")
         
         # Predict probability for all four classes
         proba = self.pipeline.predict_proba([combined_text])[0]
@@ -247,24 +274,38 @@ class DomainClassifier:
             healthcare_prob = 0.01
             other_prob = 0.02
             print(f"[DOMAIN CLASSIFIER] FORCING Retail: 95% (exclusive patterns)")
+        # Strong retail schema (order_id + product + qty + unit_price + total_amount + payment_method, etc.)
+        elif len(retail_schema_hits) >= 4 and not (has_banking_exclusive or has_healthcare_exclusive):
+            # Override towards Retail even if ML model was uncertain
+            print(f"[DOMAIN CLASSIFIER] Strong Retail schema detected (columns: {', '.join(list(retail_schema_hits)[:6])}). Forcing Retail domain.")
+            retail_prob = 0.97
+            banking_prob = 0.01
+            healthcare_prob = 0.01
+            other_prob = 0.01
         
         # 2) Mixed exclusive signals – fall back to "who is stronger" heuristic
         elif (has_healthcare_exclusive + has_banking_exclusive + has_retail_exclusive) > 1:
             print(f"[DOMAIN CLASSIFIER] WARNING: Mixed domain-exclusive patterns detected!")
             # Prefer healthcare if strong patient/doctor signals
             strong_healthcare = any(p in cols_joined_clean for p in ['patient', 'doctor', 'diagnosis'])
-            strong_banking = any(p in cols_joined_clean for p in ['accountnumber', 'transactionid', 'ifsccode'])
-            strong_retail = any(p in cols_joined_clean for p in ['productname', 'unitprice', 'totalamount', 'paymentmethod'])
+            strong_banking = any(p in cols_joined_clean for p in ['accountnumber', 'ifsccode', 'loanid', 'branchid'])
+            strong_retail = (observed_retail_count >= 4 or
+                            any(p in cols_joined_clean for p in ['productname', 'unitprice', 'totalamount', 'paymentmethod']) or
+                            len(retail_schema_hits) >= 3)
             
-            if strong_healthcare:
+            # Observed retail columns (order_id, product_id, product_name, etc.) take precedence when 4+
+            if observed_retail_count >= 4 and not strong_healthcare:
+                retail_prob, banking_prob, healthcare_prob, other_prob = 0.95, 0.02, 0.02, 0.01
+                print(f"[DOMAIN CLASSIFIER] Observed Retail columns ({observed_retail_count}/8) - confirming Retail domain, allowing Retail model.")
+            elif strong_healthcare:
                 healthcare_prob, banking_prob, retail_prob, other_prob = 0.8, 0.1, 0.05, 0.05
                 print(f"[DOMAIN CLASSIFIER] Mixed data, favoring Healthcare: 80%")
-            elif strong_banking:
-                banking_prob, healthcare_prob, retail_prob, other_prob = 0.8, 0.1, 0.05, 0.05
-                print(f"[DOMAIN CLASSIFIER] Mixed data, favoring Banking: 80%")
             elif strong_retail:
                 retail_prob, banking_prob, healthcare_prob, other_prob = 0.8, 0.1, 0.05, 0.05
                 print(f"[DOMAIN CLASSIFIER] Mixed data, favoring Retail: 80%")
+            elif strong_banking:
+                banking_prob, healthcare_prob, retail_prob, other_prob = 0.8, 0.1, 0.05, 0.05
+                print(f"[DOMAIN CLASSIFIER] Mixed data, favoring Banking: 80%")
         
         # Normalize probabilities to sum to 1.0
         total = banking_prob + healthcare_prob + retail_prob + other_prob
@@ -432,10 +473,10 @@ class DomainClassifier:
             elif any(kw in col_lower for kw in healthcare_strong):
                 found_healthcare_strong.append(col)
             # Retail core
-            if any(kw in col_lower for kw in retail_core):
+            if any(kw in col_lower.replace(' ', '_') for kw in retail_core):
                 found_retail_core.append(col)
             # Retail strong
-            elif any(kw in col_lower for kw in retail_strong):
+            elif any(kw in col_lower.replace(' ', '_') for kw in retail_strong):
                 found_retail_strong.append(col)
         
         evidence = []
