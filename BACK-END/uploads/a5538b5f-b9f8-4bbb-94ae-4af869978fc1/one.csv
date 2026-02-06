@@ -1,0 +1,6 @@
+order_id,customer_id,product_id,product_name,category,quantity,unit_price,discount,tax,total_amount,payment_method,order_date
+O1001,C001,P101,Rice Bag,Grocery,2,1200,50,120,2470,Cash,2025-01-10 10:15:30
+O1002,C002,P102,Milk Pack,Dairy,5,40,0,10,210,UPI,2025-01-10 11:05:20
+O1003,C003,P103,Shampoo,Personal Care,3,180,20,15,535,Card,2025-01-10 12:45:10
+O1004,C004,P104,Notebook,Stationery,10,30,0,12,312,Cash,2025-01-11 09:30:45
+O1005,C005,P105,Sugar Pack,Grocery,4,50,10,8,198,UPI,2025-01-11 14:20:00

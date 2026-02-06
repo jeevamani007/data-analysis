@@ -1,0 +1,6 @@
+customer_id,customer_name,phone,email,city,gender,age,loyalty_level,signup_date
+C001,Ravi Kumar,9876543210,ravi@gmail.com,Chennai,Male,32,Gold,2024-01-10
+C002,Anitha Devi,9123456780,anitha@gmail.com,Madurai,Female,28,Silver,2024-02-05
+C003,Manoj Kumar,9988776655,manoj@gmail.com,Coimbatore,Male,40,Platinum,2023-12-20
+C004,Divya Priya,9090909090,divya@gmail.com,Trichy,Female,25,Bronze,2024-03-15
+C005,Suresh Babu,9345678901,suresh@gmail.com,Salem,Male,36,Gold,2023-11-30
