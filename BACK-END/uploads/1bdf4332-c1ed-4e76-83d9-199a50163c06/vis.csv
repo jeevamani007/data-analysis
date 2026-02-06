@@ -1,0 +1,5 @@
+admission_id,patient_id,ward,admission_date,admission_time,admission_timestamp,admission_type
+ADM201,P001,General,2026-02-01,10:00,2026-02-01 10:00:00,Emergency
+ADM202,P002,Neurology,2026-02-01,11:00,2026-02-01 11:00:00,Normal
+ADM203,P001,General,2026-02-02,12:00,2026-02-02 12:00:00,Follow-up
+ADM204,P003,ICU,2026-02-02,13:00,2026-02-02 13:00:00,Emergency
