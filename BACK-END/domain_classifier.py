@@ -11,7 +11,7 @@ import os
 class DomainClassifier:
     """
     Classifies database domains using Logistic Regression based on metadata.
-    Focuses on identifying 'Banking' vs 'Other' domains.
+    Supports multi-class domain detection with keyword-pattern overrides.
     """
     
     def __init__(self):
@@ -23,7 +23,8 @@ class DomainClassifier:
         """
         Train a Logistic Regression model on synthetic data.
         The features are 'bag of words' from column names.
-        Now supports tri-class classification: Banking, Healthcare, Other.
+        Now supports multi-class classification:
+        Banking, Finance, Insurance, Healthcare, Retail/E‑commerce, Other.
         Enhanced with more distinctive samples to prevent misclassification.
         """
         # Synthetic Training Data with STRONGER domain-specific features
@@ -46,13 +47,34 @@ class DomainClassifier:
             "transaction_id merchant_id pos_terminal card_type authorization_code settlement_date"
         ]
         
+        # Class 1: Finance / Accounting / Payroll
+        finance_samples = [
+            "invoice_id invoice_no invoice_date customer_id payment_mode payment_status due_date",
+            "gst gstin tax tax_amount cgst sgst igst taxable_value invoice_total net_amount",
+            "salary employee_id payroll_month gross_salary net_salary deduction hra pf esi tds",
+            "expense_id expense_type expense_amount expense_date cost_center vendor_name",
+            "profit loss revenue cogs margin budget fiscal_year quarter",
+            "ledger_id ledger_name journal_id journal_date debit credit voucher_no narration",
+            "accounts_payable supplier_id bill_no bill_date amount_due paid_amount payment_date",
+            "accounts_receivable client_id receipt_no receipt_date amount_received balance_due",
+            "budget_id budget_amount planned_amount actual_amount variance department_id",
+        ]
+
+        # Class 2: Insurance
+        insurance_samples = [
+            "policy_no policy_id policy_type insured_name nominee beneficiary sum_insured premium",
+            "claim_id policy_no claim_date claim_amount claim_status settlement_amount",
+            "risk_score underwriting_score rider coverage_type deductible copay co_insurance",
+            "policy_start_date policy_end_date renewal_date lapse_date grace_period",
+            "agent_id broker_id insurer_name premium_due_date premium_paid_date payment_mode",
+        ]
+
         # Class 1: Healthcare - Enhanced with exclusive medical terminology
         healthcare_samples = [
             "patient_id first_name last_name dob blood_type insurance_id allergies",
             "diagnosis_id patient_id icd_code diagnosis_name doctor_id admission_date vitals",
             "treatment_plan_id medication dosage frequency prescription_date pharmacy_notes",
             "doctor_id specialty license_number department hospital_id consultation_fee",
-            "insurance_claim_id patient_id claim_amount coverage_type approval_status policy_number",
             "appointment_id patient_id doctor_id appointment_date appointment_time status clinic_room",
             "medical_record_id patient_id condition symptoms lab_results treatment_history vaccination_record",
             "patient_id admission_date discharge_date diagnosis ward doctor_id hospital_id bed_number",
@@ -92,12 +114,16 @@ class DomainClassifier:
             "device_id device_type os_version last_seen_ip_address",
         ]
         
-        X = banking_samples + healthcare_samples + retail_samples + other_samples
+        # IMPORTANT: class order must match probability indices used later
+        # 0 Banking, 1 Finance, 2 Insurance, 3 Healthcare, 4 Retail, 5 Other
+        X = banking_samples + finance_samples + insurance_samples + healthcare_samples + retail_samples + other_samples
         y = (
             [0] * len(banking_samples)
-            + [1] * len(healthcare_samples)
-            + [2] * len(retail_samples)
-            + [3] * len(other_samples)
+            + [1] * len(finance_samples)
+            + [2] * len(insurance_samples)
+            + [3] * len(healthcare_samples)
+            + [4] * len(retail_samples)
+            + [5] * len(other_samples)
         )
         
         # Pipeline: Vectorizer (Unigrams) -> Logistic Regression (multi-class)
@@ -107,12 +133,12 @@ class DomainClassifier:
         ])
         
         self.pipeline.fit(X, y)
-        print("Domain Classifier trained successfully (Banking, Healthcare, Other).")
+        print("Domain Classifier trained successfully (Banking, Finance, Insurance, Healthcare, Retail, Other).")
 
     def predict(self, table_names: List[str], all_columns: List[str], sample_values: List[str] = None) -> Dict:
         """
-        Predict domain classification across Banking, Healthcare, and Other.
-        Now also checks sample data values for healthcare/banking keywords.
+        Predict domain classification across Banking, Finance, Insurance, Healthcare, Retail, and Other.
+        Also checks sample data values for extra keywords.
         Returns probabilities, primary label, and evidence.
         """
         # Combine all metadata into a single string for classification
@@ -128,7 +154,7 @@ class DomainClassifier:
         cols_lower = [col.lower().replace('_', '').replace('-', '').replace(' ', '') for col in all_columns]
         cols_original_lower = [col.lower() for col in all_columns]
         
-        # Healthcare EXCLUSIVE patterns - if found, MUST be healthcare
+        # Healthcare patterns
         # Using flexible matching to catch variations like patient_id, patientid, patient_no, etc.
         healthcare_force_patterns = [
             'patient', 'doctor', 'physician', 'surgeon', 'nurse',
@@ -138,16 +164,50 @@ class DomainClassifier:
             'medicalrecord', 'vitals', 'symptoms', 'allergies'
         ]
         
-        # Banking EXCLUSIVE patterns - if found, MUST be banking
-        # NOTE: transactionid excluded - POS/retail also uses transaction_id; use retail schema override instead
+        # Banking patterns – ONLY terms that are truly banking-specific.
+        # EXCLUDED: balance, risk_score, beneficiary (used in Insurance too).
+        # Banking = bank accounts, branches, IFSC/SWIFT, loans, login/logout sessions.
         banking_force_patterns = [
-            'accountnumber', 'accountno', 'accountid',
-            'ifsccode', 'ifsc', 'swiftcode', 'swift', 
-            'routingnumber', 'routing', 'iban', 'bic',
-            'loanid', 'loannumber', 'branchid', 'branchcode',
-            'accountbalance', 'accounttype'
+            'accountno', 'accountnumber', 'accountid', 'accountbalance', 'accounttype',
+            'ifsc', 'ifsccode', 'swiftcode', 'swift', 'routingnumber', 'routing', 'iban', 'bic',
+            'branch', 'branchid', 'branchcode', 'branch_name',
+            'deposit', 'withdraw', 'withdrawal',
+            'login_time', 'logout_time', 'logintime', 'logouttime',
+            'loanid', 'loannumber', 'loan_id', 'loan_type',
+            'transaction_id', 'transactionid',  # only count as banking when with account/ifsc
         ]
         
+        # Finance patterns (Accounting/Payroll/Tax)
+        # NOTE: 'invoice' and 'tax' can appear in retail; we rely on combos to disambiguate.
+        finance_force_patterns = [
+            # user provided finance clues
+            'invoiceid', 'invoiceno', 'invoice', 'paymentmode',
+            'gst', 'gstin',
+            'tax', 'salary', 'expense', 'profit', 'loss', 'budget',
+            # common accounting words
+            'ledger', 'journal', 'voucher', 'payroll', 'tds', 'pf', 'esi',
+            'receivable', 'payable', 'costcenter', 'fiscal', 'revenue', 'cogs',
+        ]
+
+        # Insurance patterns (include abbreviated column names e.g. POL_ID, PREM_AMT, CLM_ID from demo)
+        insurance_force_patterns = [
+            # user provided insurance clues
+            'policyno', 'policyid', 'policy', 'polid', 'pol_id',
+            'claimid', 'claim', 'clmid', 'clm_id',
+            'premium', 'premamt', 'prem_amt', 'totprem', 'tot_prem',
+            'suminsured', 'insured', 'insurer',
+            'beneficiary', 'nominee',
+            'policystartdate', 'policyenddate', 'policy_start_date', 'policy_end_date',
+            'effdt', 'expdt', 'eff_dt', 'exp_dt',  # effective/expiry date
+            # insurance-ish
+            'underwriting', 'coverage', 'deductible', 'dedamt', 'ded_amt',
+            'renewal', 'lapse', 'limamt', 'lim_amt',  # limit amount
+            'lob', 'lob_cd',  # line of business
+            'cov_cd', 'covdesc', 'cov_desc',  # coverage
+            'paidamt', 'rsvamt', 'paid_amt', 'rsv_amt',  # claim paid, reserve
+            'agnt', 'agnt_id',  # agent (insurance agent)
+        ]
+
         # Retail EXCLUSIVE patterns - must NOT appear in pure banking/healthcare schemas
         # Includes: order_id, product_id, product_name, category, quantity, unit_price, discount, tax
         retail_force_patterns = [
@@ -168,17 +228,25 @@ class DomainClassifier:
         }
         
         # Check for healthcare patterns (more flexible)
-        has_healthcare_exclusive = False
-        for col_clean in cols_lower:
-            for pattern in healthcare_force_patterns:
-                if pattern in col_clean:
-                    has_healthcare_exclusive = True
-                    print(f"[DOMAIN CLASSIFIER] Healthcare pattern '{pattern}' found in column: {all_columns[cols_lower.index(col_clean)]}")
-                    break
-            if has_healthcare_exclusive:
-                break
+        def _pattern_hits(patterns: List[str]) -> Tuple[int, List[str]]:
+            hits = []
+            for col_clean in cols_lower:
+                for pattern in patterns:
+                    if pattern and pattern in col_clean:
+                        hits.append(pattern)
+            # de-dup while preserving order
+            seen = set()
+            uniq = []
+            for h in hits:
+                if h not in seen:
+                    seen.add(h)
+                    uniq.append(h)
+            return len(uniq), uniq
+
+        healthcare_hit_count, healthcare_hits = _pattern_hits(healthcare_force_patterns)
         
         # Also check original column names for exact matches (case-insensitive)
+        has_healthcare_exclusive = healthcare_hit_count > 0
         if not has_healthcare_exclusive:
             healthcare_exact_keywords = ['patient_id', 'patient', 'doctor_id', 'doctor', 'diagnosis']
             for col_orig in cols_original_lower:
@@ -186,19 +254,43 @@ class DomainClassifier:
                     has_healthcare_exclusive = True
                     print(f"[DOMAIN CLASSIFIER] Healthcare keyword found in column: {all_columns[cols_original_lower.index(col_orig)]}")
                     break
+        if has_healthcare_exclusive and healthcare_hits:
+            print(f"[DOMAIN CLASSIFIER] Healthcare patterns found: {', '.join(healthcare_hits[:4])}")
         
-        # Check for banking patterns
-        has_banking_exclusive = False
-        for col_clean in cols_lower:
-            for pattern in banking_force_patterns:
-                if pattern in col_clean:
-                    has_banking_exclusive = True
-                    print(f"[DOMAIN CLASSIFIER] Banking pattern '{pattern}' found in column: {all_columns[cols_lower.index(col_clean)]}")
-                    break
-            if has_banking_exclusive:
-                break
+        # Banking: require at least one STRONG banking-only signal (not shared with Insurance/Finance).
+        # e.g. ifsc, swift, iban, branch, loan, login_time, logout_time, deposit, withdraw.
+        banking_strong_only = [
+            'ifsc', 'ifsccode', 'swift', 'swiftcode', 'iban', 'bic',
+            'branch', 'branchid', 'branchcode',
+            'loanid', 'loannumber', 'loan_id', 'loan_type',
+            'login_time', 'logout_time', 'logintime', 'logouttime',
+            'deposit', 'withdraw', 'withdrawal',
+        ]
+        banking_strong_hits = sum(1 for p in banking_strong_only if any(p in c for c in cols_lower))
+        banking_hit_count, banking_hits = _pattern_hits(banking_force_patterns)
+        # Only treat as banking-exclusive when we have strong banking-only signals.
+        # Don't treat as banking when we only have e.g. BRANCH_CD (insurance agents have branch too) and strong insurance.
+        _insurance_combo_for_banking = (  # computed early for banking check
+            (1 if any('policy' in c or 'polid' in c for c in cols_lower) else 0) +
+            (2 if any('premium' in c or 'premamt' in c for c in cols_lower) else 0) +
+            (2 if any('claim' in c or 'clmid' in c for c in cols_lower) else 0)
+        )
+        has_banking_exclusive = (
+            banking_strong_hits > 0 and banking_hit_count > 0 and
+            not (_insurance_combo_for_banking >= 3 and banking_strong_hits <= 1)  # e.g. only BRANCH_CD
+        )
+        if has_banking_exclusive and banking_hits:
+            print(f"[DOMAIN CLASSIFIER] Banking patterns found: {', '.join(banking_hits[:4])}")
+
+        # Check for finance patterns
+        finance_hit_count, finance_hits = _pattern_hits(finance_force_patterns)
+
+        # Check for insurance patterns
+        insurance_hit_count, insurance_hits = _pattern_hits(insurance_force_patterns)
+
         # Check for retail patterns
         has_retail_exclusive = False
+        retail_force_hits = set()  # which retail patterns matched (to avoid 'tax' alone stealing Finance)
         retail_combo_hits = 0
         cols_joined_clean = ''.join(cols_lower)
         # Strong retail schema: typical order line / POS tables
@@ -222,6 +314,7 @@ class DomainClassifier:
             for pattern in retail_force_patterns:
                 if pattern in col_clean:
                     has_retail_exclusive = True
+                    retail_force_hits.add(pattern)
                     print(f"[DOMAIN CLASSIFIER] Retail pattern '{pattern}' found in column: {all_columns[cols_lower.index(col_clean)]}")
                     break
             # strong combo columns
@@ -245,81 +338,162 @@ class DomainClassifier:
             has_retail_exclusive = True
             print(f"[DOMAIN CLASSIFIER] Observed Retail columns confirmed ({observed_retail_count}/8: order_id, product_id, product_name, category, quantity, unit_price, discount, tax). Forcing Retail.")
         
-        # Predict probability for all four classes
+        # --- Strong combo logic for Finance / Insurance ---
+        # Finance strong: invoice + (gst/tax) + payment_mode OR payroll terms OR profit/loss/budget
+        finance_combo_score = 0
+        if any('invoice' in c for c in cols_lower):
+            finance_combo_score += 1
+        if any('gst' in c or 'gstin' in c for c in cols_lower):
+            finance_combo_score += 1
+        if any('tax' in c for c in cols_lower):
+            finance_combo_score += 1
+        if any('paymentmode' in c or 'payment_mode' in c for c in cols_lower):
+            finance_combo_score += 1
+        if any('salary' in c or 'payroll' in c for c in cols_lower):
+            finance_combo_score += 2
+        if any('expense' in c or 'budget' in c for c in cols_lower):
+            finance_combo_score += 1
+        if any('profit' in c or 'loss' in c for c in cols_lower):
+            finance_combo_score += 1
+
+        # Insurance strong: policy + (premium or sum_insured) OR claim + policy (cols_lower has no underscores)
+        # Include abbreviated columns: pol_id, prem_amt, clm_id, eff_dt, exp_dt
+        insurance_combo_score = 0
+        if any('policy' in c or 'polid' in c or 'pol_id' in c for c in cols_lower):
+            insurance_combo_score += 1
+        if any('premium' in c or 'premamt' in c or 'prem_amt' in c or 'totprem' in c for c in cols_lower):
+            insurance_combo_score += 2
+        if any('suminsured' in c or 'limamt' in c or 'lim_amt' in c for c in cols_lower):
+            insurance_combo_score += 2
+        if any('claim' in c or 'clmid' in c or 'clm_id' in c for c in cols_lower):
+            insurance_combo_score += 2
+        if any('nominee' in c or 'beneficiary' in c for c in cols_lower):
+            insurance_combo_score += 1
+        if any('policyenddate' in c or 'policyend' in c or 'expdt' in c or 'exp_dt' in c for c in cols_lower):
+            insurance_combo_score += 1
+        if any('policystartdate' in c or 'policystart' in c or 'effdt' in c or 'eff_dt' in c for c in cols_lower):
+            insurance_combo_score += 1
+        if any('deductible' in c or 'dedamt' in c or 'ded_amt' in c for c in cols_lower):
+            insurance_combo_score += 1
+        if any('coverage' in c or 'cov_cd' in c or 'covdesc' in c for c in cols_lower):
+            insurance_combo_score += 1
+
+        has_finance_exclusive = (finance_hit_count >= 2) or (finance_combo_score >= 3)
+        # Insurance: trigger on 1+ insurance keyword or combo (policy+premium, claim+policy, etc.)
+        has_insurance_exclusive = (insurance_hit_count >= 1) or (insurance_combo_score >= 2)
+        # Don't treat as Retail when only 'tax'/'taxamount' matched and we have strong Finance
+        if has_retail_exclusive and has_finance_exclusive and retail_force_hits <= {'tax', 'taxamount'}:
+            has_retail_exclusive = False
+
+        if has_finance_exclusive and finance_hits:
+            print(f"[DOMAIN CLASSIFIER] Finance patterns found: {', '.join(finance_hits[:5])} (combo={finance_combo_score})")
+        if has_insurance_exclusive and insurance_hits:
+            print(f"[DOMAIN CLASSIFIER] Insurance patterns found: {', '.join(insurance_hits[:5])} (combo={insurance_combo_score})")
+
+        # Domain strength scores from keywords (used for multi-domain mix and fallback – never trust raw ML alone for 95% banking)
+        insurance_score = max(0, insurance_hit_count * 2 + insurance_combo_score)
+        finance_score = max(0, finance_hit_count * 2 + finance_combo_score)
+        banking_score = (banking_strong_hits * 3 + banking_hit_count) if (banking_strong_hits > 0) else 0
+        healthcare_score = max(0, healthcare_hit_count * 2)
+        retail_score = (4 if has_retail_exclusive else 0) + retail_combo_hits + len(retail_schema_hits)
+
+        # Predict probability for all six classes (used only when we blend with keyword scores)
         proba = self.pipeline.predict_proba([combined_text])[0]
         banking_prob = proba[0]      # Class 0: Banking
-        healthcare_prob = proba[1]   # Class 1: Healthcare
-        retail_prob = proba[2]       # Class 2: Retail
-        other_prob = proba[3]        # Class 3: Other
+        finance_prob = proba[1]      # Class 1: Finance
+        insurance_prob = proba[2]    # Class 2: Insurance
+        healthcare_prob = proba[3]   # Class 3: Healthcare
+        retail_prob = proba[4]       # Class 4: Retail
+        other_prob = proba[5]        # Class 5: Other
         
-        # APPLY MUTUAL EXCLUSION LOGIC (MORE AGGRESSIVE, NOW WITH RETAIL)
-        # 1) Pure strong domain signals
-        if has_healthcare_exclusive and not (has_banking_exclusive or has_retail_exclusive):
-            healthcare_prob = 0.95
-            banking_prob = 0.02
-            retail_prob = 0.01
-            other_prob = 0.02
-            print(f"[DOMAIN CLASSIFIER] FORCING Healthcare: 95% (exclusive patterns)")
-        
-        elif has_banking_exclusive and not (has_healthcare_exclusive or has_retail_exclusive):
-            banking_prob = 0.95
-            healthcare_prob = 0.02
-            retail_prob = 0.01
-            other_prob = 0.02
-            print(f"[DOMAIN CLASSIFIER] FORCING Banking: 95% (exclusive patterns)")
-        
-        elif has_retail_exclusive and not (has_banking_exclusive or has_healthcare_exclusive):
-            retail_prob = 0.95
-            banking_prob = 0.02
-            healthcare_prob = 0.01
-            other_prob = 0.02
+        # APPLY MUTUAL EXCLUSION LOGIC – order matters: Insurance/Finance before Banking so they are not overridden.
+        # 1) Pure strong domain signals. Check Insurance and Finance BEFORE Banking (user uploads were misclassified as Banking).
+        if has_retail_exclusive and not (has_healthcare_exclusive or has_banking_exclusive or has_finance_exclusive or has_insurance_exclusive):
+            retail_prob, banking_prob, finance_prob, insurance_prob, healthcare_prob, other_prob = 0.95, 0.01, 0.01, 0.01, 0.01, 0.01
             print(f"[DOMAIN CLASSIFIER] FORCING Retail: 95% (exclusive patterns)")
+
+        elif has_healthcare_exclusive and not (has_banking_exclusive or has_retail_exclusive or has_finance_exclusive or has_insurance_exclusive):
+            healthcare_prob, banking_prob, finance_prob, insurance_prob, retail_prob, other_prob = 0.95, 0.01, 0.01, 0.01, 0.01, 0.01
+            print(f"[DOMAIN CLASSIFIER] FORCING Healthcare: 95% (exclusive patterns)")
+
+        # Insurance BEFORE Banking – so policy_no, claim_id, premium, nominee, beneficiary, sum_insured win
+        elif has_insurance_exclusive and not (has_banking_exclusive or has_retail_exclusive or has_healthcare_exclusive or has_finance_exclusive):
+            insurance_prob, banking_prob, finance_prob, healthcare_prob, retail_prob, other_prob = 0.95, 0.01, 0.01, 0.01, 0.01, 0.01
+            print(f"[DOMAIN CLASSIFIER] FORCING Insurance: 95% (exclusive patterns)")
+
+        elif has_finance_exclusive and not (has_healthcare_exclusive or has_retail_exclusive or has_banking_exclusive or has_insurance_exclusive):
+            finance_prob, banking_prob, insurance_prob, healthcare_prob, retail_prob, other_prob = 0.95, 0.01, 0.01, 0.01, 0.01, 0.01
+            print(f"[DOMAIN CLASSIFIER] FORCING Finance: 95% (exclusive patterns)")
+
+        # Banking only when strong banking-only signals (ifsc, branch, loan, login_time, etc.)
+        elif has_banking_exclusive and not (has_healthcare_exclusive or has_retail_exclusive or has_finance_exclusive or has_insurance_exclusive):
+            banking_prob, finance_prob, insurance_prob, healthcare_prob, retail_prob, other_prob = 0.95, 0.01, 0.01, 0.01, 0.01, 0.01
+            print(f"[DOMAIN CLASSIFIER] FORCING Banking: 95% (exclusive patterns)")
+
         # Strong retail schema (order_id + product + qty + unit_price + total_amount + payment_method, etc.)
-        elif len(retail_schema_hits) >= 4 and not (has_banking_exclusive or has_healthcare_exclusive):
+        elif len(retail_schema_hits) >= 4 and not (has_banking_exclusive or has_healthcare_exclusive or has_finance_exclusive or has_insurance_exclusive):
             # Override towards Retail even if ML model was uncertain
             print(f"[DOMAIN CLASSIFIER] Strong Retail schema detected (columns: {', '.join(list(retail_schema_hits)[:6])}). Forcing Retail domain.")
-            retail_prob = 0.97
-            banking_prob = 0.01
-            healthcare_prob = 0.01
-            other_prob = 0.01
+            retail_prob, banking_prob, finance_prob, insurance_prob, healthcare_prob, other_prob = 0.97, 0.005, 0.005, 0.005, 0.01, 0.005
         
-        # 2) Mixed exclusive signals – fall back to "who is stronger" heuristic
-        elif (has_healthcare_exclusive + has_banking_exclusive + has_retail_exclusive) > 1:
-            print(f"[DOMAIN CLASSIFIER] WARNING: Mixed domain-exclusive patterns detected!")
-            # Prefer healthcare if strong patient/doctor signals
-            strong_healthcare = any(p in cols_joined_clean for p in ['patient', 'doctor', 'diagnosis'])
-            strong_banking = any(p in cols_joined_clean for p in ['accountnumber', 'ifsccode', 'loanid', 'branchid'])
-            strong_retail = (observed_retail_count >= 4 or
-                            any(p in cols_joined_clean for p in ['productname', 'unitprice', 'totalamount', 'paymentmethod']) or
-                            len(retail_schema_hits) >= 3)
-            
-            # Observed retail columns (order_id, product_id, product_name, etc.) take precedence when 4+
-            if observed_retail_count >= 4 and not strong_healthcare:
-                retail_prob, banking_prob, healthcare_prob, other_prob = 0.95, 0.02, 0.02, 0.01
-                print(f"[DOMAIN CLASSIFIER] Observed Retail columns ({observed_retail_count}/8) - confirming Retail domain, allowing Retail model.")
-            elif strong_healthcare:
-                healthcare_prob, banking_prob, retail_prob, other_prob = 0.8, 0.1, 0.05, 0.05
-                print(f"[DOMAIN CLASSIFIER] Mixed data, favoring Healthcare: 80%")
-            elif strong_retail:
-                retail_prob, banking_prob, healthcare_prob, other_prob = 0.8, 0.1, 0.05, 0.05
-                print(f"[DOMAIN CLASSIFIER] Mixed data, favoring Retail: 80%")
-            elif strong_banking:
-                banking_prob, healthcare_prob, retail_prob, other_prob = 0.8, 0.1, 0.05, 0.05
-                print(f"[DOMAIN CLASSIFIER] Mixed data, favoring Banking: 80%")
+        # 2) Mixed or multiple domains – use weighted scores so percentages reflect actual mix and add up to 100%
+        elif (has_healthcare_exclusive + has_banking_exclusive + has_retail_exclusive + has_finance_exclusive + has_insurance_exclusive) > 1:
+            print(f"[DOMAIN CLASSIFIER] Multiple domains detected – using keyword-weighted percentages.")
+            # Weights from domain strength scores (min 0.1 so we don't get exact zeros in pie)
+            w_bank = max(0.1, banking_score)
+            w_fin = max(0.1, finance_score)
+            w_ins = max(0.1, insurance_score)
+            w_health = max(0.1, healthcare_score)
+            w_retail = max(0.1, retail_score)
+            w_other = 0.1
+            total_w = w_bank + w_fin + w_ins + w_health + w_retail + w_other
+            banking_prob = w_bank / total_w
+            finance_prob = w_fin / total_w
+            insurance_prob = w_ins / total_w
+            healthcare_prob = w_health / total_w
+            retail_prob = w_retail / total_w
+            other_prob = w_other / total_w
+
+        # 3) No exclusive branch hit – do NOT use raw ML (it biases to Banking). Use keyword scores only.
+        elif (insurance_score + finance_score + banking_score + healthcare_score + retail_score) > 0:
+            print(f"[DOMAIN CLASSIFIER] Using keyword-based distribution (no single domain forced).")
+            w_bank = max(0.05, banking_score)
+            w_fin = max(0.05, finance_score)
+            w_ins = max(0.05, insurance_score)
+            w_health = max(0.05, healthcare_score)
+            w_retail = max(0.05, retail_score)
+            w_other = 0.05
+            total_w = w_bank + w_fin + w_ins + w_health + w_retail + w_other
+            banking_prob = w_bank / total_w
+            finance_prob = w_fin / total_w
+            insurance_prob = w_ins / total_w
+            healthcare_prob = w_health / total_w
+            retail_prob = w_retail / total_w
+            other_prob = w_other / total_w
+
+        # (If all scores are 0 we keep raw ML proba)
         
         # Normalize probabilities to sum to 1.0
-        total = banking_prob + healthcare_prob + retail_prob + other_prob
+        total = banking_prob + finance_prob + insurance_prob + healthcare_prob + retail_prob + other_prob
         if total > 0:
             banking_prob = banking_prob / total
+            finance_prob = finance_prob / total
+            insurance_prob = insurance_prob / total
             healthcare_prob = healthcare_prob / total
             retail_prob = retail_prob / total
             other_prob = other_prob / total
         
         # Determine primary domain (highest probability)
-        max_prob = max(banking_prob, healthcare_prob, retail_prob, other_prob)
+        max_prob = max(banking_prob, finance_prob, insurance_prob, healthcare_prob, retail_prob, other_prob)
         if banking_prob == max_prob:
             primary_domain = "Banking"
             is_banking = True
+        elif finance_prob == max_prob:
+            primary_domain = "Finance"
+            is_banking = False
+        elif insurance_prob == max_prob:
+            primary_domain = "Insurance"
+            is_banking = False
         elif healthcare_prob == max_prob:
             primary_domain = "Healthcare"
             is_banking = False
@@ -333,15 +507,39 @@ class DomainClassifier:
         # Detect specific evidence (heuristic check for explanation)
         evidence = self._get_evidence(all_columns, sample_values)
         
+        # Round percentages to 2 decimals and force sum to 100%
+        pct_bank = round(banking_prob * 100, 2)
+        pct_fin = round(finance_prob * 100, 2)
+        pct_ins = round(insurance_prob * 100, 2)
+        pct_health = round(healthcare_prob * 100, 2)
+        pct_retail = round(retail_prob * 100, 2)
+        pct_other = round(other_prob * 100, 2)
+        total_pct = pct_bank + pct_fin + pct_ins + pct_health + pct_retail + pct_other
+        if total_pct != 100.0:
+            # Adjust largest so sum is exactly 100
+            idx_max = max(
+                range(6),
+                key=lambda i: [pct_bank, pct_fin, pct_ins, pct_health, pct_retail, pct_other][i]
+            )
+            diff = 100.0 - total_pct
+            if idx_max == 0: pct_bank += diff
+            elif idx_max == 1: pct_fin += diff
+            elif idx_max == 2: pct_ins += diff
+            elif idx_max == 3: pct_health += diff
+            elif idx_max == 4: pct_retail += diff
+            else: pct_other += diff
+        
         return {
             "is_banking": bool(is_banking),
             "confidence": float(round(max_prob * 100, 2)),
             "domain_label": primary_domain,
             "percentages": {
-                "Banking": float(round(banking_prob * 100, 2)),
-                "Healthcare": float(round(healthcare_prob * 100, 2)),
-                "Retail": float(round(retail_prob * 100, 2)),
-                "Other": float(round(other_prob * 100, 2))
+                "Banking": float(pct_bank),
+                "Finance": float(pct_fin),
+                "Insurance": float(pct_ins),
+                "Healthcare": float(pct_health),
+                "Retail": float(pct_retail),
+                "Other": float(pct_other)
             },
             "evidence": evidence
         }
@@ -406,6 +604,32 @@ class DomainClassifier:
             "customer_id", "user_id", "first_name", "last_name", "dob", "status",
             "date", "amount", "balance", "open_date", "created_date", "id", "name"
         }
+
+        # Finance keywords
+        finance_core = {
+            "invoice_id", "invoice_no", "invoice_date", "payment_mode", "paymentmethod",
+            "gst", "gstin", "tax", "tax_amount",
+            "salary", "payroll", "expense", "budget", "profit", "loss",
+            "ledger", "journal", "voucher", "debit", "credit"
+        }
+
+        finance_strong = {
+            "tds", "pf", "esi", "cgst", "sgst", "igst",
+            "accounts_payable", "accounts_receivable", "receivable", "payable",
+            "cost_center", "fiscal_year", "revenue", "cogs", "variance"
+        }
+
+        # Insurance keywords
+        insurance_core = {
+            "policy_no", "policy_id", "policy_start_date", "policy_end_date",
+            "claim_id", "premium", "sum_insured", "nominee", "beneficiary"
+        }
+
+        insurance_strong = {
+            "underwriting", "coverage", "insured", "insurer",
+            "renewal_date", "lapse_date", "deductible", "settlement_amount",
+            "risk_score", "underwriting_score"
+        }
         
         cols_lower = [col.lower() for col in columns]
         
@@ -426,10 +650,23 @@ class DomainClassifier:
             'product', 'sku', 'brand', 'store', 'online', 'pos', 'cashier',
             'cash', 'card', 'upi', 'wallet'
         ]
+
+        finance_value_keywords = [
+            'invoice', 'gst', 'gstin', 'tax', 'salary', 'payroll', 'expense',
+            'profit', 'loss', 'budget', 'ledger', 'journal', 'voucher', 'tds',
+            'receivable', 'payable'
+        ]
+
+        insurance_value_keywords = [
+            'policy', 'policy no', 'policy number', 'claim', 'premium',
+            'sum insured', 'beneficiary', 'nominee', 'underwriting', 'coverage'
+        ]
         
         found_healthcare_in_values = []
         found_banking_in_values = []
         found_retail_in_values = []
+        found_finance_in_values = []
+        found_insurance_in_values = []
         
         if sample_values:
             for val in sample_values:
@@ -449,6 +686,16 @@ class DomainClassifier:
                     if kw in val_lower:
                         found_retail_in_values.append(f"value:{kw}")
                         break
+                # Check finance keywords
+                for kw in finance_value_keywords:
+                    if kw in val_lower:
+                        found_finance_in_values.append(f"value:{kw}")
+                        break
+                # Check insurance keywords
+                for kw in insurance_value_keywords:
+                    if kw in val_lower:
+                        found_insurance_in_values.append(f"value:{kw}")
+                        break
         
         # Check for partial matches (e.g., "credit_amount" contains "credit")
         found_banking_core = []
@@ -457,6 +704,10 @@ class DomainClassifier:
         found_healthcare_strong = []
         found_retail_core = []
         found_retail_strong = []
+        found_finance_core = []
+        found_finance_strong = []
+        found_insurance_core = []
+        found_insurance_strong = []
         
         for col in columns:
             col_lower = col.lower()
@@ -478,6 +729,18 @@ class DomainClassifier:
             # Retail strong
             elif any(kw in col_lower.replace(' ', '_') for kw in retail_strong):
                 found_retail_strong.append(col)
+
+            # Finance core/strong
+            if any(kw in col_lower.replace(' ', '_') for kw in finance_core):
+                found_finance_core.append(col)
+            elif any(kw in col_lower.replace(' ', '_') for kw in finance_strong):
+                found_finance_strong.append(col)
+
+            # Insurance core/strong
+            if any(kw in col_lower.replace(' ', '_') for kw in insurance_core):
+                found_insurance_core.append(col)
+            elif any(kw in col_lower.replace(' ', '_') for kw in insurance_strong):
+                found_insurance_strong.append(col)
         
         evidence = []
         if found_banking_core:
@@ -498,13 +761,27 @@ class DomainClassifier:
             evidence.append(f"Retail signals: {', '.join(found_retail_strong[:5])}")
         if found_retail_in_values:
             evidence.append(f"Retail in data: {', '.join(set(found_retail_in_values[:5]))}")
+
+        if found_finance_core:
+            evidence.append(f"Finance core: {', '.join(found_finance_core[:5])}")
+        if found_finance_strong:
+            evidence.append(f"Finance signals: {', '.join(found_finance_strong[:5])}")
+        if found_finance_in_values:
+            evidence.append(f"Finance in data: {', '.join(set(found_finance_in_values[:5]))}")
+
+        if found_insurance_core:
+            evidence.append(f"Insurance core: {', '.join(found_insurance_core[:5])}")
+        if found_insurance_strong:
+            evidence.append(f"Insurance signals: {', '.join(found_insurance_strong[:5])}")
+        if found_insurance_in_values:
+            evidence.append(f"Insurance in data: {', '.join(set(found_insurance_in_values[:5]))}")
             
         return evidence
     
     def get_domain_split_summary(self, table_names: List[str], all_columns: List[str], sample_values: List[str] = None) -> Dict[str, Any]:
         """
         Get domain classification with percentage breakdown for visualization.
-        Used to create pie charts showing Banking vs Healthcare vs Other domain split.
+        Used to create pie charts showing domain split.
         
         Returns:
             Dict with percentages, labels, and visual data
@@ -512,6 +789,8 @@ class DomainClassifier:
         prediction = self.predict(table_names, all_columns, sample_values)
         
         banking_pct = prediction['percentages']['Banking']
+        finance_pct = prediction['percentages']['Finance']
+        insurance_pct = prediction['percentages']['Insurance']
         healthcare_pct = prediction['percentages']['Healthcare']
         retail_pct = prediction['percentages']['Retail']
         other_pct = prediction['percentages']['Other']
@@ -519,6 +798,8 @@ class DomainClassifier:
         return {
             'percentages': {
                 'Banking': round(banking_pct, 1),
+                'Finance': round(finance_pct, 1),
+                'Insurance': round(insurance_pct, 1),
                 'Healthcare': round(healthcare_pct, 1),
                 'Retail': round(retail_pct, 1),
                 'Other': round(other_pct, 1)
@@ -528,15 +809,17 @@ class DomainClassifier:
             'is_banking': prediction['is_banking'],
             'evidence': prediction['evidence'],
             'chart_data': {
-                'labels': ['Banking', 'Healthcare', 'Retail', 'Other'],
+                'labels': ['Banking', 'Finance', 'Insurance', 'Healthcare', 'Retail', 'Other'],
                 'values': [
                     round(banking_pct, 1),
+                    round(finance_pct, 1),
+                    round(insurance_pct, 1),
                     round(healthcare_pct, 1),
                     round(retail_pct, 1),
                     round(other_pct, 1)
                 ],
-                # Teal for Banking, Turquoise for Healthcare, Amber for Retail, Gray for Other
-                'colors': ['#0F766E', '#14B8A6', '#F59E0B', '#64748B']
+                # Teal Banking, Indigo Finance, Purple Insurance, Turquoise Healthcare, Amber Retail, Gray Other
+                'colors': ['#0F766E', '#4F46E5', '#7C3AED', '#14B8A6', '#F59E0B', '#64748B']
             },
             'explanation': self._generate_domain_explanation(prediction['percentages'], prediction['domain_label'], prediction['evidence'])
         }
@@ -544,10 +827,13 @@ class DomainClassifier:
     def _generate_domain_explanation(self, percentages: dict, primary_domain: str, evidence: List[str]) -> str:
         """Generate human-readable explanation of domain classification"""
         banking_pct = percentages.get('Banking', 0)
+        finance_pct = percentages.get('Finance', 0)
+        insurance_pct = percentages.get('Insurance', 0)
         healthcare_pct = percentages.get('Healthcare', 0)
+        retail_pct = percentages.get('Retail', 0)
         other_pct = percentages.get('Other', 0)
         
-        max_pct = max(banking_pct, healthcare_pct, other_pct)
+        max_pct = max(banking_pct, finance_pct, insurance_pct, healthcare_pct, retail_pct, other_pct)
         
         # Generate intro based on primary domain and confidence
         if primary_domain == "Banking":
@@ -555,6 +841,16 @@ class DomainClassifier:
                 intro = "This appears to be a <strong>Banking database</strong> with high confidence."
             else:
                 intro = "This looks like a <strong>Banking-related database</strong>."
+        elif primary_domain == "Finance":
+            if finance_pct >= 70:
+                intro = "This appears to be a <strong>Finance / Accounting database</strong> with high confidence."
+            else:
+                intro = "This looks like a <strong>Finance / accounting-related database</strong>."
+        elif primary_domain == "Insurance":
+            if insurance_pct >= 70:
+                intro = "This appears to be an <strong>Insurance database</strong> with high confidence."
+            else:
+                intro = "This looks like an <strong>Insurance-related database</strong>."
         elif primary_domain == "Healthcare":
             if healthcare_pct >= 70:
                 intro = "This appears to be a <strong>Healthcare database</strong> with high confidence."
@@ -576,3 +872,35 @@ class DomainClassifier:
             evidence_text = " " + " ".join(evidence)
         
         return intro + evidence_text
+    
+    def classify_table(self, df: pd.DataFrame, table_name: str) -> Tuple[bool, float, List[str]]:
+        """
+        Backward-compatible method for db_grouping_engine.py
+        Classifies a single table and returns (is_banking, confidence, evidence)
+        
+        Args:
+            df: DataFrame to classify
+            table_name: Name of the table
+            
+        Returns:
+            Tuple of (is_banking: bool, confidence: float, evidence: List[str])
+        """
+        all_columns = list(df.columns)
+        sample_values = []
+        
+        # Get sample values from first few rows
+        for col in df.columns:
+            sample_vals = df[col].dropna().head(10).astype(str).tolist()
+            sample_values.extend(sample_vals)
+        
+        result = self.predict(
+            table_names=[table_name],
+            all_columns=all_columns,
+            sample_values=sample_values
+        )
+        
+        is_banking = result.get('is_banking', False)
+        confidence = result.get('confidence', 0.0)
+        evidence = result.get('evidence', [])
+        
+        return is_banking, confidence, evidence
