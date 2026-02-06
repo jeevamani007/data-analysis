@@ -1095,6 +1095,8 @@ function showDomainSplitView() {
         const domainData = profile.domain_analysis;
         const profileId = `profile-${index}`;
         const bankingPct = domainData?.percentages?.Banking ?? 0;
+        const financePct = domainData?.percentages?.Finance ?? 0;
+        const insurancePct = domainData?.percentages?.Insurance ?? 0;
         const healthcarePct = domainData?.percentages?.Healthcare ?? 0;
         const retailPct = domainData?.percentages?.Retail ?? 0;
         const otherPct = domainData?.percentages?.Other ?? 0;
@@ -1102,22 +1104,32 @@ function showDomainSplitView() {
         // Determine primary domain
         const primaryDomain = domainData?.primary_domain || 'Other';
         const isBanking = primaryDomain === 'Banking';
+        const isFinance = primaryDomain === 'Finance';
+        const isInsurance = primaryDomain === 'Insurance';
         const isHealthcare = primaryDomain === 'Healthcare';
         const isRetail = primaryDomain === 'Retail';
 
         // Set card colors based on primary domain
         const cardColor = isBanking
             ? '#0F766E'
-            : (isHealthcare
-                ? '#14B8A6'
-                : (isRetail ? '#F59E0B' : '#64748B'));
+            : (isFinance
+                ? '#4F46E5'
+                : (isInsurance
+                    ? '#7C3AED'
+                    : (isHealthcare
+                        ? '#14B8A6'
+                        : (isRetail ? '#F59E0B' : '#64748B'))));
         const cardLabel = isBanking
             ? ` ${profile.database_name}`
-            : (isHealthcare
-                ? ` Healthcare Database ${index + 1}`
-                : (isRetail
-                    ? ` Retail Database ${index + 1}`
-                    : ` Database ${index + 1}: General / Mixed`));
+            : (isFinance
+                ? ` Finance Database ${index + 1}`
+                : (isInsurance
+                    ? ` Insurance Database ${index + 1}`
+                    : (isHealthcare
+                        ? ` Healthcare Database ${index + 1}`
+                        : (isRetail
+                            ? ` Retail Database ${index + 1}`
+                            : ` Database ${index + 1}: General / Mixed`))));
 
         if (!domainData || !domainData.chart_data) return;
 
@@ -1150,6 +1162,30 @@ function showDomainSplitView() {
                                 </div>
                                 <div style="font-size: 1.5rem; font-weight: 700; color: ${isBanking ? 'var(--accent-primary-dark)' : 'var(--text-muted)'};">
                                     ${bankingPct}%
+                                </div>
+                            </div>
+
+                            <!-- Finance -->
+                            <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: ${isFinance ? 'rgba(79, 70, 229, 0.1)' : 'var(--bg-page)'}; border-radius: 12px; border: 1px solid ${isFinance ? 'rgba(79, 70, 229, 0.3)' : 'var(--border)'};">
+                                <div style="width: 24px; height: 24px; background: #4F46E5; border-radius: 6px;"></div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">Finance Domain</div>
+                                    <div style="color: var(--text-muted); font-size: 0.85rem;">Invoices, GST, payroll, expenses</div>
+                                </div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: ${isFinance ? '#4F46E5' : 'var(--text-muted)'};">
+                                    ${financePct}%
+                                </div>
+                            </div>
+
+                            <!-- Insurance -->
+                            <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: ${isInsurance ? 'rgba(124, 58, 237, 0.1)' : 'var(--bg-page)'}; border-radius: 12px; border: 1px solid ${isInsurance ? 'rgba(124, 58, 237, 0.3)' : 'var(--border)'};">
+                                <div style="width: 24px; height: 24px; background: #7C3AED; border-radius: 6px;"></div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">Insurance Domain</div>
+                                    <div style="color: var(--text-muted); font-size: 0.85rem;">Policies, claims, premiums</div>
+                                </div>
+                                <div style="font-size: 1.5rem; font-weight: 700; color: ${isInsurance ? '#7C3AED' : 'var(--text-muted)'};">
+                                    ${insurancePct}%
                                 </div>
                             </div>
 
@@ -1209,13 +1245,17 @@ function showDomainSplitView() {
                                 onclick="startDatabaseAnalysis(${index})"
                                 style="width: 100%; padding: 1rem 2rem; font-size: 1.1rem; position: relative;">
                                 ${isBanking
-                ? '¦ Analyze Banking Data'
-                : (isHealthcare
-                    ? ' Analyze Healthcare Data'
-                    : (isRetail
-                        ? ' Analyze Retail Data'
-                        : ' Analyze Data'))
-            } â†’
+                ? '🏦 Analyze Banking Data'
+                : (isFinance
+                    ? '💰 Analyze Finance Data'
+                    : (isInsurance
+                        ? '🛡️ Analyze Insurance Data'
+                        : (isHealthcare
+                            ? '🏥 Analyze Healthcare Data'
+                            : (isRetail
+                                ? '🛒 Analyze Retail Data'
+                                : '📊 Analyze Data'))))
+            } →
                             </button>
                             <div id="analyze-status-${index}" style="margin-top: 0.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; display: none;">
                                 Processing...
@@ -1311,10 +1351,24 @@ window.startDatabaseAnalysis = async function (profileIndex) {
         } else if (primaryDomain === 'Healthcare') {
             // Show healthcare analysis with new diagram format
             showHealthcareAnalysisResults(profile);
+        } else if (primaryDomain === 'Finance') {
+            statusDiv.style.display = 'block';
+            statusDiv.style.color = 'var(--text-muted)';
+            statusDiv.innerHTML = 'Finance domain detected. Timeline analysis for Finance domain is coming soon.';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+        } else if (primaryDomain === 'Insurance') {
+            statusDiv.style.display = 'block';
+            statusDiv.style.color = 'var(--text-muted)';
+            statusDiv.innerHTML = 'Insurance domain detected. Timeline analysis for Insurance domain is coming soon.';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
         } else {
             statusDiv.style.display = 'block';
             statusDiv.style.color = 'var(--text-muted)';
-            statusDiv.innerHTML = 'Database profile loaded. Timeline analysis is currently available for Banking, Healthcare, and Retail domains only.';
+            statusDiv.innerHTML = 'Database profile loaded. Timeline analysis is currently available for Banking, Finance, Insurance, Healthcare, and Retail domains only.';
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
