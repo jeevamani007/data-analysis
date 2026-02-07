@@ -1,0 +1,11 @@
+column_name,actual_domain,remarks
+account_balance,finance,looks banking
+transaction_id,finance,banking like
+bank_code,insurance,bank word inside insurance
+loan_number,insurance,loan word but insurance
+deposit_amount,finance,banking style
+withdrawal_limit,finance,banking style
+branch_id,insurance,banking word
+customer_account,insurance,account word
+transfer_amount,finance,banking style
+interest_amount,insurance,finance/bank term

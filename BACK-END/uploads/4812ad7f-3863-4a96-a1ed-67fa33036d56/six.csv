@@ -1,0 +1,4 @@
+bill_id,patient_id,appointment_id,bill_amount,payment_mode,bill_time
+B001,P001,AP001,1500,Cash,2025-02-01 10:00:20
+B002,P002,AP002,2000,Card,2025-02-01 11:20:45
+B003,P003,AP003,3000,UPI,2025-02-01 12:40:30

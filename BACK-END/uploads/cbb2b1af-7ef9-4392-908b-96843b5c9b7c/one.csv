@@ -1,0 +1,4 @@
+patient_id,first_name,last_name,gender,dob,city
+P001,Ramesh,Kumar,M,1985-04-10,Chennai
+P002,Anitha,Sharma,F,1990-07-15,Bangalore
+P003,John,Peter,M,1995-01-20,Hyderabad

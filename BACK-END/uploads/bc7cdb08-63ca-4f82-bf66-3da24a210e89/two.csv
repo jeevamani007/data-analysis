@@ -1,0 +1,4 @@
+appointment_id,patient_id,doctor_name,department,appointment_time
+AP001,P001,Dr.Rao,Cardiology,2025-02-01 09:00:30
+AP002,P002,Dr.Mehta,Dermatology,2025-02-01 10:15:45
+AP003,P003,Dr.Singh,Neurology,2025-02-01 11:30:10

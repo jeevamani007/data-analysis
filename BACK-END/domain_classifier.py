@@ -257,8 +257,9 @@ class DomainClassifier:
         if has_healthcare_exclusive and healthcare_hits:
             print(f"[DOMAIN CLASSIFIER] Healthcare patterns found: {', '.join(healthcare_hits[:4])}")
         
-        # Banking: require at least one STRONG banking-only signal (not shared with Insurance/Finance).
-        # e.g. ifsc, swift, iban, branch, loan, login_time, logout_time, deposit, withdraw.
+        # Banking: require at least one STRONG banking-only signal (not shared with Insurance/Finance/Healthcare).
+        # NOTE: login_time, logout_time, branch are AMBIGUOUS - healthcare (patient portal, hospital branch) uses them too.
+        # We exclude these when healthcare is present (see banking_strong_unambiguous below).
         banking_strong_only = [
             'ifsc', 'ifsccode', 'swift', 'swiftcode', 'iban', 'bic',
             'branch', 'branchid', 'branchcode',
@@ -266,7 +267,14 @@ class DomainClassifier:
             'login_time', 'logout_time', 'logintime', 'logouttime',
             'deposit', 'withdraw', 'withdrawal',
         ]
+        # Truly banking-exclusive: NOT used in healthcare (patient portal has login/logout, hospitals have branches)
+        banking_strong_unambiguous = [
+            'ifsc', 'ifsccode', 'swift', 'swiftcode', 'iban', 'bic',
+            'loanid', 'loannumber', 'loan_id', 'loan_type',
+            'deposit', 'withdraw', 'withdrawal',
+        ]
         banking_strong_hits = sum(1 for p in banking_strong_only if any(p in c for c in cols_lower))
+        banking_strong_unambiguous_hits = sum(1 for p in banking_strong_unambiguous if any(p in c for c in cols_lower))
         banking_hit_count, banking_hits = _pattern_hits(banking_force_patterns)
         # Only treat as banking-exclusive when we have strong banking-only signals.
         # Don't treat as banking when we only have e.g. BRANCH_CD (insurance agents have branch too) and strong insurance.
@@ -275,8 +283,13 @@ class DomainClassifier:
             (2 if any('premium' in c or 'premamt' in c for c in cols_lower) else 0) +
             (2 if any('claim' in c or 'clmid' in c for c in cols_lower) else 0)
         )
+        # CRITICAL: When healthcare is present, login_time/logout_time and branch are AMBIGUOUS
+        # (patient portal, hospital branch). Require unambiguous banking signals (ifsc, swift, loan, deposit, etc.)
+        _banking_effective_strong = (
+            banking_strong_unambiguous_hits if has_healthcare_exclusive else banking_strong_hits
+        )
         has_banking_exclusive = (
-            banking_strong_hits > 0 and banking_hit_count > 0 and
+            _banking_effective_strong > 0 and banking_hit_count > 0 and
             not (_insurance_combo_for_banking >= 3 and banking_strong_hits <= 1)  # e.g. only BRANCH_CD
         )
         if has_banking_exclusive and banking_hits:
@@ -507,6 +520,9 @@ class DomainClassifier:
         # Detect specific evidence (heuristic check for explanation)
         evidence = self._get_evidence(all_columns, sample_values)
         
+        # Build column-level classification: which columns triggered which domain
+        column_domain_matches = self._get_column_domain_matches(all_columns)
+        
         # Round percentages to 2 decimals and force sum to 100%
         pct_bank = round(banking_prob * 100, 2)
         pct_fin = round(finance_prob * 100, 2)
@@ -541,9 +557,59 @@ class DomainClassifier:
                 "Retail": float(pct_retail),
                 "Other": float(pct_other)
             },
-            "evidence": evidence
+            "evidence": evidence,
+            "column_domain_matches": column_domain_matches,
         }
     
+    def _get_column_domain_matches(self, columns: List[str]) -> Dict[str, List[str]]:
+        """
+        Identify which columns triggered which domain classification.
+        Returns dict: {"Healthcare": [...], "Banking": [...], ...}
+        """
+        cols_lower = [col.lower().replace('_', '').replace('-', '').replace(' ', '') for col in columns]
+        result = {"Healthcare": [], "Banking": [], "Finance": [], "Insurance": [], "Retail": [], "Other": []}
+        
+        healthcare_patterns = ['patient', 'doctor', 'physician', 'diagnosis', 'treatment', 'prescription', 'medication',
+            'admission', 'discharge', 'hospital', 'clinic', 'ward', 'labtest', 'bloodtest', 'appointment',
+            'medicalrecord', 'vitals', 'symptoms', 'allergies', 'radiology', 'specimen', 'vaccination']
+        banking_patterns = ['accountno', 'accountnumber', 'accountid', 'ifsc', 'swift', 'routing', 'iban', 'bic',
+            'branchid', 'branchcode', 'deposit', 'withdraw', 'loanid', 'transactionid', 'logintime', 'logouttime']
+        finance_patterns = ['invoice', 'gst', 'gstin', 'tax', 'salary', 'payroll', 'ledger', 'journal', 'voucher',
+            'receivable', 'payable', 'expense', 'budget', 'profit', 'loss', 'tds', 'pf', 'esi']
+        insurance_patterns = ['policy', 'polid', 'claim', 'clmid', 'premium', 'premamt', 'suminsured', 'insured',
+            'beneficiary', 'nominee', 'underwriting', 'coverage', 'deductible', 'renewal', 'effdt', 'expdt']
+        retail_patterns = ['productid', 'productname', 'sku', 'orderid', 'category', 'unitprice', 'quantity',
+            'discount', 'taxamount', 'saleschannel', 'storeid', 'cashierid', 'returnflag']
+        
+        for i, col in enumerate(columns):
+            col_clean = cols_lower[i]
+            matched = False
+            if any(p in col_clean for p in healthcare_patterns):
+                if col not in result["Healthcare"]:
+                    result["Healthcare"].append(col)
+                matched = True
+            if any(p in col_clean for p in banking_patterns):
+                if col not in result["Banking"]:
+                    result["Banking"].append(col)
+                matched = True
+            if any(p in col_clean for p in finance_patterns):
+                if col not in result["Finance"]:
+                    result["Finance"].append(col)
+                matched = True
+            if any(p in col_clean for p in insurance_patterns):
+                if col not in result["Insurance"]:
+                    result["Insurance"].append(col)
+                matched = True
+            if any(p in col_clean for p in retail_patterns):
+                if col not in result["Retail"]:
+                    result["Retail"].append(col)
+                matched = True
+            if not matched:
+                if col not in result["Other"]:
+                    result["Other"].append(col)
+        
+        return result
+
     def _get_evidence(self, columns: List[str], sample_values: List[str] = None) -> List[str]:
         """Identify specific keywords that contributed to the decision from columns and values"""
         # Banking-EXCLUSIVE keywords (NEVER found in healthcare)
@@ -808,6 +874,7 @@ class DomainClassifier:
             'confidence': prediction['confidence'],
             'is_banking': prediction['is_banking'],
             'evidence': prediction['evidence'],
+            'column_domain_matches': prediction.get('column_domain_matches', {}),
             'chart_data': {
                 'labels': ['Banking', 'Finance', 'Insurance', 'Healthcare', 'Retail', 'Other'],
                 'values': [

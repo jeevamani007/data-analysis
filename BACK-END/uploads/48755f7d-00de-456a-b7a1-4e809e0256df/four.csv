@@ -1,0 +1,4 @@
+lab_id,patient_id,test_name,result,test_time
+L001,P001,Blood Sugar,Normal,2025-02-01 09:45:20
+L002,P002,Allergy Test,Positive,2025-02-01 11:00:35
+L003,P003,EEG,Normal,2025-02-01 12:20:40

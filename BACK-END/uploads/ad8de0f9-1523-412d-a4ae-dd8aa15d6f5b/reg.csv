@@ -1,0 +1,4 @@
+account_id,customer_id,account_type,open_date,balance,status
+A1001,C001,Savings,2020-01-15,50000,Active
+A1002,C002,Current,2019-03-10,120000,Active
+A1003,C003,Savings,2021-07-05,30000,Active
