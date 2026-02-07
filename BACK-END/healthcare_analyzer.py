@@ -55,33 +55,62 @@ class HealthcareAnalyzer:
     def _identify_table_workflow_role(self, table_name: str, df: pd.DataFrame) -> Dict[str, Any]:
         """
         Identify what this table represents in hospital workflow.
-        Returns: { role, role_explanation } e.g. patient, doctor, appointment, admission, treatment, billing, discharge, lab.
+        Returns: { role, role_explanation } e.g. register, appointment, treatment, lab, billing, login_logout.
+        Order matters: check specific patterns (login, lab, treatment, etc.) BEFORE generic patient.
         """
         tbl_lower = table_name.lower().replace('-', '_')
         cols_lower = " ".join(c.lower() for c in df.columns)
-        combined = tbl_lower + " " + cols_lower
+        cols_list = [c.lower() for c in df.columns]
 
-        has_patient_id = 'patient_id' in cols_lower
-        has_patient_like = has_patient_id and ('name' in cols_lower or 'dob' in cols_lower or 'created_date' in cols_lower)
-        if ('patient' in tbl_lower or (has_patient_like and 'admission' not in cols_lower and 'appointment' not in cols_lower and 'bill_amount' not in cols_lower)):
-            return {"role": "patient", "role_explanation": "Patient master record. Each row is one patient registered in the hospital."}
-        if 'appt' in tbl_lower or 'appointment' in tbl_lower or ('appointment' in cols_lower and ('appointment_date' in cols_lower or 'appt_date' in cols_lower)):
+        # Login/Logout - has login_time and logout_time (check early, before generic patient)
+        if 'login_time' in cols_list and 'logout_time' in cols_list:
+            return {"role": "login_logout", "role_explanation": "Patient or user login/logout. Session start and end times."}
+        if 'log' in tbl_lower and ('login' in cols_lower or 'logout' in cols_lower):
+            return {"role": "login_logout", "role_explanation": "Login/logout record. When the user logged in and out."}
+
+        # Appointment - has appointment_id and appointment_time/date
+        if 'appt' in tbl_lower or 'appointment' in tbl_lower:
             return {"role": "appointment", "role_explanation": "Appointment booking. When the patient was scheduled to come to the hospital."}
-        if 'doctor' in tbl_lower and 'appointment' not in cols_lower:
-            return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
-        if 'doctor' in cols_lower and 'doctor_id' in cols_lower and 'appointment' not in cols_lower and 'appointment_date' not in cols_lower:
-            return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
-        if 'admission' in tbl_lower or 'admit' in tbl_lower or ('admission' in cols_lower and ('admission_date' in cols_lower or 'admission_timestamp' in cols_lower)):
-            return {"role": "admission", "role_explanation": "Patient admission. When the patient was actually admitted to the ward or unit."}
-        if 'treatment' in tbl_lower or ('treatment' in cols_lower and 'treatment_type' in cols_lower):
+        if 'appointment_id' in cols_list and ('appointment_time' in cols_list or 'appt_date' in cols_lower):
+            return {"role": "appointment", "role_explanation": "Appointment booking. When the patient was scheduled to come."}
+
+        # Treatment - has treatment_id, treatment_type, or treatment_time
+        if 'treatment' in tbl_lower or ('treatment' in cols_lower and ('treatment_type' in cols_list or 'treatment_time' in cols_list or 'treatment_id' in cols_list)):
             return {"role": "treatment", "role_explanation": "Treatment or procedure record. What was done to the patient (e.g. ECG, X-Ray)."}
-        if 'bill' in tbl_lower or 'billing' in tbl_lower or ('bill' in cols_lower and 'amount' in cols_lower):
+
+        # Lab - test_name + result, or lab_id, or test_time
+        if 'lab' in tbl_lower or 'test' in tbl_lower or 'report' in tbl_lower:
+            return {"role": "lab", "role_explanation": "Lab or test result. Investigation reports for the patient."}
+        if ('test_name' in cols_list or 'test_result' in cols_list) and ('result' in cols_list or 'test_time' in cols_list):
+            return {"role": "lab", "role_explanation": "Lab or test result. Investigation reports for the patient."}
+        if 'result' in cols_list and ('test' in cols_lower or 'lab' in cols_lower):
+            return {"role": "lab", "role_explanation": "Lab or test result. Investigation reports for the patient."}
+
+        # Billing - bill_id, bill_amount, bill_time
+        if 'bill' in tbl_lower or 'billing' in tbl_lower:
             return {"role": "billing", "role_explanation": "Billing record. Amount to be paid for the stay or service."}
+        if 'bill' in cols_lower and 'amount' in cols_lower:
+            return {"role": "billing", "role_explanation": "Billing record. Amount to be paid for the stay or service."}
+
+        # Admission, Discharge, Doctor - specific patterns
+        if 'admission' in tbl_lower or 'admit' in tbl_lower or ('admission' in cols_lower and ('admission_date' in cols_lower or 'admission_timestamp' in cols_lower)):
+            return {"role": "admission", "role_explanation": "Patient admission. When the patient was admitted to the ward or unit."}
         if 'discharge' in tbl_lower or ('discharge' in cols_lower and ('discharge_date' in cols_lower or 'discharge_time' in cols_lower)):
             return {"role": "discharge", "role_explanation": "Discharge record. When the patient left the hospital."}
-        if 'lab' in tbl_lower or 'test' in tbl_lower or 'report' in tbl_lower or 'result' in cols_lower:
-            return {"role": "lab", "role_explanation": "Lab or test result. Investigation reports for the patient."}
-        if 'registration' in tbl_lower or 'visit' in tbl_lower and 'admission' not in cols_lower:
+        if 'doctor' in tbl_lower and 'appointment' not in cols_lower:
+            return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
+        if 'doctor' in cols_lower and 'doctor_id' in cols_list and 'appointment' not in cols_lower:
+            return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
+
+        # Patient/Register - patient master: has patient_id + (first_name/last_name/dob) - NOT test_name/result
+        has_patient_id = 'patient_id' in cols_list
+        has_patient_master_cols = any(k in cols_lower for k in ['first_name', 'last_name', 'dob', 'date_of_birth', 'gender', 'city'])
+        if 'patient' in tbl_lower:
+            return {"role": "register", "role_explanation": "Patient registration. Master record of each patient registered in the hospital."}
+        if has_patient_id and has_patient_master_cols and 'appointment' not in cols_lower and 'bill' not in cols_lower and 'treatment' not in cols_lower and 'test' not in cols_lower:
+            return {"role": "register", "role_explanation": "Patient registration. Master record of each patient."}
+
+        if 'registration' in tbl_lower or ('visit' in tbl_lower and 'admission' not in cols_lower):
             return {"role": "registration", "role_explanation": "Registration or visit log. When the patient first came or was registered."}
         if 'donation' in tbl_lower:
             return {"role": "donation", "role_explanation": "Blood or organ donation record."}
@@ -95,10 +124,16 @@ class HealthcareAnalyzer:
         Ensures chronological order matches when actions actually occurred.
         """
         # Event-time columns: when the action happened (preferred for sort order)
+        # Dynamic detection - column name determines event type (no hardcoded table names)
         event_time_patterns = [
+            'register_time', 'reg_time', 'registration_time', 'registration_timestamp',
+            'visit_time', 'visit_date', 'appointment_time', 'appt_time',
+            'procedure_time', 'treatment_time', 'treatment_timestamp',
+            'dispense_time', 'pharmacy_time',
+            'test_time', 'lab_time', 'bill_time', 'bill_timestamp', 'billing_time',
+            'login_time', 'logout_time',
             'event_time', 'event_timestamp', 'created_timestamp', 'created_at',
-            'recorded_at', 'bill_timestamp', 'registration_timestamp',
-            'discharge_timestamp', 'treatment_timestamp', 'treatment_time',
+            'recorded_at', 'discharge_timestamp', 'admission_time',
         ]
         # Date+time pairs for admission/registration/appointment
         date_time_patterns = [
@@ -440,9 +475,11 @@ class HealthcareAnalyzer:
         patient_id = kv.get('patient_id') or self._get_patient_id_from_record(raw_record, column_purposes)
         parts = []
 
-        if role == "patient":
+        if role in ("patient", "register"):
             name = kv.get('name', 'Patient')
             parts.append(f"{name} registered" + (f" (ID: {patient_id})" if patient_id else ""))
+        elif role == "login_logout":
+            parts.append(f"Login/Logout" + (f" (patient {patient_id})" if patient_id else ""))
         elif role == "doctor":
             name = kv.get('name', 'Doctor')
             parts.append(f"{name} profile created" + (f" (ID: {kv.get('patient_id', '')})" if kv.get('patient_id') else ""))
@@ -673,6 +710,23 @@ class HealthcareAnalyzer:
             return "Not recorded or missing"
         return val_str
 
+    def _normalize_tz_naive(self, ts: Any) -> Optional[pd.Timestamp]:
+        """Convert timestamp to tz-naive for consistent sorting (avoids tz-naive vs tz-aware comparison errors)."""
+        if ts is None or (isinstance(ts, float) and pd.isna(ts)):
+            return None
+        try:
+            t = pd.Timestamp(ts)
+            if pd.isna(t):
+                return None
+            if t.tz is not None:
+                try:
+                    t = t.tz_convert(None)
+                except (TypeError, ValueError):
+                    t = pd.Timestamp(t.value)
+            return t
+        except Exception:
+            return None
+
     def _extract_datetime(self, row, date_col: str, time_col: Optional[str], df: pd.DataFrame) -> Optional[pd.Timestamp]:
         """Extract combined datetime from row."""
         try:
@@ -708,9 +762,12 @@ class HealthcareAnalyzer:
         if not cols:
             return []
         date_col, time_col = cols[0]
+        event_time_col = time_col if time_col else date_col
         df = df.copy()
         df['__dt'] = pd.to_datetime(df[date_col], errors='coerce')
-        if time_col and time_col in df.columns:
+        # Only combine date+time when we have SEPARATE columns (e.g. appointment_date + appointment_time)
+        # When date_col == time_col, the column already has full datetime - don't double-parse
+        if time_col and time_col in df.columns and time_col != date_col:
             df['__date_str'] = df[date_col].astype(str).str.split().str[0]
             df['__time_str'] = df[time_col].astype(str)
             df['__dt'] = pd.to_datetime(df['__date_str'] + ' ' + df['__time_str'], errors='coerce')
@@ -780,6 +837,7 @@ class HealthcareAnalyzer:
             rec = {
                 'table_name': table_name,
                 'file_name': file_name or f"{table_name}.csv",
+                '_event_time_column': event_time_col,
                 # Which row this event came from (helps “which table / which row” trace)
                 'source_row_index': int(row_idx) if str(row_idx).isdigit() else str(row_idx),
                 'source_row_number': int(row_idx) + 1 if str(row_idx).isdigit() else None,
@@ -800,6 +858,9 @@ class HealthcareAnalyzer:
                 '_event_datetime': dt,
                 'patient_id': patient_id or 'unknown',
             }
+            # Normalize datetime_sort to tz-naive so cross-table sort doesn't fail (tz-naive vs tz-aware)
+            if 'datetime_sort' in rec:
+                rec['datetime_sort'] = self._normalize_tz_naive(rec['datetime_sort'])
             if adm_col and adm_col in row.index:
                 rec['_admission_datetime'] = pd.to_datetime(row[adm_col], errors='coerce')
             if appt_col and appt_col in row.index:
@@ -809,13 +870,68 @@ class HealthcareAnalyzer:
             records.append(rec)
         return records
 
+    def _time_column_to_event_name(self, col_name: str) -> str:
+        """
+        Derive event name dynamically from the time column name.
+        NO hardcoding - valid events only: Register, Visit, Procedure, Pharmacy, LabTest, Billing, Login, Logout.
+        Never return Other, Unknown, or table names.
+        """
+        if not col_name or not str(col_name).strip():
+            return 'Visit'
+        c = str(col_name).lower().replace('-', '_')
+        # Explicit mappings from time column to event (user spec)
+        if 'register' in c or 'reg_' in c or (c.startswith('reg') and 'time' in c):
+            return 'Register'
+        if 'visit' in c or 'appointment' in c or 'appt_' in c or 'admission' in c:
+            return 'Visit'
+        if 'procedure' in c or 'treatment' in c:
+            return 'Procedure'
+        if 'dispense' in c or 'pharmacy' in c:
+            return 'Pharmacy'
+        if 'test_' in c or 'lab_' in c or '_test' in c or '_lab' in c:
+            return 'LabTest'
+        if 'bill' in c or 'billing' in c:
+            return 'Billing'
+        if 'login' in c and 'logout' not in c:
+            return 'Login'
+        if 'logout' in c:
+            return 'Logout'
+        if 'discharge' in c:
+            return 'Visit'  # End of visit
+        # Fallback: infer from column name - still meaningful, never Other/Unknown
+        if 'created' in c or 'recorded' in c or 'event' in c:
+            return 'Visit'
+        return 'Visit'
+
     def _record_to_step_name(self, rec: Dict[str, Any]) -> str:
-        """Event/step name for this record: workflow role or table name (title case)."""
+        """
+        Event name derived dynamically from the time column (primary), NOT table name.
+        Valid events only: Register, Visit, Procedure, Pharmacy, LabTest, Billing, Login, Logout.
+        Never return Other, Unknown, or table names.
+        """
+        time_col = rec.get('_event_time_column') or ''
+        if time_col:
+            event = self._time_column_to_event_name(time_col)
+            if event and event not in ('Other', 'Unknown'):
+                return event
+        # Fallback: use table role only if it maps to a valid event
         role_info = rec.get('table_workflow_role') or {}
         role = (role_info.get('role') or '').strip()
-        if role:
-            return role.replace('_', ' ').title()
-        return (rec.get('table_name') or 'Step').replace('_', ' ').title()
+        ROLE_TO_EVENT = {
+            'register': 'Register', 'patient': 'Register', 'registration': 'Register',
+            'login_logout': 'Login', 'appointment': 'Visit', 'admission': 'Visit',
+            'treatment': 'Procedure', 'lab': 'LabTest', 'billing': 'Billing',
+            'discharge': 'Visit', 'donation': 'Procedure',
+        }
+        if role and role in ROLE_TO_EVENT:
+            return ROLE_TO_EVENT[role]
+        # Last resort: infer from record columns
+        raw = rec.get('record') or {}
+        for col in raw:
+            ev = self._time_column_to_event_name(col)
+            if ev and ev not in ('Other', 'Unknown'):
+                return ev
+        return 'Visit'
 
     def _identify_healthcare_cases(
         self,
@@ -835,7 +951,12 @@ class HealthcareAnalyzer:
 
         cases: List[List[Dict]] = []
         for pid, recs in by_patient.items():
-            recs_sorted = sorted(recs, key=lambda x: x.get('datetime_sort') or pd.Timestamp.min)
+            def _ts_key(x):
+                t = x.get('datetime_sort')
+                if t is None or (hasattr(t, '__len__') and pd.isna(t)):
+                    return pd.Timestamp.max
+                return t
+            recs_sorted = sorted(recs, key=_ts_key)
             current: List[Dict] = []
             last_ts: Optional[pd.Timestamp] = None
             for r in recs_sorted:
@@ -875,7 +996,13 @@ class HealthcareAnalyzer:
                     ts_str = ts.strftime('%Y-%m-%d %H:%M:%S')
                 step = self._record_to_step_name(r)
                 raw = r.get('record') or {}
-            activities.append({
+                # Per-event explanation for UI (row_event_story = human-readable e.g. "Bill generated for patient P001, amount 1500")
+                event_explanation = r.get('row_event_story') or r.get('work_summary') or ''
+                if not event_explanation and raw:
+                    # Fallback: build brief description from record
+                    parts = [f"{k}: {v}" for k, v in raw.items() if v and str(v).strip()]
+                    event_explanation = " | ".join(parts[:4]) if parts else step
+                activities.append({
                     'event': step,
                     'timestamp_str': ts_str,
                     'user_id': r.get('patient_id') or 'unknown',
@@ -883,6 +1010,7 @@ class HealthcareAnalyzer:
                     'file_name': r.get('file_name'),
                     'source_row': r.get('source_row_index'),
                     'raw_record': {k: str(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else '' for k, v in raw.items()},
+                    'explanation': event_explanation,
                 })
             user_id = (case_recs[0].get('patient_id') or case_recs[0].get('_patient_id') or 'unknown')
             event_sequence = [self._record_to_step_name(r) for r in case_recs]
@@ -1002,6 +1130,86 @@ class HealthcareAnalyzer:
             'total_cases': len(case_paths),
         }
 
+    def _build_appointment_to_patient_lookup(self, dataframes: Dict[str, pd.DataFrame]) -> Dict[str, str]:
+        """
+        Build lookup: appointment_id -> patient_id from tables that have both columns.
+        Used to resolve patient_id for treatment/lab/billing records that only have appointment_id.
+        """
+        lookup = {}
+        for _tname, df in dataframes.items():
+            if df is None or df.empty:
+                continue
+            cols = [c.lower() for c in df.columns]
+            if 'appointment_id' in cols and 'patient_id' in cols:
+                try:
+                    for _, row in df.iterrows():
+                        appt_id = row.get('appointment_id')
+                        pat_id = row.get('patient_id')
+                        if pd.notna(appt_id) and pd.notna(pat_id) and str(appt_id).strip():
+                            lookup[str(appt_id).strip()] = str(pat_id).strip()
+                except Exception:
+                    pass
+        return lookup
+
+    def _build_visit_to_patient_lookup(self, dataframes: Dict[str, pd.DataFrame]) -> Dict[str, str]:
+        """
+        Build lookup: visit_id -> patient_id from tables that have both columns.
+        Dynamic: any table with visit_id + patient_id (visits, appointments, etc.).
+        """
+        lookup = {}
+        for _tname, df in dataframes.items():
+            if df is None or df.empty:
+                continue
+            col_map = {c.lower(): c for c in df.columns}
+            visit_col = next((col_map[k] for k in ('visit_id', 'visitid') if k in col_map), None)
+            if not visit_col or 'patient_id' not in col_map:
+                continue
+            try:
+                for _, row in df.iterrows():
+                    vid = row.get(visit_col)
+                    pid = row.get('patient_id')
+                    if pd.notna(vid) and pd.notna(pid) and str(vid).strip():
+                        lookup[str(vid).strip()] = str(pid).strip()
+            except Exception:
+                pass
+        return lookup
+
+    def _resolve_patient_id_through_joins(
+        self,
+        all_records: List[Dict[str, Any]],
+        dataframes: Dict[str, pd.DataFrame],
+    ) -> None:
+        """
+        Resolve patient_id for records that don't have it directly.
+        Dynamic: patient_id exists -> use it; else visit_id -> visits -> patient_id;
+        else appointment_id -> appointments -> patient_id.
+        Updates records in-place.
+        """
+        appt_lookup = self._build_appointment_to_patient_lookup(dataframes)
+        visit_lookup = self._build_visit_to_patient_lookup(dataframes)
+        for rec in all_records:
+            pid = rec.get('_patient_id') or rec.get('patient_id')
+            if pid and str(pid).lower() not in ('unknown', 'none', 'nan', ''):
+                continue
+            raw = rec.get('record') or {}
+            resolved = None
+            for col, val in raw.items():
+                if not val or str(val).strip() == '':
+                    continue
+                col_lower = col.lower()
+                val_str = str(val).strip()
+                if 'visit' in col_lower and ('id' in col_lower or col_lower.endswith('_id')):
+                    if visit_lookup and val_str in visit_lookup:
+                        resolved = visit_lookup[val_str]
+                        break
+                if 'appointment' in col_lower and ('id' in col_lower or col_lower.endswith('_id')):
+                    if appt_lookup and val_str in appt_lookup:
+                        resolved = appt_lookup[val_str]
+                        break
+            if resolved:
+                rec['_patient_id'] = resolved
+                rec['patient_id'] = resolved
+
     def analyze_cluster(
         self,
         tables: List[TableAnalysis],
@@ -1058,8 +1266,21 @@ class HealthcareAnalyzer:
                 'tables_checked': [t.table_name for t in tables]
             }
 
-        # Sort globally by datetime ascending
-        all_records.sort(key=lambda r: r['datetime_sort'])
+        # Resolve patient_id for records that only have appointment_id (e.g. treatments -> appointments -> patients)
+        self._resolve_patient_id_through_joins(all_records, dataframes)
+
+        # Sort globally by datetime ascending (use .value to avoid tz-naive vs tz-aware comparison errors)
+        def _sort_key(r):
+            ts = r.get('datetime_sort')
+            if ts is None:
+                return 0
+            try:
+                if pd.isna(ts):
+                    return 0
+                return pd.Timestamp(ts).value
+            except Exception:
+                return 0
+        all_records.sort(key=_sort_key)
 
         # Appointment–admission gap: if gap > 2 hours, mark as hospital delay
         self._add_appointment_admission_gap_analysis(all_records)

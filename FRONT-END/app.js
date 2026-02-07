@@ -527,20 +527,38 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     // Create event boxes layout (pan wrapper added after svgWidth/svgHeight are computed)
     let diagramHTML = '';
 
-    // Standard Banking Flow Layout (Fixed positions for "Neat" look)
+    // Standard Banking + Healthcare Flow Layout (Fixed positions for "Neat" look)
     // Coordinates: x, y
     const fixedPositions = {
-        'Process': { x: 50, y: 150 },
+        'Process': { x: 50, y: 250 },
         'Created Account': { x: 400, y: 150 },
         'Account Open': { x: 400, y: 150 },
         'Login': { x: 750, y: 150 },
-        'Check Balance': { x: 1100, y: 150 },          // New event
-        'Balance Inquiry': { x: 1100, y: 150 },        // Alias
-        'Withdrawal Transaction': { x: 1450, y: 150 }, // Shifted right
-        'Credit': { x: 400, y: 450 },                  // Bottom row start
+        'Login / Logout': { x: 750, y: 150 },
+        'Check Balance': { x: 1100, y: 150 },
+        'Balance Inquiry': { x: 1100, y: 150 },
+        'Withdrawal Transaction': { x: 1450, y: 150 },
+        'Credit': { x: 400, y: 450 },
         'Deposit': { x: 400, y: 450 },
         'Logout': { x: 750, y: 450 },
-        'End': { x: 1450, y: 450 }                     // Shifted right
+        'End': { x: 1250, y: 250 },
+        // Healthcare events - valid names: Register, Visit, Procedure, Pharmacy, LabTest, Billing, Login, Logout
+        'Register': { x: 100, y: 250 },
+        'Login': { x: 250, y: 250 },
+        'Logout': { x: 250, y: 250 },
+        'Login / Logout': { x: 250, y: 250 },
+        'Visit': { x: 400, y: 250 },
+        'Appointment': { x: 400, y: 250 },
+        'Procedure': { x: 550, y: 250 },
+        'Treatment': { x: 550, y: 250 },
+        'Pharmacy': { x: 700, y: 250 },
+        'LabTest': { x: 850, y: 250 },
+        'Lab Test': { x: 850, y: 250 },
+        'Billing': { x: 1000, y: 250 },
+        'Admission': { x: 450, y: 400 },
+        'Discharge': { x: 700, y: 400 },
+        'Doctor': { x: 950, y: 400 },
+        'Other': { x: 600, y: 400 }
     };
 
     const boxWidth = 160;
@@ -592,8 +610,9 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     const svgHeight = Math.max(500, maxY);
 
     // Outer container (scroll) + pan wrapper (hit area) + pan content (SVG + boxes move together)
-    diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: 500px; max-height: 75vh; padding: 1rem; overflow: auto;">';
-    diagramHTML += '<div id="diagram-pan-wrapper" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="startDiagramPan(event)">';
+    const diagramMinHeight = Math.min(svgHeight + 80, 650);
+    diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: ' + diagramMinHeight + 'px; padding: 1rem; overflow: auto; background: #fff; border-radius: 12px;">';
+    diagramHTML += '<div id="diagram-pan-wrapper" style="position: relative; width: ' + svgWidth + 'px; min-height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="startDiagramPan(event)">';
     diagramHTML += '<div id="diagram-pan-content" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; will-change: transform;">';
 
     diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 1; transform-origin: 0 0;">
@@ -631,9 +650,14 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     window.diagramState.positions = eventPositions;
     window.diagramState.paths = sequences;
     window.diagramState.timings = timingMap;
+    window.diagramState.boxWidth = boxWidth;
+    window.diagramState.boxHeight = boxHeight;
     if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
 
+    // Draw paths after DOM is ready; retry for slow layout (healthcare view loads diagram async)
     setTimeout(() => window.renderDiagramPaths(), 100);
+    setTimeout(() => window.renderDiagramPaths(), 350);
+    setTimeout(() => window.renderDiagramPaths(), 700);
 
     diagramHTML += '</svg>';
 
@@ -647,12 +671,14 @@ function renderUnifiedCaseFlowDiagram(flowData) {
 
         if (event === 'Process') { boxBg = '#1e40af'; }
         else if (event === 'End') { boxBg = '#ffffff'; boxColor = '#1e40af'; }
-        else if (['Login', 'Logout'].includes(event)) { boxBg = '#2563eb'; }
+        else if (['Login', 'Logout', 'Login / Logout'].includes(event)) { boxBg = '#2563eb'; }
         else if (['Created Account', 'Account Open'].includes(event)) { boxBg = '#2563eb'; }
-        else if (['Withdrawal Transaction', 'Debit'].includes(event)) { boxBg = '#0f766e'; } // Teal
+        else if (['Withdrawal Transaction', 'Debit'].includes(event)) { boxBg = '#0f766e'; }
         else if (['Credit', 'Deposit'].includes(event)) { boxBg = '#0f766e'; }
-        else if (['Refund'].includes(event)) { boxBg = '#059669'; } // Green
-        else { boxBg = '#475569'; } // Slate
+        else if (['Refund'].includes(event)) { boxBg = '#059669'; }
+        // Healthcare events - teal/turquoise theme
+        else if (['Register', 'Visit', 'Procedure', 'Pharmacy', 'LabTest', 'Lab Test', 'Appointment', 'Treatment', 'Billing', 'Admission', 'Discharge', 'Doctor', 'Login', 'Logout', 'Login / Logout'].includes(event)) { boxBg = '#14B8A6'; }
+        else { boxBg = '#475569'; }
 
         const isEnd = event === 'End';
         const borderStyle = isEnd
@@ -2473,7 +2499,7 @@ function showHealthcareAnalysisResults(profile) {
             ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
 
             <section style="margin-bottom: 2rem;">
-                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Explanations</h2>
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> How It Works</h2>
                 <div style="background: ${HC_BG}; border: 1px solid ${HC_BORDER}; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem;">
                     <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-primary); line-height: 1.8;">
                         ${(explanations || []).map(function (e) { return '<li>' + e + '</li>'; }).join('')}
@@ -2482,21 +2508,46 @@ function showHealthcareAnalysisResults(profile) {
             </section>
 
             <section style="margin-bottom: 2rem;">
-                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Patients & Case IDs</h2>
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Case ID Explanations</h2>
                 <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;">
-                    Case IDs are in order of first event time. Click a case to see its steps.
+                    Each case is one patient journey. Click a case to see step-by-step details.
                 </p>
-                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
-                    ${(users || []).map(function (u) {
-            var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
-            var ids = userCases.map(function (c) { return c.case_id; });
-            return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #14B8A6;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+                <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem;">
+                    ${caseDetails.map(function (c, i) {
+            var seq = (c.event_sequence || []).join(' \u2192 ');
+            var expl = c.explanation || 'Case ' + c.case_id + ': Patient ' + c.user_id + '.';
+            var acts = c.activities || [];
+            var stepsHtml = acts.slice(0, 6).map(function (a) {
+                var ex = a.explanation ? (' \u2014 ' + a.explanation) : '';
+                return '<div style="font-size: 0.8rem; color: #475569; margin-top: 0.3rem;"><strong style="color: #14B8A6;">' + (a.event || '') + '</strong>' + ex + '</div>';
+            }).join('');
+            return '<div style="background: #f8fafc; border: 1px solid ' + HC_BORDER + '; border-radius: 12px; padding: 1rem 1.25rem; cursor: pointer;" onclick="showHealthcareCaseDetails(' + i + ')">' +
+                '<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">' +
+                '<span style="background: linear-gradient(135deg, #14B8A6, #0D9488); color: white; font-weight: 700; padding: 0.3rem 0.7rem; border-radius: 8px;">Case #' + c.case_id + '</span>' +
+                '<span style="font-weight: 600; color: #14B8A6;">Patient ' + c.user_id + '</span>' +
+                '<span style="font-size: 0.85rem; color: var(--text-muted);">' + (c.first_activity_timestamp || '') + ' \u2192 ' + (c.last_activity_timestamp || '') + '</span>' +
+                '</div>' +
+                '<p style="font-size: 0.9rem; color: var(--text-primary); margin: 0 0 0.5rem 0;"><strong>Steps:</strong> ' + seq + '</p>' +
+                '<div style="font-size: 0.82rem; color: #64748b; margin: 0.5rem 0 0 0;">' + stepsHtml + '</div>' +
+                '<p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">Click for full details \u2192</p>' +
+                '</div>';
         }).join('')}
                 </div>
             </section>
 
             <section style="margin-bottom: 2rem;">
-                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Case IDs (Ascending)</h2>
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Patients & Case IDs</h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
+                    ${(users || []).map(function (u) {
+            var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+            var ids = userCases.map(function (c) { return c.case_id; });
+            return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #14B8A6;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">\u2192 Case IDs: ' + ids.join(', ') + '</span></div>';
+        }).join('')}
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> Quick Select</h2>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
                     ${caseDetails.map(function (c, i) {
             return '<div class="healthcare-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #14B8A6, #0D9488); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(20,184,166,0.3); transition: all 0.2s;" onclick="showHealthcareCaseDetails(' + i + ')" role="button" tabindex="0">Case #' + c.case_id + '</div>';
@@ -2603,13 +2654,15 @@ window.showHealthcareCaseDetails = function (caseIndex) {
         var ev = a.event || '';
         var ts = a.timestamp_str || '';
         var tbl = a.table_name || '';
+        var expl = a.explanation || '';
         var rec = a.raw_record || {};
-        var recStr = Object.keys(rec).filter(function (k) { return rec[k]; }).map(function (k) { return k + ': ' + rec[k]; }).join(' Â· ');
+        var recStr = Object.keys(rec).filter(function (k) { return rec[k]; }).map(function (k) { return k + ': ' + rec[k]; }).join(' \u00B7 ');
         html += '<div style="padding: 0.6rem 0.8rem; background: #f8fafc; border-left: 3px solid #14B8A6; border-radius: 8px; font-size: 0.9rem;">' +
             '<span style="font-weight: 700; color: #14B8A6;">' + ev + '</span>' +
             '<span style="color: var(--text-muted); margin-left: 0.5rem;">' + ts + '</span>' +
             (tbl ? '<span style="margin-left: 0.5rem; font-size: 0.8rem; color: #94a3b8;">(' + tbl + ')</span>' : '') +
-            (recStr ? '<div style="font-size: 0.8rem; color: #64748b; margin-top: 0.35rem;">' + recStr + '</div>' : '') +
+            (expl ? '<div style="font-size: 0.85rem; color: var(--text-primary); margin-top: 0.4rem; font-weight: 500;">' + expl + '</div>' : '') +
+            (recStr && !expl ? '<div style="font-size: 0.8rem; color: #64748b; margin-top: 0.35rem;">' + recStr + '</div>' : (recStr ? '<div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem;">' + recStr + '</div>' : '')) +
             '</div>';
     });
     html += '</div></div>';

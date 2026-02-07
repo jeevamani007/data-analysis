@@ -1,0 +1,4 @@
+treatment_id,appointment_id,treatment_type,treatment_time
+T001,AP001,ECG,2025-02-01 09:20:15
+T002,AP002,Skin Test,2025-02-01 10:40:30
+T003,AP003,Brain Scan,2025-02-01 11:50:55

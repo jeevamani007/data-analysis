@@ -1,0 +1,11 @@
+column_name,actual_domain,remarks
+account_id,banking,customer account identifier
+transaction_amount,banking,looks like finance
+policy_payment,banking,confuse with insurance
+premium_transfer,banking,insurance word used in banking
+claim_amount,banking,insurance word but banking dataset
+interest_rate,banking,finance keyword
+loan_policy_id,banking,policy word confusion
+risk_score,banking,used in insurance also
+settlement_amount,banking,finance term
+coverage_amount,banking,insurance like term

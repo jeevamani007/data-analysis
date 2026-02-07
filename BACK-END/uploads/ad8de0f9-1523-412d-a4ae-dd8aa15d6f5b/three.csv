@@ -1,0 +1,4 @@
+log_id,customer_id,login_time,logout_time,device
+L001,C001,2025-01-10 09:00,2025-01-10 09:30,Mobile
+L002,C001,2025-01-11 10:00,2025-01-11 10:20,Laptop
+L003,C002,2025-01-12 11:00,2025-01-12 11:45,Mobile
