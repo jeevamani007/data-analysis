@@ -27,6 +27,16 @@ from models import TableAnalysis
 
 RETAIL_CASE_GAP_HOURS = 24.0  # fallback gap-based split if needed
 
+# Valid retail events - derived from column names (user file observed). No Other/Unknown.
+RETAIL_EVENT_COLUMN_PATTERNS = [
+    "customer_visit", "product_view", "product_search", "add_to_cart", "remove_from_cart",
+    "apply_coupon", "checkout_started", "address_entered", "payment_selected",
+    "payment_success", "payment_failed", "order_placed", "order_confirmed",
+    "invoice_generated", "order_packed", "order_shipped", "out_for_delivery",
+    "order_delivered", "order_cancelled", "return_initiated", "return_received",
+    "refund_processed", "signup", "login", "logout", "created_at", "event_time",
+]
+
 
 class RetailTimelineAnalyzer:
     """
@@ -36,32 +46,92 @@ class RetailTimelineAnalyzer:
     """
 
     def __init__(self) -> None:
-        # Canonical retail steps (used for ordering / display)
-        # USER SIDE: Signup, Login, Logout
-        # SHOPPING: Product Viewed, Added to Cart, Removed from Cart
-        # ORDER & PAYMENT: Order Created, Payment Initiated/Completed/Failed
-        # DELIVERY: Order Packed, Shipped, Out for Delivery, Delivered
+        # Canonical retail steps - matches column-observed events (no hardcode)
         self.step_order = [
-            "User Signed Up",
-            "User Logged In",
-            "User Logged Out",
-            "Product Viewed",
-            "Added to Cart",
-            "Removed from Cart",
-            "Order Created",
-            "Payment Initiated",
-            "Payment Completed",
-            "Payment Failed",
-            "Invoice Generated",
-            "Order Packed",
-            "Order Shipped",
-            "Out for Delivery",
-            "Order Delivered",
-            "Return Requested",
-            "Product Returned",
-            "Refund Initiated",
-            "Refund Completed",
+            "Customer Visit", "Product View", "Product Search", "Add To Cart",
+            "Remove From Cart", "Apply Coupon", "Checkout Started", "Address Entered",
+            "Payment Selected", "Payment Success", "Payment Failed", "Order Placed",
+            "Order Confirmed", "Invoice Generated", "Order Packed", "Order Shipped",
+            "Out For Delivery", "Order Delivered", "Order Cancelled", "Return Initiated",
+            "Return Received", "Refund Processed",
+            "User Signed Up", "User Logged In", "User Logged Out",
         ]
+
+    def _time_column_to_retail_event(self, col_name: str) -> str:
+        """
+        Derive event name from timestamp column name. NO hardcode - user file observed.
+        Valid events only. Never return Other/Unknown.
+        """
+        if not col_name or not str(col_name).strip():
+            return "Order Placed"
+        c = str(col_name).lower().replace("-", "_").replace(" ", "_")
+        # Strip common suffixes
+        for suf in ["_time", "_date", "_timestamp", "_at", "_datetime"]:
+            if c.endswith(suf):
+                c = c[: -len(suf)]
+                break
+        # Explicit mappings (column -> event)
+        m = {
+            "customer_visit": "Customer Visit",
+            "product_view": "Product View",
+            "product_search": "Product Search",
+            "add_to_cart": "Add To Cart",
+            "remove_from_cart": "Remove From Cart",
+            "apply_coupon": "Apply Coupon",
+            "checkout_started": "Checkout Started",
+            "address_entered": "Address Entered",
+            "payment_selected": "Payment Selected",
+            "payment_success": "Payment Success",
+            "payment_failed": "Payment Failed",
+            "order_placed": "Order Placed",
+            "order_confirmed": "Order Confirmed",
+            "invoice_generated": "Invoice Generated",
+            "order_packed": "Order Packed",
+            "order_shipped": "Order Shipped",
+            "out_for_delivery": "Out For Delivery",
+            "order_delivered": "Order Delivered",
+            "order_cancelled": "Order Cancelled",
+            "return_initiated": "Return Initiated",
+            "return_received": "Return Received",
+            "refund_processed": "Refund Processed",
+            "signup": "User Signed Up", "sign_up": "User Signed Up", "registration": "User Signed Up",
+            "login": "User Logged In", "signin": "User Logged In",
+            "logout": "User Logged Out", "signout": "User Logged Out",
+        }
+        if c in m:
+            return m[c]
+        # Partial match
+        for key, ev in m.items():
+            if key in c:
+                return ev
+        # Infer from tokens
+        if "visit" in c or "browse" in c:
+            return "Customer Visit"
+        if "view" in c or "product" in c:
+            return "Product View"
+        if "cart" in c:
+            return "Add To Cart" if "remove" not in c else "Remove From Cart"
+        if "checkout" in c:
+            return "Checkout Started"
+        if "payment" in c:
+            return "Payment Success" if "fail" not in c else "Payment Failed"
+        if "order" in c:
+            if "cancel" in c:
+                return "Order Cancelled"
+            if "pack" in c:
+                return "Order Packed"
+            if "ship" in c:
+                return "Order Shipped"
+            if "deliver" in c:
+                return "Order Delivered"
+            return "Order Placed"
+        if "return" in c:
+            return "Return Initiated" if "receiv" in c else "Return Initiated"
+        if "refund" in c:
+            return "Refund Processed"
+        if "invoice" in c:
+            return "Invoice Generated"
+        return "Order Placed"
 
     # ------------------------------------------------------------------
     # Basic column detection helpers
@@ -111,6 +181,54 @@ class RetailTimelineAnalyzer:
                 return col
         return None
 
+    def _find_event_name_col(self, df: pd.DataFrame) -> Optional[str]:
+        """
+        Detect column that contains event type as DATA (not column name).
+        e.g. event_name with values: Customer_Visit, Product_View, Add_To_Cart.
+        Uses data pattern: values look like event names (underscores, known tokens).
+        """
+        candidates = ["event_name", "event_type", "action", "event", "step_name", "activity", "event_type_name"]
+        cols_lower = {c.lower(): c for c in df.columns}
+        for cand in candidates:
+            if cand in cols_lower:
+                col = cols_lower[cand]
+                sample = df[col].dropna().astype(str).head(20)
+                if len(sample) == 0:
+                    continue
+                vals = set(s.strip() for v in sample for s in str(v).split(",") if s.strip())
+                if not vals:
+                    continue
+                valid = sum(1 for v in vals if (
+                    "_" in v or " " in v or
+                    any(tok in v.lower() for tok in ["visit", "view", "cart", "order", "payment", "checkout", "deliver", "return", "refund", "add", "remove"])
+                ))
+                if valid >= min(2, len(vals)):
+                    return col
+        for col in df.columns:
+            cl = col.lower()
+            if "event" in cl and "time" not in cl and "date" not in cl:
+                return col
+            if "action" in cl or "activity" in cl:
+                return col
+        return None
+
+    def _find_case_id_col(self, df: pd.DataFrame) -> Optional[str]:
+        """Detect case_id column for grouping (user file observed)."""
+        cols_lower = {c.lower(): c for c in df.columns}
+        for cand in ["case_id", "caseid", "session_id", "sessionid", "journey_id"]:
+            if cand in cols_lower:
+                return cols_lower[cand]
+        return None
+
+    def _normalize_event_from_data(self, val: Any) -> str:
+        """Convert event value from data to display: Customer_Visit -> Customer Visit, Add_To_Cart -> Add To Cart."""
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return "Order Placed"
+        s = str(val).strip()
+        if not s:
+            return "Order Placed"
+        return s.replace("_", " ").replace("-", " ").title()
+
     def _find_datetime_columns(self, df: pd.DataFrame) -> Optional[Tuple[str, Optional[str]]]:
         """
         Find (date_col, time_col) for EVENT TIME – when the retail action happened.
@@ -127,20 +245,18 @@ class RetailTimelineAnalyzer:
             except Exception:
                 return False
 
-        # 1) Look for explicit timestamp-like columns
+        # 1) Prefer columns matching retail event patterns (user file observed)
+        for col in df.columns:
+            cl = col.lower().replace("-", "_").replace(" ", "_")
+            if any(pat in cl for pat in RETAIL_EVENT_COLUMN_PATTERNS) and is_parseable(col):
+                return (col, None)
+        # 2) Explicit timestamp-like columns
         preferred_keywords = [
-            "event_time",
-            "event_timestamp",
-            "created_at",
-            "created_time",
-            "created_timestamp",
-            "order_timestamp",
-            "order_time",
-            "payment_time",
-            "payment_timestamp",
-            "shipment_time",
-            "delivery_time",
-            "updated_at",
+            "event_time", "event_timestamp", "created_at", "created_time", "created_timestamp",
+            "order_timestamp", "order_time", "order_date", "order_placed", "order_confirmed",
+            "payment_time", "payment_timestamp", "shipment_time", "delivery_time",
+            "customer_visit", "product_view", "checkout", "invoice", "refund", "return",
+            "updated_at", "timestamp",
         ]
         for col in df.columns:
             cl = col.lower()
@@ -172,6 +288,31 @@ class RetailTimelineAnalyzer:
     # ------------------------------------------------------------------
     # Event inference
     # ------------------------------------------------------------------
+
+    def _normalize_legacy_event(self, name: str) -> str:
+        """Map legacy event names to canonical (column-observed) format."""
+        m = {
+            "User Signed Up": "User Signed Up",
+            "User Logged In": "User Logged In",
+            "User Logged Out": "User Logged Out",
+            "Product Viewed": "Product View",
+            "Added to Cart": "Add To Cart",
+            "Removed from Cart": "Remove From Cart",
+            "Order Created": "Order Placed",
+            "Payment Initiated": "Payment Selected",
+            "Payment Completed": "Payment Success",
+            "Payment Failed": "Payment Failed",
+            "Invoice Generated": "Invoice Generated",
+            "Order Packed": "Order Packed",
+            "Order Shipped": "Order Shipped",
+            "Out for Delivery": "Out For Delivery",
+            "Order Delivered": "Order Delivered",
+            "Return Requested": "Return Initiated",
+            "Product Returned": "Return Received",
+            "Refund Initiated": "Refund Processed",
+            "Refund Completed": "Refund Processed",
+        }
+        return m.get(name, name) if name else "Order Placed"
 
     def _get_status_value(self, row: pd.Series, status_col: Optional[str]) -> str:
         if status_col and status_col in row.index:
@@ -296,31 +437,33 @@ class RetailTimelineAnalyzer:
         Build a concise English explanation for each step in a case.
         Format: "Explanation [table · file · row]" – user data across DB.
         """
-        # English explanations per event (user/customer side, shopping, order, delivery)
+        # English explanations per event (column-observed, user file)
         mapping = {
-            "User Signed Up": "Customer created account for the first time",
-            "User Logged In": "Customer opened app/website and logged in",
-            "User Logged Out": "Customer signed out / exited",
-            "Product Viewed": "Customer viewed a product",
-            "Added to Cart": "Customer added product to cart",
-            "Removed from Cart": "Customer removed product from cart",
-            "Order Created": "Customer clicked Place Order",
-            "Payment Initiated": "Customer started payment",
-            "Payment Completed": "Payment succeeded",
+            "Customer Visit": "Customer visited the store or site",
+            "Product View": "Customer viewed a product",
+            "Product Search": "Customer searched for products",
+            "Add To Cart": "Customer added product to cart",
+            "Remove From Cart": "Customer removed product from cart",
+            "Apply Coupon": "Customer applied a coupon or discount",
+            "Checkout Started": "Customer started checkout",
+            "Address Entered": "Customer entered delivery address",
+            "Payment Selected": "Customer selected payment method",
+            "Payment Success": "Payment succeeded",
             "Payment Failed": "Payment failed",
+            "Order Placed": "Customer placed order",
+            "Order Confirmed": "Order was confirmed",
             "Invoice Generated": "Invoice was generated for the order",
             "Order Packed": "Shop packed the product",
-            "Order Shipped": "Handed over to courier",
-            "Out for Delivery": "Courier on the way to customer",
+            "Order Shipped": "Order handed over to courier",
+            "Out For Delivery": "Courier on the way to customer",
             "Order Delivered": "Product reached customer",
-            "Return Requested": "Customer requested a return",
-            "Product Returned": "Product was returned",
-            "Refund Initiated": "Refund process started",
-            "Refund Completed": "Refund completed",
-            # Legacy names
-            "Customer Registered": "Customer created account for the first time",
-            "Customer Login": "Customer opened app/website and logged in",
-            "Customer Browsed Product": "Customer viewed a product",
+            "Order Cancelled": "Order was cancelled",
+            "Return Initiated": "Customer requested a return",
+            "Return Received": "Returned product was received",
+            "Refund Processed": "Refund was processed",
+            "User Signed Up": "Customer created account",
+            "User Logged In": "Customer logged in",
+            "User Logged Out": "Customer signed out",
         }
         core = mapping.get(event_name, event_name.replace("_", " "))
         parts = [p for p in [table_name or "", file_name or "", f"row {source_row_display}" if source_row_display else ""] if p]
@@ -340,9 +483,10 @@ class RetailTimelineAnalyzer:
         if not cols:
             return []
         date_col, time_col = cols
+        event_time_col = time_col if time_col else date_col
         df = df.copy()
 
-        # Build unified datetime column
+        # Build unified datetime column (supports date, time, AM/PM, seconds, years)
         df["__dt"] = pd.to_datetime(df[date_col], errors="coerce")
         if time_col and time_col in df.columns:
             df["__date_str"] = df[date_col].astype(str).str.split().str[0]
@@ -359,21 +503,34 @@ class RetailTimelineAnalyzer:
         user_col = self._find_user_col(df)
         order_col = self._find_order_col(df)
         status_col = self._find_status_col(df)
+        event_name_col = self._find_event_name_col(df)
+        case_id_col = self._find_case_id_col(df)
 
         events: List[Dict[str, Any]] = []
         file_name = getattr(table, "file_name", "") or f"{table.table_name}.csv"
 
         for idx, row in df.iterrows():
             ts = row["__dt"]
-            event_name = self._infer_event_for_row(table.table_name, df, row, status_col)
             if pd.isna(ts):
                 continue
+            if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
+                event_name = self._normalize_event_from_data(row[event_name_col])
+            else:
+                event_name = self._time_column_to_retail_event(event_time_col)
+                if not event_name or event_name in ("Other", "Unknown"):
+                    event_name = self._infer_event_for_row(table.table_name, df, row, status_col)
+                    event_name = self._normalize_legacy_event(event_name)
             user_id = None
             if user_col and user_col in row.index and pd.notna(row[user_col]):
                 user_id = str(row[user_col]).strip()
+            case_id_val = None
+            if case_id_col and case_id_col in row.index and pd.notna(row[case_id_col]):
+                case_id_val = str(row[case_id_col]).strip()
             order_id = None
             if order_col and order_col in row.index and pd.notna(row[order_col]):
                 order_id = str(row[order_col]).strip()
+            if not user_id and case_id_val:
+                user_id = case_id_val
 
             raw_record = {}
             for c in df.columns:
@@ -402,9 +559,11 @@ class RetailTimelineAnalyzer:
 
             events.append(
                 {
-                    "user_id": user_id or "unknown",
+                    "user_id": user_id or case_id_val or "unknown",
+                    "_case_id": case_id_val,
                     "order_id": order_id or "",
                     "event": event_name,
+                    "_event_time_column": event_time_col,
                     "timestamp": ts,
                     "timestamp_str": ts_str,
                     "table_name": table.table_name,
@@ -438,9 +597,10 @@ class RetailTimelineAnalyzer:
         current: List[Dict[str, Any]] = []
         has_order_in_current = False
 
+        order_start_events = {"Order Created", "Order Placed"}
         for ev in events:
             name = ev.get("event", "")
-            if name == "Order Created":
+            if name in order_start_events:
                 # Close existing case (if it already has an order)
                 if current and has_order_in_current:
                     cases.append(current)
@@ -470,19 +630,32 @@ class RetailTimelineAnalyzer:
         return cases
 
     def _split_cases(self, all_events: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
-        """Group by user, then split into cases using order-based logic."""
-        by_user: Dict[str, List[Dict[str, Any]]] = {}
-        for ev in all_events:
-            uid = ev.get("user_id") or "unknown"
-            by_user.setdefault(uid, []).append(ev)
+        """
+        Group events into cases.
+        When case_id is present in data: group by case_id (each case_id = one case).
+        Otherwise: group by user_id, split by Order Placed.
+        """
+        has_case_id = any(ev.get("_case_id") for ev in all_events)
+        if has_case_id:
+            by_case: Dict[str, List[Dict[str, Any]]] = {}
+            for ev in all_events:
+                cid = ev.get("_case_id") or ev.get("user_id") or "unknown"
+                by_case.setdefault(cid, []).append(ev)
+            all_cases = []
+            for cid, events in by_case.items():
+                events_sorted = sorted(events, key=lambda x: x.get("timestamp") or pd.Timestamp.min)
+                all_cases.append(events_sorted)
+        else:
+            by_user: Dict[str, List[Dict[str, Any]]] = {}
+            for ev in all_events:
+                uid = ev.get("user_id") or "unknown"
+                by_user.setdefault(uid, []).append(ev)
+            all_cases = []
+            for uid, events in by_user.items():
+                events_sorted = sorted(events, key=lambda x: x.get("timestamp") or pd.Timestamp.min)
+                user_cases = self._identify_cases_for_user(events_sorted)
+                all_cases.extend(user_cases)
 
-        all_cases: List[List[Dict[str, Any]]] = []
-        for uid, events in by_user.items():
-            events_sorted = sorted(events, key=lambda x: x["timestamp"])
-            user_cases = self._identify_cases_for_user(events_sorted)
-            all_cases.extend(user_cases)
-
-        # Sort all cases globally by first timestamp (ascending)
         all_cases.sort(key=lambda c: c[0]["timestamp"] if c and c[0].get("timestamp") is not None else pd.Timestamp.min)
         return all_cases
 
@@ -493,28 +666,31 @@ class RetailTimelineAnalyzer:
     def _event_phrase(self, step: str) -> str:
         """Convert canonical step label into short phrase for case explanation."""
         mapping = {
-            "User Signed Up": "signed up",
-            "User Logged In": "logged in",
-            "User Logged Out": "logged out",
-            "Product Viewed": "viewed product",
-            "Added to Cart": "added to cart",
-            "Removed from Cart": "removed from cart",
-            "Order Created": "placed order",
-            "Payment Initiated": "payment started",
-            "Payment Completed": "payment completed",
+            "Customer Visit": "customer visit",
+            "Product View": "product view",
+            "Product Search": "product search",
+            "Add To Cart": "added to cart",
+            "Remove From Cart": "removed from cart",
+            "Apply Coupon": "applied coupon",
+            "Checkout Started": "checkout started",
+            "Address Entered": "address entered",
+            "Payment Selected": "payment selected",
+            "Payment Success": "payment success",
             "Payment Failed": "payment failed",
+            "Order Placed": "order placed",
+            "Order Confirmed": "order confirmed",
             "Invoice Generated": "invoice generated",
             "Order Packed": "order packed",
             "Order Shipped": "order shipped",
-            "Out for Delivery": "out for delivery",
+            "Out For Delivery": "out for delivery",
             "Order Delivered": "order delivered",
-            "Return Requested": "return requested",
-            "Product Returned": "product returned",
-            "Refund Initiated": "refund started",
-            "Refund Completed": "refund completed",
-            "Customer Registered": "signed up",
-            "Customer Login": "logged in",
-            "Customer Browsed Product": "viewed product",
+            "Order Cancelled": "order cancelled",
+            "Return Initiated": "return initiated",
+            "Return Received": "return received",
+            "Refund Processed": "refund processed",
+            "User Signed Up": "signed up",
+            "User Logged In": "logged in",
+            "User Logged Out": "logged out",
         }
         return mapping.get(step, step.lower().replace("_", " "))
 
@@ -707,10 +883,15 @@ class RetailTimelineAnalyzer:
                 }
             )
 
-        # Event types for legend (canonical order)
-        all_event_types = ["Process"] + [
-            s for s in self.step_order if any(s in p["path_sequence"] for p in case_paths)
-        ] + ["End"]
+        # Event types from actual case paths (observed from user files), preserve order
+        seen = {"Process", "End"}
+        all_event_types = ["Process"]
+        for p in case_paths:
+            for s in p.get("path_sequence", []):
+                if s not in seen and s not in ("Process", "End"):
+                    seen.add(s)
+                    all_event_types.append(s)
+        all_event_types.append("End")
 
         return {
             "all_event_types": all_event_types,
@@ -760,17 +941,21 @@ class RetailTimelineAnalyzer:
         case_ids_asc = [c["case_id"] for c in case_details]
         users_with_cases = list(dict.fromkeys(c["user_id"] for c in case_details))
 
+        observed_events = list(dict.fromkeys(
+            a.get("event", "") for c in case_details for a in c.get("activities", [])
+        ))
         explanations = [
             f"We found {len(case_details)} case(s). Each case represents one retail process run (typically one order journey) for a customer.",
             "Case IDs are numbered in order of the first event time across all customers.",
             "If the same customer starts a new order again, we create a NEW Case ID (patterns are never merged).",
-            "Each case lists the full sequence of steps: User Signed Up, Login, Product Viewed, Added to Cart, Order Created, Payment, Delivery, Returns and Refunds.",
+            f"Event types derived from your uploaded columns: {', '.join(observed_events) or '—'}.",
         ]
 
-        # Remove raw Timestamp objects to keep JSON output safe
+        # Remove raw Timestamp and internal fields to keep JSON output safe
         sanitized_events: List[Dict[str, Any]] = []
+        skip_keys = {"timestamp", "_case_id", "_event_time_column"}
         for ev in all_events:
-            ev_copy = {k: v for k, v in ev.items() if k != "timestamp"}
+            ev_copy = {k: v for k, v in ev.items() if k not in skip_keys}
             sanitized_events.append(ev_copy)
 
         first_ts = all_events[0]["timestamp"]

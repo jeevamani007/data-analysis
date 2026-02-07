@@ -1,0 +1,5 @@
+case_id,customer_id,event_name,event_time
+S001,C101,Checkout_Started,2026-02-01 09:06:20
+S001,C101,Address_Entered,2026-02-01 09:07:00
+S001,C101,Payment_Selected,2026-02-01 09:07:40
+S002,C102,Checkout_Started,2026-02-01 10:08:30

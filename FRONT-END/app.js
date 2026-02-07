@@ -50,30 +50,45 @@ let sessionId = null;
 let analysisResults = null;
 let dateColumnInfo = null;
 
-// Retail Event Explanations (Shared)
+// Retail Event Explanations (column-observed from user files)
 const RETAIL_EVENT_EXPLANATIONS = {
-    'User Signed Up': 'Customer created account for the first time',
-    'Customer Registered': 'Customer created account for the first time',
-    'User Logged In': 'Customer opened app/website and logged in',
-    'Customer Login': 'Customer opened app/website and logged in',
-    'Product Viewed': 'Customer viewed a product',
-    'Customer Browsed Product': 'Customer viewed a product',
-    'Added to Cart': 'Customer added product to cart',
-    'Order Created': 'Customer clicked Place Order',
-    'Payment Initiated': 'Customer started payment',
-    'Payment Completed': 'Payment succeeded',
+    'Customer Visit': 'Customer visited the store or site',
+    'Product View': 'Customer viewed a product',
+    'Product Search': 'Customer searched for products',
+    'Add To Cart': 'Customer added product to cart',
+    'Remove From Cart': 'Customer removed product from cart',
+    'Apply Coupon': 'Customer applied a coupon or discount',
+    'Checkout Started': 'Customer started checkout',
+    'Address Entered': 'Customer entered delivery address',
+    'Payment Selected': 'Customer selected payment method',
+    'Payment Success': 'Payment succeeded',
+    'Payment Failed': 'Payment failed',
+    'Order Placed': 'Customer placed order',
+    'Order Confirmed': 'Order was confirmed',
     'Invoice Generated': 'Invoice was generated for the order',
     'Order Packed': 'Shop packed the product',
-    'Order Shipped': 'Handed over to courier',
-    'Out for Delivery': 'Courier on the way to customer',
+    'Order Shipped': 'Order handed over to courier',
+    'Out For Delivery': 'Courier on the way to customer',
     'Order Delivered': 'Product reached customer',
-    'Return Requested': 'Customer requested a return',
-    'Product Returned': 'Product was returned',
-    'Refund Initiated': 'Refund process started',
-    'Refund Completed': 'Refund completed',
-    'User Logged Out': 'Customer signed out / exited',
+    'Order Cancelled': 'Order was cancelled',
+    'Return Initiated': 'Customer requested a return',
+    'Return Received': 'Returned product was received',
+    'Refund Processed': 'Refund was processed',
+    'User Signed Up': 'Customer created account',
+    'User Logged In': 'Customer logged in',
+    'User Logged Out': 'Customer signed out',
+    // Legacy
+    'Product Viewed': 'Customer viewed a product',
+    'Added to Cart': 'Customer added product to cart',
     'Removed from Cart': 'Customer removed product from cart',
-    'Payment Failed': 'Payment failed'
+    'Order Created': 'Customer placed order',
+    'Payment Initiated': 'Customer started payment',
+    'Payment Completed': 'Payment succeeded',
+    'Out for Delivery': 'Courier on the way to customer',
+    'Return Requested': 'Return requested',
+    'Product Returned': 'Product was returned',
+    'Refund Initiated': 'Refund started',
+    'Refund Completed': 'Refund completed'
 };
 
 
@@ -558,7 +573,16 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         'Admission': { x: 450, y: 400 },
         'Discharge': { x: 700, y: 400 },
         'Doctor': { x: 950, y: 400 },
-        'Other': { x: 600, y: 400 }
+        // Retail events - column-observed
+        'Customer Visit': { x: 80, y: 250 }, 'Product View': { x: 200, y: 250 }, 'Product Search': { x: 320, y: 250 },
+        'Add To Cart': { x: 440, y: 250 }, 'Remove From Cart': { x: 560, y: 250 }, 'Apply Coupon': { x: 680, y: 250 },
+        'Checkout Started': { x: 800, y: 250 }, 'Address Entered': { x: 920, y: 250 }, 'Payment Selected': { x: 1040, y: 250 },
+        'Payment Success': { x: 1160, y: 250 }, 'Payment Failed': { x: 1280, y: 250 }, 'Order Placed': { x: 200, y: 400 },
+        'Order Confirmed': { x: 320, y: 400 }, 'Invoice Generated': { x: 440, y: 400 }, 'Order Packed': { x: 560, y: 400 },
+        'Order Shipped': { x: 680, y: 400 }, 'Out For Delivery': { x: 800, y: 400 }, 'Order Delivered': { x: 920, y: 400 },
+        'Order Cancelled': { x: 1040, y: 400 }, 'Return Initiated': { x: 200, y: 550 }, 'Return Received': { x: 320, y: 550 },
+        'Refund Processed': { x: 440, y: 550 }, 'User Signed Up': { x: 80, y: 400 }, 'User Logged In': { x: 80, y: 550 },
+        'User Logged Out': { x: 200, y: 150 }
     };
 
     const boxWidth = 160;
@@ -678,6 +702,7 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         else if (['Refund'].includes(event)) { boxBg = '#059669'; }
         // Healthcare events - teal/turquoise theme
         else if (['Register', 'Visit', 'Procedure', 'Pharmacy', 'LabTest', 'Lab Test', 'Appointment', 'Treatment', 'Billing', 'Admission', 'Discharge', 'Doctor', 'Login', 'Logout', 'Login / Logout'].includes(event)) { boxBg = '#14B8A6'; }
+        else if (['Customer Visit', 'Product View', 'Product Search', 'Add To Cart', 'Remove From Cart', 'Apply Coupon', 'Checkout Started', 'Address Entered', 'Payment Selected', 'Payment Success', 'Payment Failed', 'Order Placed', 'Order Confirmed', 'Invoice Generated', 'Order Packed', 'Order Shipped', 'Out For Delivery', 'Order Delivered', 'Order Cancelled', 'Return Initiated', 'Return Received', 'Refund Processed', 'User Signed Up', 'User Logged In', 'User Logged Out'].includes(event)) { boxBg = '#F59E0B'; }
         else { boxBg = '#475569'; }
 
         const isEnd = event === 'End';
@@ -2216,31 +2241,31 @@ function showRetailAnalysisResults(profile) {
                 // Define event explanations by category
                 var eventExplanations = RETAIL_EVENT_EXPLANATIONS;
 
-                // Group events by category
+                // Group events by category (column-observed)
                 var categories = [
                     {
                         label: 'Customer Side Events',
                         icon: '👤',
                         color: '#3B82F6',
-                        events: ['User Signed Up', 'Customer Registered', 'User Logged In', 'Customer Login', 'Product Viewed', 'Customer Browsed Product', 'Added to Cart', 'Removed from Cart']
+                        events: ['Customer Visit', 'Product View', 'Product Search', 'Add To Cart', 'Remove From Cart', 'Apply Coupon', 'User Signed Up', 'User Logged In', 'User Logged Out']
                     },
                     {
-                        label: 'Order Side Events (Most Important)',
+                        label: 'Checkout & Payment',
                         icon: '🧾',
                         color: '#F59E0B',
-                        events: ['Order Created', 'Payment Initiated', 'Payment Completed', 'Payment Failed', 'Invoice Generated']
+                        events: ['Checkout Started', 'Address Entered', 'Payment Selected', 'Payment Success', 'Payment Failed', 'Order Placed', 'Order Confirmed', 'Invoice Generated']
                     },
                     {
                         label: 'Fulfillment Events',
                         icon: '📦',
                         color: '#22C55E',
-                        events: ['Order Packed', 'Order Shipped', 'Out for Delivery', 'Order Delivered']
+                        events: ['Order Packed', 'Order Shipped', 'Out For Delivery', 'Order Delivered', 'Order Cancelled']
                     },
                     {
                         label: 'Returns & Refunds',
                         icon: '↩️',
                         color: '#EF4444',
-                        events: ['Return Requested', 'Product Returned', 'Refund Initiated', 'Refund Completed']
+                        events: ['Return Initiated', 'Return Received', 'Refund Processed']
                     }
                 ];
 
