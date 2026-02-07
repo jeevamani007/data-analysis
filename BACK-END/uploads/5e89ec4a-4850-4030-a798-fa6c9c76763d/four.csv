@@ -1,0 +1,5 @@
+customer_id,policy_id,policy_type,policy_status,register_time
+C001,P101,Life,Active,2025-01-01 09:00:00
+C002,P102,Health,Active,2025-01-03 10:15:00
+C003,P103,Vehicle,Cancelled,2025-01-05 11:30:00
+C004,P104,Life,Active,2025-01-07 14:20:00

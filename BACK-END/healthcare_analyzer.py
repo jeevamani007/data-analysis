@@ -1044,6 +1044,30 @@ class HealthcareAnalyzer:
         steps = [self._record_to_step_name(r) for r in case_recs]
         return f"Case {case_id}: Patient {patient_id}. From {start_str} to {end_str}. Steps: {', '.join(steps)}."
 
+    @staticmethod
+    def _compute_same_time_groups(case_paths: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Find events where multiple case IDs have the same timestamp."""
+        by_key: Dict[Tuple[str, str], List[int]] = {}
+        for p in case_paths:
+            seq = p.get("path_sequence", [])
+            timings = p.get("timings", [])
+            case_id = p.get("case_id")
+            for j in range(1, len(seq) - 1):
+                event = seq[j]
+                if event in ("Process", "End"):
+                    continue
+                t = timings[j - 1] if j - 1 < len(timings) else {}
+                ts_str = t.get("end_datetime") or t.get("start_datetime") or ""
+                if not ts_str:
+                    continue
+                key = (event, ts_str)
+                by_key.setdefault(key, []).append(case_id)
+        out = []
+        for (event, ts_str), case_ids in by_key.items():
+            if len(case_ids) > 1:
+                out.append({"event": event, "timestamp_str": ts_str, "case_ids": sorted(set(case_ids))})
+        return out
+
     def _generate_unified_flow_data_healthcare(
         self,
         case_details: List[Dict[str, Any]],
@@ -1124,10 +1148,12 @@ class HealthcareAnalyzer:
         all_event_types = ['Process'] + list(dict.fromkeys(
             s for path in case_paths for s in path['path_sequence'] if s not in ('Process', 'End')
         )) + ['End']
+        same_time_groups = self._compute_same_time_groups(case_paths)
         return {
             'all_event_types': all_event_types,
             'case_paths': case_paths,
             'total_cases': len(case_paths),
+            'same_time_groups': same_time_groups,
         }
 
     def _build_appointment_to_patient_lookup(self, dataframes: Dict[str, pd.DataFrame]) -> Dict[str, str]:

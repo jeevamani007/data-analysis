@@ -728,6 +728,30 @@ class BankingAnalyzer:
         steps = [self._event_display_name(a['event']) for a in activities]
         return f"Case {case_id}: User {user_id}. From {start_str} to {end_str}. Steps: {', '.join(steps)}."
 
+    @staticmethod
+    def _compute_same_time_groups(case_paths: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Find events where multiple case IDs have the same timestamp."""
+        by_key: Dict[Tuple[str, str], List[int]] = {}
+        for p in case_paths:
+            seq = p.get("path_sequence", [])
+            timings = p.get("timings", [])
+            case_id = p.get("case_id")
+            for j in range(1, len(seq) - 1):
+                event = seq[j]
+                if event in ("Process", "End"):
+                    continue
+                t = timings[j - 1] if j - 1 < len(timings) else {}
+                ts_str = t.get("end_datetime") or t.get("start_datetime") or ""
+                if not ts_str:
+                    continue
+                key = (event, ts_str)
+                by_key.setdefault(key, []).append(case_id)
+        out = []
+        for (event, ts_str), case_ids in by_key.items():
+            if len(case_ids) > 1:
+                out.append({"event": event, "timestamp_str": ts_str, "case_ids": sorted(set(case_ids))})
+        return out
+
     def _generate_unified_flow_data(self, case_details: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Generate unified flow data for all Case IDs to be displayed in a single diagram."""
         # Predefined color palette for Case IDs
@@ -861,11 +885,13 @@ class BankingAnalyzer:
             used_events.update(path['path_sequence'])
         
         filtered_event_types = [e for e in all_event_types if e in used_events]
-        
+        same_time_groups = self._compute_same_time_groups(case_paths)
+
         return {
             'all_event_types': filtered_event_types,
             'case_paths': case_paths,
-            'total_cases': len(case_paths)
+            'total_cases': len(case_paths),
+            'same_time_groups': same_time_groups,
         }
 
     def analyze_cluster(
