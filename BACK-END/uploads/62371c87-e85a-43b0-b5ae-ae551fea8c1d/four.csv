@@ -1,0 +1,4 @@
+visit_id,patient_id,doctor_name,department,visit_time
+V001,H001,Dr.Ravi,Ortho,2025-03-01 09:00:15
+V002,H002,Dr.Meena,ENT,2025-03-01 09:20:40
+V003,H003,Dr.Ali,General,2025-03-01 09:40:55

@@ -1,0 +1,4 @@
+pharmacy_id,patient_id,medicine_name,quantity,dispense_time
+M001,H001,Painkiller,10,2025-03-01 09:30:30
+M002,H002,Antibiotic,5,2025-03-01 09:50:20
+M003,H003,Vitamins,15,2025-03-01 10:05:40

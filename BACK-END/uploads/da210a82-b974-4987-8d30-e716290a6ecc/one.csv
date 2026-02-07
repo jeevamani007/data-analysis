@@ -1,0 +1,6 @@
+case_id,customer_id,event_name,event_time
+S001,C101,Customer_Visit,2026-02-01 09:00:00
+S001,C101,Product_Search,2026-02-01 09:01:20
+S001,C101,Product_View,2026-02-01 09:02:45
+S002,C102,Customer_Visit,2026-02-01 10:05:00
+S002,C102,Product_View,2026-02-01 10:06:10

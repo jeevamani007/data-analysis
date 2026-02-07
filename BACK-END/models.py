@@ -147,6 +147,12 @@ class DatabaseProfile(BaseModel):
         description="Retail customer journey timeline with Case IDs and step-by-step order flow"
     )
 
+    # Insurance Process Timeline Analysis (for insurance domains)
+    insurance_analysis: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Insurance policy/claim timeline with Case IDs and event steps"
+    )
+
 
 
 class UploadResponse(BaseModel):

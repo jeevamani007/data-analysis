@@ -1,0 +1,4 @@
+loan_id,customer_id,loan_type,loan_amount,loan_status,start_date
+LN001,C001,Home,500000,Approved,2024-05-01
+LN002,C002,Personal,200000,Approved,2024-06-10
+LN003,C003,Education,300000,Pending,2024-07-15

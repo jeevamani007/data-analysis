@@ -1,0 +1,5 @@
+case_id,customer_id,event_name,event_time,product_id
+S001,C101,Add_To_Cart,2026-02-01 09:03:10,P1001
+S001,C101,Remove_From_Cart,2026-02-01 09:04:30,P1001
+S001,C101,Add_To_Cart,2026-02-01 09:05:00,P1002
+S002,C102,Add_To_Cart,2026-02-01 10:07:15,P1003

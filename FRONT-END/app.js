@@ -91,6 +91,50 @@ const RETAIL_EVENT_EXPLANATIONS = {
     'Refund Completed': 'Refund completed'
 };
 
+// Insurance Event Explanations (column-observed from user files, 40 events)
+const INSURANCE_EVENT_EXPLANATIONS = {
+    'Customer Registered': 'Customer registered for insurance',
+    'KYC Completed': 'KYC verification completed',
+    'Policy Quoted': 'Policy quote generated',
+    'Policy Purchased': 'Policy was purchased',
+    'Policy Activated': 'Policy became active',
+    'Premium Due': 'Premium payment due',
+    'Premium Paid': 'Premium payment received',
+    'Payment Failed': 'Payment failed',
+    'Policy Renewed': 'Policy was renewed',
+    'Policy Expired': 'Policy expired',
+    'Claim Requested': 'Claim was requested',
+    'Claim Registered': 'Claim registered in system',
+    'Claim Verified': 'Claim verified',
+    'Claim Assessed': 'Claim assessed',
+    'Claim Approved': 'Claim approved',
+    'Claim Rejected': 'Claim rejected',
+    'Claim Paid': 'Claim payment disbursed',
+    'Nominee Updated': 'Nominee details updated',
+    'Policy Cancelled': 'Policy cancelled',
+    'Policy Closed': 'Policy closed',
+    'Document Submitted': 'Document submitted for verification',
+    'Document Verified': 'Document verification completed',
+    'Medical Test Scheduled': 'Medical test scheduled',
+    'Medical Test Completed': 'Medical test completed',
+    'Risk Assessed': 'Risk assessment completed',
+    'Underwriting Started': 'Underwriting process started',
+    'Underwriting Completed': 'Underwriting completed',
+    'Premium Calculated': 'Premium amount calculated',
+    'Auto Debit Enabled': 'Auto debit enabled for premium',
+    'Auto Debit Disabled': 'Auto debit disabled',
+    'Reminder Sent': 'Premium reminder sent',
+    'Grace Period Started': 'Grace period started',
+    'Grace Period Ended': 'Grace period ended',
+    'Policy Suspended': 'Policy suspended',
+    'Reinstatement Requested': 'Reinstatement requested',
+    'Policy Reinstated': 'Policy reinstated',
+    'Payout Initiated': 'Payout initiated',
+    'Payout Completed': 'Payout completed',
+    'Fraud Check Started': 'Fraud check started',
+    'Fraud Check Cleared': 'Fraud check cleared'
+};
+
 
 // Diagram State for Interactivity
 window.diagramState = {
@@ -98,6 +142,7 @@ window.diagramState = {
     paths: [],          // [{ case_id: 1, sequence: [...] }, ...]
     timings: {},        // { pathIdx_stepIdx: timingObj }
     segmentOffsets: {}, // { [pathIdx]: { [segmentIdx]: {dx, dy} } } – manual arrow shifts
+    same_time_groups: [], // [{ event, timestamp_str, case_ids }] – same timestamp across cases
     boxWidth: 160,
     boxHeight: 70
 };
@@ -264,6 +309,8 @@ window.renderDiagramPaths = function () {
     const boxWidth = state.boxWidth;
     const boxHeight = state.boxHeight;
     const totalInDiagram = state.paths.length;
+    /** Where each path touches each event (segment end point). Used to link same-time case paths. */
+    const touchPointsByEvent = {};
 
     try {
         state.paths.forEach((path, pathIdx) => {
@@ -340,6 +387,12 @@ window.renderDiagramPaths = function () {
                 const y2p = y2;
                 const cpxp = cpx + offX;
                 const cpyp = cpy + offY;
+
+                // Collect where this path touches the "to" event (for same-time connector)
+                if (toEvent && toEvent !== 'Process' && toEvent !== 'End') {
+                    if (!touchPointsByEvent[toEvent]) touchPointsByEvent[toEvent] = [];
+                    touchPointsByEvent[toEvent].push({ pathIdx: pathIdx, case_id: path.case_id, x: x2p, y: y2p });
+                }
 
                 // Path (draggable connector – control point moves, endpoints stay attached)
                 pathsHTML += `
@@ -440,6 +493,23 @@ window.renderDiagramPaths = function () {
     } catch (e) {
         console.error("Path Render Error:", e);
     }
+
+    // Same-time connectors: one arrow that links all case paths that hit this event at the same time
+    const sameTimeGroups = state.same_time_groups || [];
+    sameTimeGroups.forEach(function (grp) {
+        const eventName = grp.event;
+        const caseIds = grp.case_ids || [];
+        const allTouch = touchPointsByEvent[eventName];
+        if (!allTouch || caseIds.length < 2) return;
+        const points = allTouch.filter(function (pt) { return caseIds.indexOf(pt.case_id) !== -1; });
+        if (points.length < 2) return;
+        points.sort(function (a, b) { return a.x - b.x; });
+        const d = 'M ' + points.map(function (p) { return p.x + ',' + p.y; }).join(' L ');
+        const midX = (points[0].x + points[points.length - 1].x) / 2;
+        const midY = (points[0].y + points[points.length - 1].y) / 2;
+        pathsHTML += '<path d="' + d + '" stroke="#475569" stroke-width="2.5" fill="none" marker-end="url(#same-time-arrow)" opacity="0.9" />';
+        pathsHTML += '<text x="' + midX + '" y="' + (midY + 14) + '" text-anchor="middle" font-size="9" fill="#475569" font-weight="600">same time</text>';
+    });
 
     if (container) {
         container.innerHTML = pathsHTML;
@@ -581,8 +651,16 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         'Order Confirmed': { x: 320, y: 400 }, 'Invoice Generated': { x: 440, y: 400 }, 'Order Packed': { x: 560, y: 400 },
         'Order Shipped': { x: 680, y: 400 }, 'Out For Delivery': { x: 800, y: 400 }, 'Order Delivered': { x: 920, y: 400 },
         'Order Cancelled': { x: 1040, y: 400 }, 'Return Initiated': { x: 200, y: 550 }, 'Return Received': { x: 320, y: 550 },
-        'Refund Processed': { x: 440, y: 550 }, 'User Signed Up': { x: 80, y: 400 }, 'User Logged In': { x: 80, y: 550 },
-        'User Logged Out': { x: 200, y: 150 }
+        'Refund Processed': { x: 440, y: 550 },         'User Signed Up': { x: 80, y: 400 }, 'User Logged In': { x: 80, y: 550 },
+        'User Logged Out': { x: 200, y: 150 },
+        // Insurance events - column-observed
+        'Customer Registered': { x: 80, y: 250 }, 'KYC Completed': { x: 200, y: 250 }, 'Policy Quoted': { x: 320, y: 250 },
+        'Policy Purchased': { x: 440, y: 250 }, 'Policy Activated': { x: 560, y: 250 }, 'Premium Due': { x: 680, y: 250 },
+        'Premium Paid': { x: 800, y: 250 }, 'Payment Failed': { x: 920, y: 250 }, 'Policy Renewed': { x: 80, y: 400 },
+        'Policy Expired': { x: 200, y: 400 }, 'Claim Requested': { x: 320, y: 400 }, 'Claim Registered': { x: 440, y: 400 },
+        'Claim Verified': { x: 560, y: 400 }, 'Claim Assessed': { x: 680, y: 400 }, 'Claim Approved': { x: 800, y: 400 },
+        'Claim Rejected': { x: 920, y: 400 }, 'Claim Paid': { x: 80, y: 550 }, 'Nominee Updated': { x: 200, y: 550 },
+        'Policy Cancelled': { x: 320, y: 550 }, 'Policy Closed': { x: 440, y: 550 }
     };
 
     const boxWidth = 160;
@@ -646,6 +724,9 @@ function renderUnifiedCaseFlowDiagram(flowData) {
                 refX="9" refY="3.5" orient="auto">
                 <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" opacity="0.8" />
                 </marker>
+                <marker id="same-time-arrow" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+                <polygon points="0 0, 8 2.5, 0 5" fill="#64748b" opacity="0.9" />
+                </marker>
             </defs>
             <g id="diagram-paths-container"></g>
         `;
@@ -676,6 +757,7 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     window.diagramState.timings = timingMap;
     window.diagramState.boxWidth = boxWidth;
     window.diagramState.boxHeight = boxHeight;
+    window.diagramState.same_time_groups = flowData.same_time_groups || [];
     if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
 
     // Draw paths after DOM is ready; retry for slow layout (healthcare view loads diagram async)
@@ -703,6 +785,7 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         // Healthcare events - teal/turquoise theme
         else if (['Register', 'Visit', 'Procedure', 'Pharmacy', 'LabTest', 'Lab Test', 'Appointment', 'Treatment', 'Billing', 'Admission', 'Discharge', 'Doctor', 'Login', 'Logout', 'Login / Logout'].includes(event)) { boxBg = '#14B8A6'; }
         else if (['Customer Visit', 'Product View', 'Product Search', 'Add To Cart', 'Remove From Cart', 'Apply Coupon', 'Checkout Started', 'Address Entered', 'Payment Selected', 'Payment Success', 'Payment Failed', 'Order Placed', 'Order Confirmed', 'Invoice Generated', 'Order Packed', 'Order Shipped', 'Out For Delivery', 'Order Delivered', 'Order Cancelled', 'Return Initiated', 'Return Received', 'Refund Processed', 'User Signed Up', 'User Logged In', 'User Logged Out'].includes(event)) { boxBg = '#F59E0B'; }
+        else if (['Customer Registered', 'KYC Completed', 'Policy Quoted', 'Policy Purchased', 'Policy Activated', 'Premium Due', 'Premium Paid', 'Payment Failed', 'Policy Renewed', 'Policy Expired', 'Claim Requested', 'Claim Registered', 'Claim Verified', 'Claim Assessed', 'Claim Approved', 'Claim Rejected', 'Claim Paid', 'Nominee Updated', 'Policy Cancelled', 'Policy Closed', 'Document Submitted', 'Document Verified', 'Medical Test Scheduled', 'Medical Test Completed', 'Risk Assessed', 'Underwriting Started', 'Underwriting Completed', 'Premium Calculated', 'Auto Debit Enabled', 'Auto Debit Disabled', 'Reminder Sent', 'Grace Period Started', 'Grace Period Ended', 'Policy Suspended', 'Reinstatement Requested', 'Policy Reinstated', 'Payout Initiated', 'Payout Completed', 'Fraud Check Started', 'Fraud Check Cleared'].includes(event)) { boxBg = '#7C3AED'; }
         else { boxBg = '#475569'; }
 
         const isEnd = event === 'End';
@@ -745,7 +828,7 @@ function renderUnifiedCaseFlowDiagram(flowData) {
                     🔄 Unified Case Flow Diagram
                 </h2>
                 <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem; text-align: center;">
-                    All ${totalCases} Case IDs shown in one unified flow. Each colored path represents one Case ID. Time labels show duration between events.
+                    All ${totalCases} Case IDs shown in one unified flow. Each colored path represents one Case ID. Time labels show duration between events. When several cases have an event at the same time, a small arrow (⟶ same time) appears under that event.
                 </p>
                 <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.85rem; text-align: center;">
                     Drag empty area to pan • Drag event boxes to reposition
@@ -1410,12 +1493,7 @@ window.startDatabaseAnalysis = async function (profileIndex) {
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
         } else if (primaryDomain === 'Insurance') {
-            statusDiv.style.display = 'block';
-            statusDiv.style.color = 'var(--text-muted)';
-            statusDiv.innerHTML = 'Insurance domain detected. Timeline analysis for Insurance domain is coming soon.';
-            btn.disabled = false;
-            btn.style.opacity = '1';
-            btn.style.cursor = 'pointer';
+            showInsuranceAnalysisResults(profile);
         } else {
             statusDiv.style.display = 'block';
             statusDiv.style.color = 'var(--text-muted)';
@@ -1822,10 +1900,11 @@ function showBankingAnalysisResults(profile) {
 
         diagramHTML += `<svg id="diagram-svg-layer" width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 1; transform-origin: 0 0;">
             <defs>
-                <!-- Marker for arrows -->
-                <marker id="arrowhead" markerWidth="10" markerHeight="7" 
-                refX="9" refY="3.5" orient="auto">
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                 <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" opacity="0.8" />
+                </marker>
+                <marker id="same-time-arrow" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+                <polygon points="0 0, 8 2.5, 0 5" fill="#64748b" opacity="0.9" />
                 </marker>
             </defs>
             <g id="diagram-paths-container"></g>
@@ -1855,6 +1934,9 @@ function showBankingAnalysisResults(profile) {
         window.diagramState.positions = eventPositions;
         window.diagramState.paths = sequences;
         window.diagramState.timings = timingMap;
+        window.diagramState.boxWidth = boxWidth;
+        window.diagramState.boxHeight = boxHeight;
+        window.diagramState.same_time_groups = flowData.same_time_groups || [];
         if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
 
         setTimeout(() => window.renderDiagramPaths(), 100);
@@ -2088,7 +2170,7 @@ function showBankingAnalysisResults(profile) {
                     🔄 Unified Case Flow Diagram
                 </h2>
                 <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem; text-align: center;">
-                    All ${totalCases} Case IDs shown in one unified flow. Each colored path represents one Case ID. Time labels show duration between events.
+                    All ${totalCases} Case IDs shown in one unified flow. Each colored path represents one Case ID. Time labels show duration between events. When several cases have an event at the same time, a small arrow (⟶ same time) appears under that event.
                 </p>
                 <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.85rem; text-align: center;">
                     Drag empty area to pan • Drag event boxes to reposition
@@ -2351,6 +2433,164 @@ function showRetailAnalysisResults(profile) {
         </div>
     `;
 }
+
+// Insurance Analysis Results - Case ID per Customer (Policy/Claim Journeys)
+function showInsuranceAnalysisResults(profile) {
+    const mainContent = document.getElementById('mainContent');
+    const insData = profile.insurance_analysis;
+
+    if (!insData || !insData.success) {
+        mainContent.innerHTML = `
+            <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;"></div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #7C3AED;">Insurance Database Detected</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                    ${insData?.error || 'No insurance events with usable timestamps found. We look for policy/claim tables with date or timestamp columns.'}
+                </p>
+                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+            </div>
+        `;
+        return;
+    }
+
+    const caseDetails = insData.case_details || [];
+    const totalCases = insData.total_cases || 0;
+    const totalCustomers = insData.total_customers || 0;
+    const customers = insData.customers || [];
+    const totalActivities = insData.total_activities || insData.total_events || 0;
+    const unifiedFlowData = insData.unified_flow_data;
+    const INS_COLOR = '#7C3AED';
+    const INS_BG = 'rgba(124,58,237,0.08)';
+    const INS_BORDER = 'rgba(124,58,237,0.3)';
+
+    if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        let html = `
+        <div style="padding: 2rem; overflow-y: auto; height: 100%;">
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${INS_COLOR};"> Insurance Case IDs</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+                ${profile.database_name} • ${totalCases} Case ID(s) • ${totalCustomers} customer(s) • ${totalActivities} events
+            </p>
+
+            ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> How It Works</h2>
+                <div style="background: ${INS_BG}; border: 1px solid ${INS_BORDER}; border-radius: 12px; padding: 1.25rem;">
+                    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-primary); line-height: 1.8;">
+                        ${(insData.explanations || []).map(function (e) { return '<li>' + e + '</li>'; }).join('')}
+                    </ul>
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">Customers & Case IDs</h2>
+                <p style="color: var(--text-muted); margin-bottom: 1rem;">Each Case ID = one insurance journey (policy lifecycle or claim). Click a Case to see events.</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
+                    ${(customers || []).map(function (u) {
+                        var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+                        var ids = userCases.map(function (c) { return c.case_id; });
+                        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #7C3AED;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">Case IDs (sorted by first event time)</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">Each case shows its sequence of steps; each step shows <strong>Across DB</strong> source (table · file · row).</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                    ${caseDetails.map(function (c, i) {
+                        return '<div class="insurance-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #7C3AED, #6D28D9); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(124,58,237,0.3); transition: all 0.2s;" onclick="showInsuranceCaseDetails(' + i + ')" role="button" tabindex="0">Case #' + c.case_id + '</div>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <div id="insurance-case-details" style="display: none;">
+                <div id="insurance-case-details-content"></div>
+            </div>
+        </div>
+        `;
+        mainContent.innerHTML = html;
+        window.insuranceCaseDetails = caseDetails;
+        return;
+    }
+
+    mainContent.innerHTML = `
+        <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+            <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #7C3AED;">Insurance Data Detected</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                We detected Insurance data, but could not build case-based timelines from the uploaded files.
+            </p>
+            <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+        </div>
+    `;
+}
+
+window.showInsuranceCaseDetails = function (caseIndex) {
+    const container = document.getElementById('insurance-case-details');
+    const content = document.getElementById('insurance-case-details-content');
+    const cases = window.insuranceCaseDetails;
+    if (!container || !content || !cases || caseIndex < 0 || caseIndex >= cases.length) return;
+
+    const c = cases[caseIndex];
+    const prevIdx = window.insuranceSelectedCaseIndex;
+    if (prevIdx === caseIndex) {
+        container.style.display = 'none';
+        window.insuranceSelectedCaseIndex = null;
+        return;
+    }
+    window.insuranceSelectedCaseIndex = caseIndex;
+
+    const activities = c.activities || [];
+    const seq = (c.event_sequence || []).join(' → ');
+    const stepLabel = activities.length === 1 ? '1 step' : activities.length + ' steps';
+    let html = `
+        <div style="background: var(--bg-card); border: 2px solid #7C3AED; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(124,58,237,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.15rem; color: #7C3AED; margin: 0;">Case ID ${c.case_id} · Customer ${c.user_id}</h3>
+                <button class="btn-secondary" onclick="showInsuranceCaseDetails(${caseIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
+            </div>
+            <p style="color: #475569; font-size: 0.9rem; margin-bottom: 0.5rem;">${c.explanation || (c.first_activity_timestamp + ' → ' + c.last_activity_timestamp + ' · ' + stepLabel)}</p>
+            <p style="color: #64748b; font-size: 0.8rem; margin-bottom: 1rem;"><strong>Sequence (${stepLabel}):</strong> ${seq}</p>
+            <p style="color: #7C3AED; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.75rem;">Across DB — each step shows source: Table · File · Row</p>
+            <div style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+    `;
+
+    activities.forEach(function (a, stepIdx) {
+        const ev = a.event || '';
+        const ts = a.timestamp_str || '';
+        const story = a.event_story || '';
+        const policyId = a.policy_id || '';
+        const tbl = a.table_name || '';
+        const fname = a.file_name || '';
+        const rowNum = a.source_row != null && a.source_row !== '' ? (typeof a.source_row === 'number' ? a.source_row + 1 : a.source_row) : '';
+        const raw = a.raw_record || {};
+        const sourceParts = [tbl, fname].filter(Boolean);
+        const sourceStr = sourceParts.length ? (sourceParts.join(' · ') + (rowNum ? ' · row ' + rowNum : '')) : (story || '');
+        const rawPreview = typeof raw === 'object' && Object.keys(raw).length
+            ? Object.entries(raw).slice(0, 5).map(function (kv) { return kv[0] + ': ' + (kv[1] || ''); }).join('; ')
+            : '';
+        let explanation = INSURANCE_EVENT_EXPLANATIONS[ev];
+        if (!explanation && story && typeof story === 'string') explanation = story.split('[')[0].trim();
+        if (!explanation) explanation = ev;
+        html += `
+            <div style="padding: 0.6rem 0.8rem; background: #f5f3ff; border-left: 3px solid #7C3AED; border-radius: 8px; font-size: 0.9rem;">
+                <div style="display: flex; flex-direction: column; margin-bottom: 0.3rem;">
+                    <span style="font-weight: 700; color: #7C3AED; font-size: 1rem;">Step ${stepIdx + 1}: ${ev}</span>
+                    <span style="font-size: 0.85rem; color: #1e293b; font-weight: 600; margin-top: 0.1rem;">${explanation}</span>
+                </div>
+                <span style="color: var(--text-muted); font-size: 0.85rem;">${ts}</span>
+                ${policyId ? '<span style="margin-left: 0.5rem; font-size: 0.8rem; color: #94a3b8;">[Policy ' + policyId + ']</span>' : ''}
+                <div style="font-size: 0.8rem; color: #475569; margin-top: 0.35rem; font-weight: 600;">Across DB → ${sourceStr || '—'}</div>
+                ${rawPreview ? '<div style="font-size: 0.75rem; color: #64748b; margin-top: 0.2rem; font-family: monospace;">' + rawPreview + '</div>' : ''}
+            </div>
+        `;
+    });
+
+    html += '</div></div>';
+    content.innerHTML = html;
+    container.style.display = 'block';
+};
 
 window.showRetailCaseDetails = function (caseIndex) {
     const container = document.getElementById('retail-case-details');

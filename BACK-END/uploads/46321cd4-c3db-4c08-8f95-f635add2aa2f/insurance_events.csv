@@ -1,0 +1,7 @@
+case_id,customer_id,event_name,event_time
+I001,C201,Customer_Registered,2026-02-01 09:00:00
+I001,C201,KYC_Completed,2026-02-01 09:30:00
+I001,C201,Policy_Quoted,2026-02-01 10:00:00
+I001,C201,Policy_Purchased,2026-02-01 10:15:00
+I002,C202,Customer_Registered,2026-02-01 11:00:00
+I002,C202,Policy_Quoted,2026-02-01 11:30:00

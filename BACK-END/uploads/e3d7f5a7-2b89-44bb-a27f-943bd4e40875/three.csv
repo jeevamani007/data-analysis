@@ -1,0 +1,4 @@
+bill_id,patient_id,visit_id,amount,payment_mode,bill_time
+B101,H001,V001,1200,Cash,2025-03-01 10:00:10
+B102,H002,V002,1500,Card,2025-03-01 10:15:30
+B103,H003,V003,1800,UPI,2025-03-01 10:30:50

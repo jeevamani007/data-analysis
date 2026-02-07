@@ -315,6 +315,24 @@ async def analyze_database(session_id: str):
                 except Exception as re:
                     print(f"[Retail Analysis] Error in cluster {i+1}: {str(re)}")
 
+            # Insurance Process Timeline Analysis (ONLY for Insurance domain)
+            insurance_analysis_result = None
+            if domain_result.get('primary_domain') == 'Insurance':
+                try:
+                    from insurance_analyzer import InsuranceTimelineAnalyzer
+                    insurance_analyzer = InsuranceTimelineAnalyzer()
+                    insurance_analysis_result = insurance_analyzer.analyze_cluster(
+                        tables=cluster_tables,
+                        dataframes=dataframes,
+                        relationships=cluster_relationships
+                    )
+                    if insurance_analysis_result and insurance_analysis_result.get('success'):
+                        print(f"[Insurance Analysis] Success for cluster {i+1}")
+                    else:
+                        print(f"[Insurance Analysis] No usable insurance events found in cluster {i+1}")
+                except Exception as ie:
+                    print(f"[Insurance Analysis] Error in cluster {i+1}: {str(ie)}")
+
 
 
             # Create profile (sanitize dicts so numpy types serialize to JSON)
@@ -337,6 +355,7 @@ async def analyze_database(session_id: str):
                 healthcare_analysis=_to_native(healthcare_analysis_result) if healthcare_analysis_result else None,
                 banking_analysis=_to_native(banking_analysis_result) if banking_analysis_result else None,
                 retail_analysis=_to_native(retail_analysis_result) if retail_analysis_result else None,
+                insurance_analysis=_to_native(insurance_analysis_result) if insurance_analysis_result else None,
                 database_explanation=db_explanation,
                 relationship_explanation=relationship_explanation
             )

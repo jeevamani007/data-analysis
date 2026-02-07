@@ -1,0 +1,5 @@
+payment_id,policy_id,customer_id,amount,payment_status,payment_time
+PM001,P101,C001,5000,Success,2025-02-01 09:10:00
+PM002,P102,C002,3000,Success,2025-02-02 10:20:00
+PM003,P103,C003,4500,Failed,2025-02-03 11:40:00
+PM004,P104,C004,6000,Success,2025-02-04 15:00:00

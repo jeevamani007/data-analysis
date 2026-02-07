@@ -1,0 +1,4 @@
+claim_id,policy_id,customer_id,claim_type,claim_status,claim_time
+CL001,P101,C001,Accident,Approved,2025-03-05 14:30:00
+CL002,P102,C002,Hospitalization,Pending,2025-03-06 15:10:00
+CL003,P104,C004,Death,Rejected,2025-03-07 16:00:00
