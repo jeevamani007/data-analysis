@@ -1,0 +1,5 @@
+case_id,customer_id,event_name,event_time,charge_amount
+F001,C101,Risk_Checked,2026-02-01 09:45:00,0
+F001,C101,Fee_Charged,2026-02-01 09:46:00,100
+F002,C102,Risk_Checked,2026-02-01 09:50:00,0
+F002,C102,Penalty_Applied,2026-02-01 09:55:00,200

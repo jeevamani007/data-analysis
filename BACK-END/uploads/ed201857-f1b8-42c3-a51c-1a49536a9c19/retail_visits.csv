@@ -1,0 +1,5 @@
+visit_id,patient_id,visit_date,doctor_name,department,visit_type
+V1001,P001,2020-01-15,Dr.Ramesh,General,Registration
+V1002,P002,2019-06-10,Dr.Sunil,Cardiology,Registration
+V1003,P003,2021-08-01,Dr.Ali,Orthopedics,Registration
+V1004,P004,2022-10-05,Dr.Meera,Gynecology,Registration

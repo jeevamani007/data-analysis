@@ -1,0 +1,4 @@
+case_id,customer_id,event_name,event_time
+F001,C101,Customer_Onboarded,2026-02-01 09:00:00
+F002,C102,Customer_Onboarded,2026-02-01 09:05:00
+F003,C103,Customer_Onboarded,2026-02-01 09:10:00

@@ -135,6 +135,50 @@ const INSURANCE_EVENT_EXPLANATIONS = {
     'Fraud Check Cleared': 'Fraud check cleared'
 };
 
+// Finance Event Explanations (40 events – observed from columns + row data across DB)
+const FINANCE_EVENT_EXPLANATIONS = {
+    'Customer Registered': 'Customer registered',
+    'KYC Completed': 'KYC verification completed',
+    'Account Opened': 'Account opened',
+    'Account Closed': 'Account closed',
+    'Login': 'User logged in',
+    'Logout': 'User logged out',
+    'Deposit': 'Deposit recorded',
+    'Withdrawal': 'Withdrawal recorded',
+    'Transfer Initiated': 'Transfer initiated',
+    'Transfer Completed': 'Transfer completed',
+    'Payment Initiated': 'Payment initiated',
+    'Payment Success': 'Payment successful',
+    'Payment Failed': 'Payment failed',
+    'Loan Applied': 'Loan application submitted',
+    'Loan Approved': 'Loan approved',
+    'Loan Disbursed': 'Loan disbursed',
+    'Policy Purchased': 'Policy purchased',
+    'Premium Paid': 'Premium paid',
+    'Claim Requested': 'Claim requested',
+    'Claim Paid': 'Claim paid',
+    'Application Submitted': 'Application submitted',
+    'Application Reviewed': 'Application reviewed',
+    'Proposal Generated': 'Proposal generated',
+    'Proposal Accepted': 'Proposal accepted',
+    'Identity Verified': 'Identity verified',
+    'Address Verified': 'Address verified',
+    'Income Verified': 'Income verified',
+    'Beneficiary Added': 'Beneficiary added',
+    'Beneficiary Updated': 'Beneficiary updated',
+    'Coverage Activated': 'Coverage activated',
+    'Coverage Changed': 'Coverage changed',
+    'Installment Generated': 'Installment generated',
+    'Installment Paid': 'Installment paid',
+    'Penalty Applied': 'Penalty applied',
+    'Discount Applied': 'Discount applied',
+    'Case Escalated': 'Case escalated',
+    'Case Resolved': 'Case resolved',
+    'Support Ticket Created': 'Support ticket created',
+    'Support Ticket Closed': 'Support ticket closed',
+    'Account Frozen': 'Account frozen'
+};
+
 
 // Diagram State for Interactivity
 window.diagramState = {
@@ -313,6 +357,13 @@ window.renderDiagramPaths = function () {
     const touchPointsByEvent = {};
 
     try {
+        function resolvePos(ev, positions) {
+            if (!positions) return null;
+            if (positions[ev]) return positions[ev];
+            if (positions[ev.replace(/\s+/g, '')]) return positions[ev.replace(/\s+/g, '')];
+            if (positions[ev.replace(/([a-z])([A-Z])/g, '$1 $2')]) return positions[ev.replace(/([a-z])([A-Z])/g, '$1 $2')];
+            return null;
+        }
         state.paths.forEach((path, pathIdx) => {
             const sequence = path.sequence;
             const color = path.color;
@@ -322,8 +373,8 @@ window.renderDiagramPaths = function () {
                 const fromEvent = sequence[i];
                 const toEvent = sequence[i + 1];
 
-                const fromPos = state.positions[fromEvent];
-                const toPos = state.positions[toEvent];
+                const fromPos = resolvePos(fromEvent, state.positions);
+                const toPos = resolvePos(toEvent, state.positions);
 
                 if (!fromPos || !toPos) continue;
 
@@ -427,6 +478,9 @@ window.renderDiagramPaths = function () {
                         else line2 = formatTimeReadable(timing.end_time || timing.start_time || '');
                     } else if (timing.label === '00:00' || timing.label === '0s' || timing.label === '0 sec') {
                         line1 = '0 sec';
+                    }
+                    if (timing.date_only && line2) {
+                        line2 = line2.replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*[AP]M$/i, '').trim() + ' (Date only)';
                     }
                     if (line1 || line2) {
                         var boxH = line2 ? 38 : 18;
@@ -593,8 +647,22 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         return '';
     }
 
-    const eventTypes = flowData.all_event_types || [];
     const casePaths = flowData.case_paths || [];
+    // Derive event types from case paths if all_event_types missing/empty - ensures diagram shows all events
+    let eventTypes = flowData.all_event_types || [];
+    if (eventTypes.length === 0 && casePaths.length > 0) {
+        const seen = new Set();
+        eventTypes = ['Process'];
+        casePaths.forEach(function (p) {
+            (p.path_sequence || []).forEach(function (s) {
+                if (s && s !== 'Process' && s !== 'End' && !seen.has(s)) {
+                    seen.add(s);
+                    eventTypes.push(s);
+                }
+            });
+        });
+        eventTypes.push('End');
+    }
     const totalCases = flowData.total_cases || 0;
 
     // Build legend
@@ -660,7 +728,22 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         'Policy Expired': { x: 200, y: 400 }, 'Claim Requested': { x: 320, y: 400 }, 'Claim Registered': { x: 440, y: 400 },
         'Claim Verified': { x: 560, y: 400 }, 'Claim Assessed': { x: 680, y: 400 }, 'Claim Approved': { x: 800, y: 400 },
         'Claim Rejected': { x: 920, y: 400 }, 'Claim Paid': { x: 80, y: 550 }, 'Nominee Updated': { x: 200, y: 550 },
-        'Policy Cancelled': { x: 320, y: 550 }, 'Policy Closed': { x: 440, y: 550 }
+        'Policy Cancelled': { x: 320, y: 550 }, 'Policy Closed': { x: 440, y: 550 },
+        // Finance events (40) – column + row data pattern observed
+        'Account Opened': { x: 320, y: 250 }, 'Account Closed': { x: 440, y: 250 },
+        'Transfer Initiated': { x: 560, y: 400 }, 'Transfer Completed': { x: 680, y: 400 },
+        'Payment Initiated': { x: 1040, y: 250 }, 'Loan Applied': { x: 80, y: 550 },
+        'Loan Approved': { x: 200, y: 550 }, 'Loan Disbursed': { x: 320, y: 550 },
+        'Application Submitted': { x: 80, y: 700 }, 'Application Reviewed': { x: 200, y: 700 },
+        'Proposal Generated': { x: 320, y: 700 }, 'Proposal Accepted': { x: 440, y: 700 },
+        'Identity Verified': { x: 560, y: 700 }, 'Address Verified': { x: 680, y: 700 },
+        'Income Verified': { x: 800, y: 700 }, 'Beneficiary Added': { x: 920, y: 700 },
+        'Beneficiary Updated': { x: 80, y: 850 }, 'Coverage Activated': { x: 200, y: 850 },
+        'Coverage Changed': { x: 320, y: 850 }, 'Installment Generated': { x: 440, y: 850 },
+        'Installment Paid': { x: 560, y: 850 }, 'Penalty Applied': { x: 680, y: 850 },
+        'Discount Applied': { x: 800, y: 850 }, 'Case Escalated': { x: 920, y: 850 },
+        'Case Resolved': { x: 80, y: 1000 }, 'Support Ticket Created': { x: 200, y: 1000 },
+        'Support Ticket Closed': { x: 320, y: 1000 }, 'Account Frozen': { x: 440, y: 1000 }
     };
 
     const boxWidth = 160;
@@ -674,12 +757,16 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     let dynamicY = 350; // Start looking in bottom row
     const takenPositions = Object.values(fixedPositions).map(p => `${p.x},${p.y}`);
 
+    function resolveEventPosition(ev, posMap) {
+        if (posMap[ev]) return posMap[ev];
+        if (posMap[ev.replace(/\s+/g, '')]) return posMap[ev.replace(/\s+/g, '')];
+        if (posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')]) return posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')];
+        return null;
+    }
     eventTypes.forEach(event => {
-        if (fixedPositions[event]) {
-            eventPositions[event] = fixedPositions[event];
-        } else if (fixedPositions[event.replace('Transaction', '').trim()]) {
-            // Fuzzy match for 'Withdrawal' vs 'Withdrawal Transaction' if needed
-            eventPositions[event] = fixedPositions[event.replace('Transaction', '').trim()];
+        const pos = fixedPositions[event] || fixedPositions[event.replace('Transaction', '').trim()] || resolveEventPosition(event, fixedPositions);
+        if (pos) {
+            eventPositions[event] = pos;
         } else {
             // Find a spot
             let placed = false;
@@ -786,6 +873,7 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         else if (['Register', 'Visit', 'Procedure', 'Pharmacy', 'LabTest', 'Lab Test', 'Appointment', 'Treatment', 'Billing', 'Admission', 'Discharge', 'Doctor', 'Login', 'Logout', 'Login / Logout'].includes(event)) { boxBg = '#14B8A6'; }
         else if (['Customer Visit', 'Product View', 'Product Search', 'Add To Cart', 'Remove From Cart', 'Apply Coupon', 'Checkout Started', 'Address Entered', 'Payment Selected', 'Payment Success', 'Payment Failed', 'Order Placed', 'Order Confirmed', 'Invoice Generated', 'Order Packed', 'Order Shipped', 'Out For Delivery', 'Order Delivered', 'Order Cancelled', 'Return Initiated', 'Return Received', 'Refund Processed', 'User Signed Up', 'User Logged In', 'User Logged Out'].includes(event)) { boxBg = '#F59E0B'; }
         else if (['Customer Registered', 'KYC Completed', 'Policy Quoted', 'Policy Purchased', 'Policy Activated', 'Premium Due', 'Premium Paid', 'Payment Failed', 'Policy Renewed', 'Policy Expired', 'Claim Requested', 'Claim Registered', 'Claim Verified', 'Claim Assessed', 'Claim Approved', 'Claim Rejected', 'Claim Paid', 'Nominee Updated', 'Policy Cancelled', 'Policy Closed', 'Document Submitted', 'Document Verified', 'Medical Test Scheduled', 'Medical Test Completed', 'Risk Assessed', 'Underwriting Started', 'Underwriting Completed', 'Premium Calculated', 'Auto Debit Enabled', 'Auto Debit Disabled', 'Reminder Sent', 'Grace Period Started', 'Grace Period Ended', 'Policy Suspended', 'Reinstatement Requested', 'Policy Reinstated', 'Payout Initiated', 'Payout Completed', 'Fraud Check Started', 'Fraud Check Cleared'].includes(event)) { boxBg = '#7C3AED'; }
+        else if (['Customer Registered', 'KYC Completed', 'Account Opened', 'Account Closed', 'Login', 'Logout', 'Deposit', 'Withdrawal', 'Transfer Initiated', 'Transfer Completed', 'Payment Initiated', 'Payment Success', 'Payment Failed', 'Loan Applied', 'Loan Approved', 'Loan Disbursed', 'Policy Purchased', 'Premium Paid', 'Claim Requested', 'Claim Paid', 'Application Submitted', 'Application Reviewed', 'Proposal Generated', 'Proposal Accepted', 'Identity Verified', 'Address Verified', 'Income Verified', 'Beneficiary Added', 'Beneficiary Updated', 'Coverage Activated', 'Coverage Changed', 'Installment Generated', 'Installment Paid', 'Penalty Applied', 'Discount Applied', 'Case Escalated', 'Case Resolved', 'Support Ticket Created', 'Support Ticket Closed', 'Account Frozen'].includes(event)) { boxBg = '#4F46E5'; }
         else { boxBg = '#475569'; }
 
         const isEnd = event === 'End';
@@ -1478,6 +1566,12 @@ window.startDatabaseAnalysis = async function (profileIndex) {
     const primaryDomain = domainData?.primary_domain || 'Other';
 
     try {
+        if (primaryDomain === 'Finance') {
+            statusDiv.style.display = 'none';
+            statusDiv.innerHTML = '';
+            showFinanceAnalysisResults(profile);
+            return;
+        }
         if (primaryDomain === 'Banking') {
             showBankingAnalysisResults(profile);
         } else if (primaryDomain === 'Retail') {
@@ -1485,19 +1579,12 @@ window.startDatabaseAnalysis = async function (profileIndex) {
         } else if (primaryDomain === 'Healthcare') {
             // Show healthcare analysis with new diagram format
             showHealthcareAnalysisResults(profile);
-        } else if (primaryDomain === 'Finance') {
-            statusDiv.style.display = 'block';
-            statusDiv.style.color = 'var(--text-muted)';
-            statusDiv.innerHTML = 'Finance domain detected. Timeline analysis for Finance domain is coming soon.';
-            btn.disabled = false;
-            btn.style.opacity = '1';
-            btn.style.cursor = 'pointer';
         } else if (primaryDomain === 'Insurance') {
             showInsuranceAnalysisResults(profile);
         } else {
             statusDiv.style.display = 'block';
             statusDiv.style.color = 'var(--text-muted)';
-            statusDiv.innerHTML = 'Database profile loaded. Timeline analysis is currently available for Banking, Finance, Insurance, Healthcare, and Retail domains only.';
+            statusDiv.innerHTML = 'Domain is General/Other. For case timelines, use Banking, Finance, Insurance, Healthcare, or Retail data.';
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
@@ -2526,6 +2613,160 @@ function showInsuranceAnalysisResults(profile) {
     `;
 }
 
+// Finance Analysis Results – events across DB, Case IDs sorted by time (20 events)
+function showFinanceAnalysisResults(profile) {
+    const mainContent = document.getElementById('mainContent');
+    const finData = profile.finance_analysis;
+
+    if (!finData || !finData.success) {
+        mainContent.innerHTML = `
+            <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;"></div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #4F46E5;">Finance Database Detected</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                    ${finData?.error || 'No finance events with usable timestamps found across tables. We look for event/date columns and row data matching the 20 finance events.'}
+                </p>
+                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+            </div>
+        `;
+        return;
+    }
+
+    const caseDetails = finData.case_details || [];
+    const totalCases = finData.total_cases || 0;
+    const totalCustomers = finData.total_customers || 0;
+    const customers = finData.customers || [];
+    const totalActivities = finData.total_activities || finData.total_events || 0;
+    const unifiedFlowData = finData.unified_flow_data;
+    const FIN_COLOR = '#4F46E5';
+    const FIN_BG = 'rgba(79,70,229,0.08)';
+    const FIN_BORDER = 'rgba(79,70,229,0.3)';
+
+    if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        let html = `
+        <div style="padding: 2rem; overflow-y: auto; height: 100%;">
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${FIN_COLOR};"> Finance Case IDs</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+                ${profile.database_name} • ${totalCases} Case ID(s) • ${totalCustomers} customer(s) • ${totalActivities} events
+            </p>
+
+            ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> How It Works</h2>
+                <div style="background: ${FIN_BG}; border: 1px solid ${FIN_BORDER}; border-radius: 12px; padding: 1.25rem;">
+                    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-primary); line-height: 1.8;">
+                        ${(finData.explanations || []).map(function (e) { return '<li>' + e + '</li>'; }).join('')}
+                    </ul>
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">Customers & Case IDs</h2>
+                <p style="color: var(--text-muted); margin-bottom: 1rem;">Each Case ID = one finance journey. Events found across DB (tables/files). Click a Case to see steps and source (table · file · row).</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
+                    ${(customers || []).map(function (u) {
+                        var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+                        var ids = userCases.map(function (c) { return c.case_id; });
+                        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #4F46E5;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">Case IDs (sorted by first event time)</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">Each case shows its sequence; each step shows <strong>Across DB</strong> source (table · file · row).</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                    ${caseDetails.map(function (c, i) {
+                        return '<div class="finance-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #4F46E5, #4338CA); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(79,70,229,0.3); transition: all 0.2s;" onclick="showFinanceCaseDetails(' + i + ')" role="button" tabindex="0">Case #' + c.case_id + '</div>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <div id="finance-case-details" style="display: none;">
+                <div id="finance-case-details-content"></div>
+            </div>
+        </div>
+        `;
+        mainContent.innerHTML = html;
+        window.financeCaseDetails = caseDetails;
+        return;
+    }
+
+    mainContent.innerHTML = `
+        <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+            <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #4F46E5;">Finance Data Detected</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                We detected Finance data, but could not build case-based timelines from the uploaded files.
+            </p>
+            <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+        </div>
+    `;
+}
+
+window.showFinanceCaseDetails = function (caseIndex) {
+    const container = document.getElementById('finance-case-details');
+    const content = document.getElementById('finance-case-details-content');
+    const cases = window.financeCaseDetails;
+    if (!container || !content || !cases || caseIndex < 0 || caseIndex >= cases.length) return;
+
+    const c = cases[caseIndex];
+    const prevIdx = window.financeSelectedCaseIndex;
+    if (prevIdx === caseIndex) {
+        container.style.display = 'none';
+        window.financeSelectedCaseIndex = null;
+        return;
+    }
+    window.financeSelectedCaseIndex = caseIndex;
+
+    const activities = c.activities || [];
+    const seq = (c.event_sequence || []).join(' → ');
+    const stepLabel = activities.length === 1 ? '1 step' : activities.length + ' steps';
+    let html = `
+        <div style="background: var(--bg-card); border: 2px solid #4F46E5; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(79,70,229,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.15rem; color: #4F46E5; margin: 0;">Case ID ${c.case_id} · Customer ${c.user_id}</h3>
+                <button class="btn-secondary" onclick="showFinanceCaseDetails(${caseIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
+            </div>
+            <p style="color: #475569; font-size: 0.9rem; margin-bottom: 0.5rem;">${c.explanation || (c.first_activity_timestamp + ' → ' + c.last_activity_timestamp + ' · ' + stepLabel)}</p>
+            <p style="color: #64748b; font-size: 0.8rem; margin-bottom: 1rem;"><strong>Sequence (${stepLabel}):</strong> ${seq}</p>
+            <p style="color: #4F46E5; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.75rem;">Across DB — each step shows source: Table · File · Row</p>
+            <div style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+    `;
+
+    activities.forEach(function (a, stepIdx) {
+        const ev = a.event || '';
+        const ts = a.timestamp_str || '';
+        const tbl = a.table_name || '';
+        const fname = a.file_name || '';
+        const rowNum = a.source_row != null && a.source_row !== '' ? (typeof a.source_row === 'number' ? a.source_row + 1 : a.source_row) : '';
+        const raw = a.raw_record || {};
+        const sourceParts = [tbl, fname].filter(Boolean);
+        const sourceStr = sourceParts.length ? (sourceParts.join(' · ') + (rowNum ? ' · row ' + rowNum : '')) : '';
+        const rawPreview = typeof raw === 'object' && Object.keys(raw).length
+            ? Object.entries(raw).slice(0, 5).map(function (kv) { return kv[0] + ': ' + (kv[1] || ''); }).join('; ')
+            : '';
+        let explanation = FINANCE_EVENT_EXPLANATIONS[ev];
+        if (!explanation) explanation = ev;
+        html += `
+            <div style="padding: 0.6rem 0.8rem; background: #eef2ff; border-left: 3px solid #4F46E5; border-radius: 8px; font-size: 0.9rem;">
+                <div style="display: flex; flex-direction: column; margin-bottom: 0.3rem;">
+                    <span style="font-weight: 700; color: #4F46E5; font-size: 1rem;">Step ${stepIdx + 1}: ${ev}</span>
+                    <span style="font-size: 0.85rem; color: #1e293b; font-weight: 600; margin-top: 0.1rem;">${explanation}</span>
+                </div>
+                <span style="color: var(--text-muted); font-size: 0.85rem;">${ts}</span>
+                <div style="font-size: 0.8rem; color: #475569; margin-top: 0.35rem; font-weight: 600;">Across DB → ${sourceStr || '—'}</div>
+                ${rawPreview ? '<div style="font-size: 0.75rem; color: #64748b; margin-top: 0.2rem; font-family: monospace;">' + rawPreview + '</div>' : ''}
+            </div>
+        `;
+    });
+
+    html += '</div></div>';
+    content.innerHTML = html;
+    container.style.display = 'block';
+};
+
 window.showInsuranceCaseDetails = function (caseIndex) {
     const container = document.getElementById('insurance-case-details');
     const content = document.getElementById('insurance-case-details-content');
@@ -2918,6 +3159,7 @@ window.showHealthcareCaseDetails = function (caseIndex) {
     activities.forEach(function (a, idx) {
         var ev = a.event || '';
         var ts = a.timestamp_str || '';
+        if (a.date_only && ts) ts = ts.replace(/\s+00:00:00$/, '') + ' (Date only)';
         var tbl = a.table_name || '';
         var expl = a.explanation || '';
         var rec = a.raw_record || {};

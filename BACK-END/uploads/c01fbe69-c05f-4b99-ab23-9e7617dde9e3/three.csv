@@ -1,0 +1,6 @@
+policy_id,customer_id,policy_type,policy_status,event_name,event_time
+P101,C001,Life,Active,Policy_Purchased,2025-01-01 09:10:00
+P101,C001,Life,Active,Premium_Paid,2025-02-01 09:35:00
+P102,C002,Health,Active,Policy_Purchased,2025-01-02 10:25:00
+P102,C002,Health,Active,Claim_Requested,2025-03-01 14:00:00
+P102,C002,Health,Active,Claim_Paid,2025-03-02 15:30:00

@@ -1,0 +1,5 @@
+transaction_id,account_id,customer_id,transaction_type,amount,transaction_time
+T001,A1001,C001,Deposit,5000,2025-02-01 09:30:00
+T002,A1001,C001,Withdrawal,2000,2025-02-01 10:00:00
+T003,A1002,C002,Transfer,3000,2025-02-02 11:20:00
+T004,A1003,C003,Deposit,4000,2025-02-03 12:45:00
