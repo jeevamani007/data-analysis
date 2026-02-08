@@ -1,0 +1,5 @@
+policy_id,policyholder_id,policy_type,premium_amount,policy_status,policy_issue_datetime
+P1001,I001,Health,12000,Active,2020-01-10 09:45:00
+P1002,I002,Life,15000,Active,2019-05-22 10:30:00
+P1003,I003,Vehicle,8000,Active,2021-07-15 11:20:00
+P1004,I004,Health,10000,Active,2022-09-01 15:00:00

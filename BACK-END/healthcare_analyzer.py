@@ -945,8 +945,8 @@ class HealthcareAnalyzer:
         gap_hours: float = HEALTHCARE_CASE_GAP_HOURS,
     ) -> List[List[Dict[str, Any]]]:
         """
-        Group records by patient_id, sort by time, split by gap. Repeated pattern (same patient, later) = new case.
-        Returns list of cases, each case = list of records in time order.
+        Group by patient_id, sort by timestamp. New Case ID when: (1) gap >= gap_hours,
+        (2) same activity meaning appears again (duplicate) or from different source — one clean process flow per case.
         """
         by_patient: Dict[str, List[Dict]] = {}
         for r in all_records:
@@ -972,6 +972,14 @@ class HealthcareAnalyzer:
                         ts = pd.to_datetime(r.get('event_datetime', ''))
                     except Exception:
                         ts = pd.Timestamp.min
+                step = self._record_to_step_name(r)
+                events_in_current = {self._record_to_step_name(x) for x in current}
+                if step in events_in_current:
+                    if current:
+                        cases.append(current)
+                    current = [r]
+                    last_ts = ts
+                    continue
                 if last_ts is not None and ts is not None:
                     gap_h = (ts - last_ts).total_seconds() / 3600
                     if gap_h >= gap_hours:
@@ -1331,7 +1339,8 @@ class HealthcareAnalyzer:
         explanations = [
             f"We found {len(case_details)} case(s). Each case is one patient journey (steps in time order).",
             f"Case IDs are numbered 1 to {len(case_details)} in order of first event time.",
-            "Same patient with a gap of 24 hours or more starts a new Case ID.",
+            "Events are grouped by patient and sorted by timestamp. Same activity meaning again (duplicate or different source) starts a new Case ID so each case is one clean process flow.",
+            "Same patient with a gap of 24 hours or more also starts a new Case ID.",
             "Each case lists steps (e.g. Registration, Appointment, Admission, Treatment, Discharge) from your files.",
         ]
 

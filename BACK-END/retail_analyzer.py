@@ -600,6 +600,16 @@ class RetailTimelineAnalyzer:
         order_start_events = {"Order Created", "Order Placed"}
         for ev in events:
             name = ev.get("event", "")
+            events_in_current = {e.get("event", "") for e in current}
+            if name in events_in_current:
+                # Same activity meaning again → new Case ID (one clean process flow per case).
+                if current:
+                    cases.append(current)
+                    current = []
+                    has_order_in_current = False
+                current.append(ev)
+                has_order_in_current = name in order_start_events
+                continue
             if name in order_start_events:
                 # Close existing case (if it already has an order)
                 if current and has_order_in_current:
@@ -973,7 +983,8 @@ class RetailTimelineAnalyzer:
         explanations = [
             f"We found {len(case_details)} case(s). Each case represents one retail process run (typically one order journey) for a customer.",
             "Case IDs are numbered in order of the first event time across all customers.",
-            "If the same customer starts a new order again, we create a NEW Case ID (patterns are never merged).",
+            "Events are grouped by customer and sorted by timestamp. Same activity meaning again (duplicate or different source) starts a new Case ID so each case is one clean process flow.",
+            "If the same customer starts a new order again, we create a NEW Case ID.",
             f"Event types derived from your uploaded columns: {', '.join(observed_events) or '—'}.",
         ]
 

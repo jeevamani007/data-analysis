@@ -1,0 +1,6 @@
+item_id,order_id,activity_type,product_name,amount,activity_date,payment_mode,status
+I001,O1001,Purchase,Mobile,15000,2024-01-10,UPI,Success
+I002,O1001,Return,Mobile,15000,2024-01-12,UPI,Completed
+I003,O1002,Purchase,Laptop,45000,2024-01-11,Card,Success
+I004,O1003,Purchase,Shoes,3000,2024-01-15,Cash,Success
+I005,O1004,Purchase,TV,35000,2024-01-20,NetBanking,Success

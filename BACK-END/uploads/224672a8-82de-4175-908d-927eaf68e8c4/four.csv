@@ -1,0 +1,5 @@
+policyholder_id,first_name,last_name,gender,dob,phone,city,policy_start_datetime
+I001,Ramesh,Kumar,Male,1985-06-12,9876511111,Chennai,2020-01-10 09:30:00
+I002,Anu,Sharma,Female,1990-03-05,9876512222,Bangalore,2019-05-22 10:15:00
+I003,John,Peter,Male,1982-11-20,9876513333,Hyderabad,2021-07-15 11:00:00
+I004,Priya,Menon,Female,1994-02-18,9876514444,Kochi,2022-09-01 14:45:00

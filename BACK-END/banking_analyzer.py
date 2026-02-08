@@ -591,11 +591,20 @@ class BankingAnalyzer:
 
             if ev in MIDDLE_EVENTS or ev in ('credit', 'debit', 'refund', 'deposit', 'withdraw',
                                              'invalid_balance', 'negative_balance'):
+                # Same activity meaning already in this case → new Case ID (one clean process flow per case).
+                events_in_current = {a.get('event') for a in current}
+                if current and ev in events_in_current:
+                    sessions.append(current)
+                    login_act = {
+                        **act,
+                        'event': 'login',
+                        'raw_record': {**(act.get('raw_record', {})), 'inferred': 'implicit_session_start'}
+                    }
+                    current = [login_act, act]
+                    last_ts = ts
+                    continue
                 # For the first middle-event in a new or gap-separated session,
-                # create an implicit login event *before* the actual event
-                # instead of converting the event itself into "login".
-                # This keeps credit/debit/refund as their own steps while still
-                # marking a clear session start.
+                # create an implicit login event *before* the actual event.
                 if not current and not pending:
                     login_act = {
                         **act,
@@ -983,6 +992,7 @@ class BankingAnalyzer:
         explanations = [
             f"We found {total_cases} session(s). Each session has one Case ID.",
             f"Case IDs are numbered 1 to {total_cases} in order of start time.",
+            "Events are grouped by user and sorted by timestamp. Same activity meaning again (duplicate or different source) starts a new Case ID so each case is one clean process flow.",
             "Each case lists steps in time order (login, then credit or debit, then logout).",
             "Times use the columns we detected (login time, logout time, created time, or open time) from your files."
         ]
