@@ -451,6 +451,15 @@ class FinanceTimelineAnalyzer:
                 has_start = False
                 for ev in evs_sorted:
                     name = ev.get("event", "")
+                    events_in_current = {e.get("event", "") for e in current}
+                    if name in events_in_current:
+                        if current:
+                            cases.append(current)
+                            current = []
+                            has_start = False
+                        current.append(ev)
+                        has_start = name in account_start
+                        continue
                     if name in account_start:
                         if current and has_start:
                             cases.append(current)
@@ -671,6 +680,7 @@ class FinanceTimelineAnalyzer:
             "explanations": [
                 f"We found {len(case_details)} case(s). Each case is one finance journey (account/transaction/loan/claim).",
                 "Case IDs are numbered in order of first event time (ascending).",
+                "Events are grouped by user and sorted by timestamp. Same activity meaning again (duplicate or different source) starts a new Case ID so each case is one clean process flow.",
                 "Events are observed from your uploaded columns and row data across all tables.",
                 f"Event types found: {', '.join(observed) or '—'}.",
             ],

@@ -412,6 +412,15 @@ class InsuranceTimelineAnalyzer:
                 has_policy = False
                 for ev in evs_sorted:
                     name = ev.get("event", "")
+                    events_in_current = {e.get("event", "") for e in current}
+                    if name in events_in_current:
+                        if current:
+                            cases.append(current)
+                            current = []
+                            has_policy = False
+                        current.append(ev)
+                        has_policy = name in policy_start
+                        continue
                     if name in policy_start:
                         if current and has_policy:
                             cases.append(current)
@@ -637,6 +646,7 @@ class InsuranceTimelineAnalyzer:
             "explanations": [
                 f"We found {len(case_details)} case(s). Each case is one insurance journey (policy lifecycle or claim).",
                 "Case IDs are numbered in order of first event time.",
+                "Events are grouped by user and sorted by timestamp. Same activity meaning again (duplicate or different source) starts a new Case ID so each case is one clean process flow.",
                 "Events derived from your uploaded columns (observed, no hardcode).",
                 f"Event types: {', '.join(observed) or '—'}.",
             ],
