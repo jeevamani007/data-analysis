@@ -1,0 +1,5 @@
+logout_id,user_id,logout_date,logout_time,session_duration_minutes
+O001,U001,2026-02-08,09:50:10,35
+O002,U002,2026-02-08,10:00:00,30
+O003,U003,2026-02-08,10:40:00,35
+O004,U001,2026-02-08,12:00:00,20

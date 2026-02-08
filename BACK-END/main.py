@@ -333,7 +333,23 @@ async def analyze_database(session_id: str):
                 except Exception as ie:
                     print(f"[Insurance Analysis] Error in cluster {i+1}: {str(ie)}")
 
-
+            # Finance Process Timeline Analysis (ONLY for Finance domain)
+            finance_analysis_result = None
+            if domain_result.get('primary_domain') == 'Finance':
+                try:
+                    from finance_analyzer import FinanceTimelineAnalyzer
+                    finance_analyzer = FinanceTimelineAnalyzer()
+                    finance_analysis_result = finance_analyzer.analyze_cluster(
+                        tables=cluster_tables,
+                        dataframes=dataframes,
+                        relationships=cluster_relationships
+                    )
+                    if finance_analysis_result and finance_analysis_result.get('success'):
+                        print(f"[Finance Analysis] Success for cluster {i+1}")
+                    else:
+                        print(f"[Finance Analysis] No usable finance events found in cluster {i+1}")
+                except Exception as fe:
+                    print(f"[Finance Analysis] Error in cluster {i+1}: {str(fe)}")
 
             # Create profile (sanitize dicts so numpy types serialize to JSON)
             profile = DatabaseProfile(
@@ -356,6 +372,7 @@ async def analyze_database(session_id: str):
                 banking_analysis=_to_native(banking_analysis_result) if banking_analysis_result else None,
                 retail_analysis=_to_native(retail_analysis_result) if retail_analysis_result else None,
                 insurance_analysis=_to_native(insurance_analysis_result) if insurance_analysis_result else None,
+                finance_analysis=_to_native(finance_analysis_result) if finance_analysis_result else None,
                 database_explanation=db_explanation,
                 relationship_explanation=relationship_explanation
             )

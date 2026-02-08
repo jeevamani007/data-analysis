@@ -1,0 +1,5 @@
+case_id,customer_id,event_name,event_time,amount
+F001,C101,Payment_Initiated,2026-02-01 09:15:00,5000
+F001,C101,Payment_Settled,2026-02-01 09:16:30,5000
+F002,C102,Payment_Initiated,2026-02-01 09:20:00,3000
+F002,C102,Payment_Failed,2026-02-01 09:21:10,3000

@@ -1,0 +1,5 @@
+account_id,customer_id,account_type,balance,account_status,branch_name
+A1001,C001,Savings,50000,Active,Chennai_Main
+A1002,C002,Current,120000,Active,Bangalore_Central
+A1003,C003,Savings,30000,Active,Hyderabad_Hitech
+A1004,C004,Savings,45000,Inactive,Kochi_North

@@ -1,0 +1,6 @@
+treatment_id,visit_id,activity_type,amount,activity_date,remarks,status
+T001,V1001,Consultation,500,2024-01-10,Fever,Completed
+T002,V1001,Lab_Test,1200,2024-01-11,Blood Test,Completed
+T003,V1002,Consultation,800,2024-01-12,Chest Pain,Completed
+T004,V1003,Surgery,15000,2024-01-15,Knee Operation,Completed
+T005,V1004,Medicine,600,2024-01-20,Pregnancy Care,Completed

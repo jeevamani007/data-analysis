@@ -1,0 +1,4 @@
+case_id,customer_id,event_name,event_time,amount
+F001,C101,Account_Funded,2026-02-01 09:30:00,10000
+F002,C102,Account_Funded,2026-02-01 09:35:00,7000
+F003,C103,Account_Funded,2026-02-01 09:40:00,12000

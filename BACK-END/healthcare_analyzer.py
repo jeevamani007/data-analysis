@@ -134,6 +134,8 @@ class HealthcareAnalyzer:
             'login_time', 'logout_time',
             'event_time', 'event_timestamp', 'created_timestamp', 'created_at',
             'recorded_at', 'discharge_timestamp', 'admission_time',
+            'activity_date', 'activity_time', 'service_date', 'record_date',
+            'event_date', 'action_date', 'transaction_date', 'updated_at',
         ]
         # Date+time pairs for admission/registration/appointment
         date_time_patterns = [
@@ -211,12 +213,7 @@ class HealthcareAnalyzer:
         if not candidates:
             return []
         col = candidates[0]
-        sample_val = df[col].dropna().iloc[0] if len(df) > 0 else None
-        if sample_val is not None:
-            parsed = pd.to_datetime(sample_val, errors='coerce')
-            if pd.notna(parsed) and (parsed.hour != 0 or parsed.minute != 0 or parsed.second != 0):
-                return [(col, None)]
-        time_col = next((c for c in df.columns if c != col and 'time' in c.lower() and 'date' not in c.lower() and 'stamp' not in c.lower()), None)
+        time_col = next((c for c in df.columns if c != col and 'time' in c.lower() and 'date' not in c.lower() and 'stamp' not in c.lower() and not self._is_dob_column(c)), None)
         return [(col, time_col if time_col and time_col in df.columns else None)]
 
     def _infer_column_purpose(self, col_name: str, series: pd.Series, df: pd.DataFrame = None) -> Dict[str, Any]:
@@ -903,32 +900,41 @@ class HealthcareAnalyzer:
             return 'Visit'
         return 'Visit'
 
+    # Generic date columns that don't indicate event type - prefer table role for these
+    _GENERIC_DATE_COLUMNS = (
+        'visit_date', 'visit_time', 'activity_date', 'activity_time',
+        'event_date', 'event_time', 'created_at', 'recorded_at', 'service_date',
+        'record_date', 'action_date', 'transaction_date', 'updated_at',
+    )
+
     def _record_to_step_name(self, rec: Dict[str, Any]) -> str:
         """
-        Event name derived dynamically from the time column (primary), NOT table name.
-        Valid events only: Register, Visit, Procedure, Pharmacy, LabTest, Billing, Login, Logout.
-        Never return Other, Unknown, or table names.
+        Event name: prefer table role when time column is generic (visit_date, activity_date, etc.),
+        so we get Register, Procedure, Billing instead of all Visit. Use time column when it is specific.
         """
-        time_col = rec.get('_event_time_column') or ''
-        if time_col:
-            event = self._time_column_to_event_name(time_col)
-            if event and event not in ('Other', 'Unknown'):
-                return event
-        # Fallback: use table role only if it maps to a valid event
+        time_col = (rec.get('_event_time_column') or '').strip().lower().replace('-', '_')
         role_info = rec.get('table_workflow_role') or {}
         role = (role_info.get('role') or '').strip()
         ROLE_TO_EVENT = {
             'register': 'Register', 'patient': 'Register', 'registration': 'Register',
-            'login_logout': 'Login', 'appointment': 'Visit', 'admission': 'Visit',
+            'login_logout': 'Login', 'appointment': 'Visit', 'admission': 'Admission',
             'treatment': 'Procedure', 'lab': 'LabTest', 'billing': 'Billing',
-            'discharge': 'Visit', 'donation': 'Procedure',
+            'discharge': 'Discharge', 'doctor': 'Doctor', 'donation': 'Procedure',
         }
+        # When time column is generic, use table role first so different tables show different events
+        if time_col and any(g in time_col for g in self._GENERIC_DATE_COLUMNS):
+            if role and role in ROLE_TO_EVENT:
+                return ROLE_TO_EVENT[role]
+        # Specific time column (register_time, procedure_time, bill_time, etc.) or no role match
+        if time_col:
+            event = self._time_column_to_event_name(time_col)
+            if event and event not in ('Other', 'Unknown'):
+                return event
         if role and role in ROLE_TO_EVENT:
             return ROLE_TO_EVENT[role]
-        # Last resort: infer from record columns
         raw = rec.get('record') or {}
         for col in raw:
-            ev = self._time_column_to_event_name(col)
+            ev = self._time_column_to_event_name(str(col).lower())
             if ev and ev not in ('Other', 'Unknown'):
                 return ev
         return 'Visit'
@@ -1002,9 +1008,12 @@ class HealthcareAnalyzer:
                     # Fallback: build brief description from record
                     parts = [f"{k}: {v}" for k, v in raw.items() if v and str(v).strip()]
                     event_explanation = " | ".join(parts[:4]) if parts else step
+                # date_only: true when time is 00:00:00 (date column only, no time recorded)
+                date_only = bool(ts_str and ts_str.strip().endswith('00:00:00'))
                 activities.append({
                     'event': step,
                     'timestamp_str': ts_str,
+                    'date_only': date_only,
                     'user_id': r.get('patient_id') or 'unknown',
                     'table_name': r.get('table_name'),
                     'file_name': r.get('file_name'),
@@ -1113,11 +1122,13 @@ class HealthcareAnalyzer:
                     duration_seconds = 0
                     time_label = 'Start' if prev_event_name == 'Process' else '0 sec'
                 path_sequence.append(event_display)
+                date_only = act.get('date_only', False)
                 timings.append({
                     'from': prev_event_name,
                     'to': event_display,
                     'duration_seconds': duration_seconds,
                     'label': time_label,
+                    'date_only': date_only,
                     'start_time': prev_ts.strftime('%H:%M:%S') if prev_ts else '',
                     'end_time': ts.strftime('%H:%M:%S') if ts else '',
                     'start_datetime': prev_ts.strftime('%Y-%m-%d %H:%M:%S') if prev_ts else '',
@@ -1288,7 +1299,7 @@ class HealthcareAnalyzer:
         if not all_records:
             return {
                 'success': False,
-                'error': 'No date/timestamp columns found in healthcare tables (excluding date of birth).',
+                'error': 'No date/timestamp columns found. Add a column like visit_date, activity_date, service_date, or created_at with parseable date/time values. Date-only columns (e.g. 2020-01-15) are accepted. Excludes date of birth.',
                 'tables_checked': [t.table_name for t in tables]
             }
 

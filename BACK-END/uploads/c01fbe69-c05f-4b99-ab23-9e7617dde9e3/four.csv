@@ -1,0 +1,4 @@
+customer_id,account_id,account_type,account_status,account_open_time
+C001,A1001,Savings,Active,2025-01-01 09:00:00
+C002,A1002,Current,Active,2025-01-02 10:15:00
+C003,A1003,Savings,Closed,2025-01-03 11:30:00

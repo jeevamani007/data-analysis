@@ -1,0 +1,5 @@
+patient_id,first_name,last_name,gender,dob,phone,city,registration_date
+P001,Raj,Kumar,Male,1990-05-10,9876541111,Chennai,2020-01-15
+P002,Anitha,Sharma,Female,1988-03-22,9876542222,Bangalore,2019-06-10
+P003,John,Peter,Male,1985-11-05,9876543333,Hyderabad,2021-08-01
+P004,Priya,Menon,Female,1992-02-14,9876544444,Kochi,2022-10-05

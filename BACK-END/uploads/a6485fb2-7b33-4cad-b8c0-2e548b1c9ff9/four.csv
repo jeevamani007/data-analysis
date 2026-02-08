@@ -1,0 +1,5 @@
+user_id,username,account_type,created_date
+U001,ravi_savings,SAVINGS,2024-01-05
+U002,anita_current,CURRENT,2024-01-10
+U003,kumar_salary,SALARY,2024-02-01
+U004,meena_savings,SAVINGS,2024-02-15

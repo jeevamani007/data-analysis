@@ -153,6 +153,12 @@ class DatabaseProfile(BaseModel):
         description="Insurance policy/claim timeline with Case IDs and event steps"
     )
 
+    # Finance Process Timeline Analysis (for finance domains)
+    finance_analysis: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Finance timeline: events across DB (20 events), Case IDs sorted by time"
+    )
+
 
 
 class UploadResponse(BaseModel):
