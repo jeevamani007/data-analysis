@@ -43,7 +43,7 @@ FINANCE_EVENT_COLUMN_PATTERNS = [
     "event_time", "created_at", "timestamp",
 ]
 
-# Valid display names (40 events) - original 20 + new 20
+# Valid display names (40+ events) - original 40 + observed from data (invest, value_update, redeem, etc.)
 FINANCE_EVENT_DISPLAY = [
     "Customer Registered", "KYC Completed", "Account Opened", "Account Closed",
     "Login", "Logout", "Deposit", "Withdrawal",
@@ -60,6 +60,7 @@ FINANCE_EVENT_DISPLAY = [
     "Case Escalated", "Case Resolved",
     "Support Ticket Created", "Support Ticket Closed",
     "Account Frozen",
+    "Invest", "Value Update", "Redeem", "Switch", "Dividend",
 ]
 
 
@@ -144,7 +145,7 @@ class FinanceTimelineAnalyzer:
         """Detect user/customer/account holder column."""
         candidates = [
             "customer_id", "user_id", "account_holder_id", "client_id",
-            "member_id", "account_id",
+            "member_id", "account_id", "investor_id",
         ]
         cols_lower = {c.lower(): c for c in df.columns}
         for cand in candidates:
@@ -152,7 +153,7 @@ class FinanceTimelineAnalyzer:
                 return cols_lower[cand]
         for col in df.columns:
             cl = col.lower()
-            if any(k in cl for k in ["customer", "user", "account_holder", "client"]) and "id" in cl:
+            if any(k in cl for k in ["customer", "user", "account_holder", "client", "investor"]) and "id" in cl:
                 return col
         return None
 
@@ -169,11 +170,12 @@ class FinanceTimelineAnalyzer:
                 vals = set(s.strip() for v in sample for s in str(v).split(",") if s.strip())
                 if not vals:
                     continue
-                # Row data pattern: values that look like our 40 events (with underscore/space)
+                # Row data pattern: values that look like events (40 known + invest, value_update, redeem, etc.)
+                low_vals = [v.lower().replace(" ", "_").replace("-", "_") for v in vals]
                 valid = sum(
-                    1 for v in vals
+                    1 for v, lv in zip(vals, low_vals)
                     if self._normalize_event_from_data(v) in FINANCE_EVENT_DISPLAY
-                    or any(tok in v.lower().replace(" ", "_") for tok in [
+                    or any(tok in lv for tok in [
                         "customer_registered", "kyc", "account_opened", "account_closed",
                         "login", "logout", "deposit", "withdrawal", "transfer", "payment",
                         "loan", "policy", "premium", "claim",
@@ -185,14 +187,26 @@ class FinanceTimelineAnalyzer:
                         "penalty_applied", "discount_applied",
                         "case_escalated", "case_resolved",
                         "support_ticket_created", "support_ticket_closed",
-                        "account_frozen"
+                        "account_frozen",
+                        "invest", "value_update", "redeem", "switch", "dividend", "withdraw",
+                        "purchase", "sell", "buy", "trade",
                     ])
                 )
                 if valid >= min(2, len(vals)):
                     return col
+        # Prefer event_type, action, activity over event_id (event_id = identifier like E001, not event type)
+        prefer = ["event_type", "event_name", "action", "activity", "step_name", "transaction_type", "status"]
+        for p in prefer:
+            if p in cols_lower:
+                col = cols_lower[p]
+                sample = df[col].dropna().astype(str).head(20)
+                if len(sample) > 0:
+                    return col
         for col in df.columns:
             cl = col.lower()
-            if "event" in cl and "time" not in cl and "date" not in cl:
+            if cl == "event_id":
+                continue
+            if "event" in cl and "time" not in cl and "date" not in cl and not cl.endswith("_id"):
                 return col
             if "action" in cl or "activity" in cl or "transaction_type" in cl:
                 return col
@@ -315,6 +329,11 @@ class FinanceTimelineAnalyzer:
             "Support Ticket Created": "Support ticket created",
             "Support Ticket Closed": "Support ticket closed",
             "Account Frozen": "Account frozen",
+            "Invest": "Investment made (fund/investment purchase)",
+            "Value Update": "Investment value updated (NAV/valuation change)",
+            "Redeem": "Investment redeemed",
+            "Switch": "Fund switched",
+            "Dividend": "Dividend received",
         }
         core = mapping.get(event_name, event_name.replace("_", " "))
         parts = [p for p in [table_name or "", file_name or "", f"row {source_row_display}" if source_row_display else ""] if p]
