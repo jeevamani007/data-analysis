@@ -1,0 +1,4 @@
+patient_id,first_name,last_name,gender,dob,city,register_time
+H001,Arun,Kumar,M,1988-03-12,Chennai,2025-03-01 08:45:10
+H002,Divya,Sharma,F,1992-07-25,Bangalore,2025-03-01 09:05:30
+H003,Samuel,Peter,M,1995-11-18,Hyderabad,2025-03-01 09:25:50

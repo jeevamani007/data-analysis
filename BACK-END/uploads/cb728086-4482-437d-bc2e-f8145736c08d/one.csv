@@ -1,0 +1,4 @@
+procedure_id,visit_id,procedure_name,procedure_time
+P001,V001,X-Ray,2025-03-01 09:15:25
+P002,V002,Ear Test,2025-03-01 09:35:10
+P003,V003,Blood Check,2025-03-01 09:55:45

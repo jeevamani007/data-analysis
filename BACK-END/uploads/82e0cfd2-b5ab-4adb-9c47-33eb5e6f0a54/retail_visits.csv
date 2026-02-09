@@ -1,0 +1,7 @@
+appointment_id,patient_id,doctor_name,department,event_type,appointment_date,appointment_time,appointment_timestamp,appointment_status
+A1001,401,Dr. Suresh,Cardiology,APPOINTMENT_BOOKED,2026-02-01,10:15:30,2026-02-01 10:15:30,Booked
+A1002,401,Dr. Suresh,Cardiology,APPOINTMENT_COMPLETED,2026-02-01,11:00:00,2026-02-01 11:00:00,Completed
+A1003,402,Dr. Priya,Dermatology,APPOINTMENT_BOOKED,2026-02-02,09:30:00,2026-02-02 09:30:00,Booked
+A1004,402,Dr. Priya,Dermatology,APPOINTMENT_COMPLETED,2026-02-02,10:00:00,2026-02-02 10:00:00,Completed
+A1005,403,Dr. Raj,Orthopedics,APPOINTMENT_BOOKED,2026-02-03,14:20:10,2026-02-03 14:20:10,Booked
+A1006,403,Dr. Raj,Orthopedics,APPOINTMENT_COMPLETED,2026-02-03,15:00:00,2026-02-03 15:00:00,Completed
