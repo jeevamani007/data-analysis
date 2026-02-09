@@ -135,6 +135,262 @@ class DomainClassifier:
         self.pipeline.fit(X, y)
         print("Domain Classifier trained successfully (Banking, Finance, Insurance, Healthcare, Retail, Other).")
 
+    def predict_domain_2step(self, all_columns: List[str], sample_values: List[str] = None) -> Dict[str, Any]:
+        """
+        2-STEP DOMAIN CLASSIFICATION (for multiple files combined):
+        
+        STEP 1 – Column Analysis:
+        Analyze only column names to identify domain-specific keywords.
+        
+        STEP 2 – Row Data (Value) Analysis:
+        Analyze actual data values inside rows for semantic clues.
+        
+        FINAL DECISION:
+        Combine STEP 1 and STEP 2 results.
+        Choose the domain that is supported by BOTH columns and row data.
+        If conflict exists, give higher priority to ROW DATA over column names.
+        
+        Args:
+            all_columns: List of all column names from all uploaded files
+            sample_values: List of sample row values from all uploaded files
+            
+        Returns:
+            Dict with step-by-step analysis and final prediction
+        """
+        
+        # ===== STEP 1: COLUMN ANALYSIS =====
+        print("\n" + "="*70)
+        print("STEP 1 – COLUMN ANALYSIS")
+        print("="*70)
+        
+        step1_result = self._analyze_columns(all_columns)
+        
+        print(f"\nColumn Analysis Result:")
+        print(f"  Primary Domain: {step1_result['primary_domain']}")
+        print(f"  Confidence: {step1_result['confidence']:.1f}%")
+        print(f"  Evidence: {', '.join(step1_result['evidence'][:3]) if step1_result['evidence'] else 'None'}")
+        
+        # ===== STEP 2: ROW DATA ANALYSIS =====
+        print("\n" + "="*70)
+        print("STEP 2 – ROW DATA (VALUE) ANALYSIS")
+        print("="*70)
+        
+        step2_result = self._analyze_row_data(sample_values if sample_values else [])
+        
+        print(f"\nRow Data Analysis Result:")
+        print(f"  Primary Domain: {step2_result['primary_domain']}")
+        print(f"  Confidence: {step2_result['confidence']:.1f}%")
+        print(f"  Evidence: {', '.join(step2_result['evidence'][:3]) if step2_result['evidence'] else 'None'}")
+        
+        # ===== FINAL DECISION =====
+        print("\n" + "="*70)
+        print("FINAL DECISION")
+        print("="*70)
+        
+        final_domain = self._combine_results(step1_result, step2_result)
+        
+        print(f"\nFinal Predicted Domain: {final_domain['domain']}")
+        print(f"Reasoning: {final_domain['reasoning']}")
+        print("="*70 + "\n")
+        
+        return {
+            'step1_column_analysis': step1_result,
+            'step2_row_analysis': step2_result,
+            'final_prediction': final_domain
+        }
+    
+    def _analyze_columns(self, columns: List[str]) -> Dict[str, Any]:
+        """
+        STEP 1: Analyze only column names for domain-specific keywords.
+        """
+        cols_lower = [col.lower().replace('_', '').replace('-', '').replace(' ', '') for col in columns]
+        
+        # Domain-specific keyword patterns
+        domain_keywords = {
+            'Banking': [
+                'accountno', 'accountnumber', 'accountid', 'accountbalance', 'accounttype',
+                'ifsc', 'ifsccode', 'swift', 'swiftcode', 'routing', 'iban', 'bic',
+                'branch', 'branchid', 'deposit', 'withdraw', 'loanid', 'logintime', 'logouttime'
+            ],
+            'Finance': [
+                'invoice', 'invoiceid', 'invoiceno',
+                'gst', 'gstin', 'tax', 'salary', 'payroll',
+                'expense', 'profit', 'loss', 'budget', 'ledger', 'journal', 'voucher',
+                'tds', 'pf', 'esi', 'receivable', 'payable'
+            ],
+            'Insurance': [
+                'policy', 'pol', 'policyid', 'polid',
+                'claim', 'claimid', 'clmid',
+                'premium', 'prem', 'premamt',
+                'suminsured', 'insured', 'insurer', 'beneficiary', 'nominee',
+                'underwriting', 'coverage', 'deductible'
+            ],
+            'Healthcare': [
+                'patient', 'doctor', 'physician', 'diagnosis', 'treatment', 'prescription',
+                'medication', 'admission', 'discharge', 'hospital', 'clinic', 'ward',
+                'labtest', 'appointment', 'vitals', 'symptoms', 'allergies'
+            ],
+            'Retail': [
+                'productname', 'productid', 'sku', 'category', 'brand',
+                'orderid', 'quantity', 'unitprice', 'discount',
+                'saleschannel', 'storeid', 'cashierid', 'returnflag'
+            ]
+        }
+        
+        # Count keyword matches for each domain
+        domain_scores = {}
+        domain_evidence = {}
+        
+        for domain, keywords in domain_keywords.items():
+            matches = []
+            for col_clean in cols_lower:
+                for keyword in keywords:
+                    if keyword in col_clean:
+                        original_col = columns[cols_lower.index(col_clean)]
+                        if original_col not in matches:
+                            matches.append(original_col)
+                        break
+            
+            domain_scores[domain] = len(matches)
+            domain_evidence[domain] = matches
+        
+        # Determine primary domain from columns
+        if sum(domain_scores.values()) == 0:
+            return {
+                'primary_domain': 'Other',
+                'confidence': 50.0,
+                'scores': domain_scores,
+                'evidence': []
+            }
+        
+        primary = max(domain_scores, key=domain_scores.get)
+        total_matches = sum(domain_scores.values())
+        confidence = (domain_scores[primary] / total_matches * 100) if total_matches > 0 else 0
+        
+        return {
+            'primary_domain': primary,
+            'confidence': confidence,
+            'scores': domain_scores,
+            'evidence': domain_evidence.get(primary, [])
+        }
+    
+    def _analyze_row_data(self, sample_values: List[str]) -> Dict[str, Any]:
+        """
+        STEP 2: Analyze actual data values for semantic clues.
+        """
+        if not sample_values:
+            return {
+                'primary_domain': 'Unknown',
+                'confidence': 0.0,
+                'scores': {},
+                'evidence': []
+            }
+        
+        # Domain-specific value keywords
+        value_keywords = {
+            'Banking': [
+                'deposit', 'withdraw', 'transfer', 'account', 'branch', 'ifsc',
+                'transaction', 'balance', 'credit', 'debit', 'loan', 'emi'
+            ],
+            'Finance': [
+                'invoice', 'gst', 'gstin', 'tax', 'salary', 'payroll',
+                'expense', 'profit', 'loss', 'buy', 'sell', 'invest',
+                'tcs', 'infosys', 'stock', 'fund', 'nav'
+            ],
+            'Insurance': [
+                'policy', 'claim', 'premium', 'claim_approved', 'policy_issued',
+                'premium_paid', 'sum insured', 'beneficiary', 'nominee'
+            ],
+            'Healthcare': [
+                'appointment_booked', 'cardiology', 'doctor', 'dr.', 'patient',
+                'diagnosis', 'treatment', 'prescription', 'hospital', 'clinic',
+                'emergency', 'surgery', 'lab test'
+            ],
+            'Retail': [
+                'order_placed', 'order_shipped', 'delivered', 'product',
+                'shipped', 'cancelled', 'returned', 'refund'
+            ]
+        }
+        
+        # Count value matches for each domain
+        domain_scores = {}
+        domain_evidence = {}
+        
+        for domain, keywords in value_keywords.items():
+            matches = []
+            for value in sample_values:
+                value_lower = str(value).lower().strip()
+                for keyword in keywords:
+                    if keyword in value_lower:
+                        if value not in matches:
+                            matches.append(value)
+                        break
+            
+            domain_scores[domain] = len(matches)
+            domain_evidence[domain] = matches[:5]  # Keep only first 5 examples
+        
+        # Determine primary domain from row data
+        if sum(domain_scores.values()) == 0:
+            return {
+                'primary_domain': 'Other',
+                'confidence': 50.0,
+                'scores': domain_scores,
+                'evidence': []
+            }
+        
+        primary = max(domain_scores, key=domain_scores.get)
+        total_matches = sum(domain_scores.values())
+        confidence = (domain_scores[primary] / total_matches * 100) if total_matches > 0 else 0
+        
+        return {
+            'primary_domain': primary,
+            'confidence': confidence,
+            'scores': domain_scores,
+            'evidence': domain_evidence.get(primary, [])
+        }
+    
+    def _combine_results(self, step1: Dict, step2: Dict) -> Dict[str, str]:
+        """
+        FINAL DECISION: Combine STEP 1 and STEP 2 results.
+        Priority: ROW DATA > COLUMN NAMES if there's a conflict.
+        """
+        domain1 = step1['primary_domain']
+        domain2 = step2['primary_domain']
+        conf1 = step1['confidence']
+        conf2 = step2['confidence']
+        
+        # Case 1: Both agree
+        if domain1 == domain2:
+            return {
+                'domain': domain1,
+                'reasoning': f"Both column analysis and row data analysis agree on {domain1} domain. "
+                           f"Column confidence: {conf1:.1f}%, Row data confidence: {conf2:.1f}%."
+            }
+        
+        # Case 2: Conflict - Row data has priority
+        if domain2 != 'Other' and domain2 != 'Unknown':
+            return {
+                'domain': domain2,
+                'reasoning': f"Conflict detected. Columns suggest {domain1} ({conf1:.1f}%), "
+                           f"but row data clearly indicates {domain2} ({conf2:.1f}%). "
+                           f"Row data has higher priority - Final decision: {domain2}."
+            }
+        
+        # Case 3: Row data is unclear, use column analysis
+        if domain1 != 'Other':
+            return {
+                'domain': domain1,
+                'reasoning': f"Row data analysis is inconclusive ({domain2}). "
+                           f"Using column analysis result: {domain1} ({conf1:.1f}%)."
+            }
+        
+        # Case 4: Both unclear
+        return {
+            'domain': 'Other',
+            'reasoning': "Both column and row data analysis are inconclusive. "
+                       "Unable to determine specific domain with confidence."
+        }
+
     def predict(self, table_names: List[str], all_columns: List[str], sample_values: List[str] = None) -> Dict:
         """
         Predict domain classification across Banking, Finance, Insurance, Healthcare, Retail, and Other.

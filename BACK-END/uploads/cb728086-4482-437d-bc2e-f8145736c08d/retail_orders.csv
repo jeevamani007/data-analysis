@@ -1,0 +1,4 @@
+patient_id,first_name,last_name,gender,dob,phone,email,city,registration_date,registration_time,registration_timestamp
+401,Arjun,Kumar,Male,1991-04-12,9876543210,arjun@gmail.com,Chennai,2024-01-05,09:30:00,2024-01-05 09:30:00
+402,Meena,Sharma,Female,1993-07-18,9123456780,meena@gmail.com,Bangalore,2024-01-10,10:15:00,2024-01-10 10:15:00
+403,Rahul,Verma,Male,1988-11-02,9988776655,rahul@gmail.com,Hyderabad,2024-01-15,11:00:00,2024-01-15 11:00:00

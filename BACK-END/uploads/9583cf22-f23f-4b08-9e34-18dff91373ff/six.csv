@@ -1,0 +1,7 @@
+treatment_id,appointment_id,event_type,description,treatment_date,treatment_time,treatment_timestamp,treatment_status
+T001,A1001,DIAGNOSIS,Heart Checkup,2026-02-01,11:05:00,2026-02-01 11:05:00,Done
+T002,A1001,MEDICATION,Blood Pressure Tablets,2026-02-01,11:10:00,2026-02-01 11:10:00,Prescribed
+T003,A1003,DIAGNOSIS,Skin Allergy Test,2026-02-02,10:05:00,2026-02-02 10:05:00,Done
+T004,A1003,MEDICATION,Anti Allergy Cream,2026-02-02,10:10:00,2026-02-02 10:10:00,Prescribed
+T005,A1005,DIAGNOSIS,Knee Pain Examination,2026-02-03,15:05:00,2026-02-03 15:05:00,Done
+T006,A1005,DISCHARGE,Physiotherapy Advice,2026-02-03,15:20:00,2026-02-03 15:20:00,Completed
