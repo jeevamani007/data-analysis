@@ -1034,6 +1034,8 @@ window.showSingleCaseFlow = function (caseIdStr) {
             case_paths: [match],
             total_cases: 1,
             same_time_groups: [],
+            filterLabel: 'Case ID ' + caseIdStr,  // So diagram title shows "Case ID X - Step-by-Step"
+            isSingleCaseFilter: true,
         };
 
         const html = renderMergedCaseFlowDiagram(singleFlowData);
@@ -1052,11 +1054,359 @@ window.showSingleCaseFlow = function (caseIdStr) {
     }
 };
 
-window.toggleSingleCaseFlow = function () {
+// ---------------------------------------------------------------------------
+// User-merged Flow Diagram (all Case IDs for one user)
+// ---------------------------------------------------------------------------
+
+window.showUserMergedFlow = function (userId) {
+    console.log('=== showUserMergedFlow CALLED ===');
+    console.log('User ID parameter:', userId);
+    console.log('Type:', typeof userId);
+    
+    // Ensure userId is a string for comparison
+    if (userId == null || userId === '') {
+        console.error('Invalid userId:', userId);
+        alert('Error: Invalid user ID. Please try again.');
+        return;
+    }
+    
     try {
+        const container = document.getElementById('single-case-flow-content');
+        if (!container) {
+            console.error('Container not found!');
+            alert('Error: Filter container not found. Please refresh the page.');
+            return;
+        }
         const body = document.getElementById('single-case-flow-body');
+        if (!body) {
+            console.error('Body not found!');
+        }
+
+        const activeUnifiedData =
+            window.currentBankingUnifiedFlowData ||
+            window.currentRetailUnifiedFlowData ||
+            window.currentInsuranceUnifiedFlowData ||
+            window.currentFinanceUnifiedFlowData ||
+            window.currentHealthcareUnifiedFlowData ||
+            null;
+        
+        console.log('Active unified data:', activeUnifiedData ? 'Found' : 'Not found');
+        if (!activeUnifiedData || !activeUnifiedData.case_paths || !activeUnifiedData.case_paths.length) {
+            container.innerHTML = '<div style="color: #b91c1c;">No unified flow data is loaded. Please run analysis first.</div>';
+            return;
+        }
+
+        console.log('Total case paths available:', activeUnifiedData.case_paths.length);
+
+        // Filter to show ALL case paths for this user
+        // Handle both string and number comparisons for user_id
+        const userIdStr = String(userId).trim();
+        console.log('Filtering for user ID:', userIdStr);
+        
+        const filteredPaths = (activeUnifiedData.case_paths || []).filter(function (p) {
+            const pUserId = p.user_id != null ? String(p.user_id).trim() : '';
+            const matches = pUserId === userIdStr;
+            if (matches) {
+                console.log('Found matching path - Case ID:', p.case_id, 'User ID:', p.user_id, 'Sequence:', p.path_sequence);
+            }
+            return matches;
+        });
+        
+        console.log('Filtered paths count:', filteredPaths.length);
+        
+        if (!filteredPaths.length) {
+            // Debug: show what user_ids we have
+            const allUserIds = [...new Set((activeUnifiedData.case_paths || []).map(p => String(p.user_id || 'null')))];
+            console.log('Available user IDs:', allUserIds);
+            container.innerHTML = '<div style="color: #b91c1c;">No Case IDs found for user <strong>' + userId + '</strong> in current results.<br><small>Available users: ' + allUserIds.slice(0, 10).join(', ') + (allUserIds.length > 10 ? '...' : '') + '</small></div>';
+            return;
+        }
+
+        // Sort by case_id (already ascending by start time in back-end)
+        filteredPaths.sort(function (a, b) {
+            const aId = Number(a.case_id) || 0;
+            const bId = Number(b.case_id) || 0;
+            return aId - bId;
+        });
+
+        // Get list of case IDs for display
+        const caseIds = filteredPaths.map(function (p) { return p.case_id; }).join(', ');
+
+        // MERGE all case paths into one continuous path for this user
+        // Combine sequences: Process → [Case1 steps] → [Case2 steps] → ... → End
+        const mergedPathSequence = ['Process'];
+        const mergedTimings = [];
+        let prevEvent = 'Process';
+
+        filteredPaths.forEach(function (p, pathIdx) {
+            const seq = Array.isArray(p.path_sequence) ? p.path_sequence : [];
+            const timings = Array.isArray(p.timings) ? p.timings : [];
+            
+            if (seq.length === 0) return; // Skip empty paths
+            
+            // For first path: start from index 1 (skip "Process")
+            // For subsequent paths: start from index 1 (skip "Process"), but also skip "End" from previous path
+            const startIdx = 1; // Always skip "Process"
+            
+            // If this is not the first path and previous path ended with "End", 
+            // we need to remove that "End" from merged sequence before adding new events
+            if (pathIdx > 0 && mergedPathSequence.length > 0 && mergedPathSequence[mergedPathSequence.length - 1] === 'End') {
+                mergedPathSequence.pop(); // Remove the "End" from previous case
+                if (mergedTimings.length > 0) {
+                    mergedTimings.pop(); // Remove the timing entry for that "End"
+                }
+                // Update prevEvent to be the last real event before "End"
+                if (mergedPathSequence.length > 0) {
+                    prevEvent = mergedPathSequence[mergedPathSequence.length - 1];
+                }
+            }
+            
+            // Add all events from this case path (skip "Process", include everything else including "End")
+            for (let i = startIdx; i < seq.length; i++) {
+                const ev = seq[i];
+                if (!ev) continue;
+                
+                // Skip "Process" if it somehow appears in the middle
+                if (ev === 'Process') continue;
+                
+                // Add event to merged sequence
+                mergedPathSequence.push(ev);
+                
+                // Get timing info if available
+                const timingIdx = i - 1; // timings array is one shorter than path_sequence
+                const timing = (timingIdx >= 0 && timingIdx < timings.length) ? timings[timingIdx] : {};
+                const duration = timing.duration_seconds || 0;
+                const timeLabel = timing.label || '0 sec';
+                
+                mergedTimings.push({
+                    from: prevEvent,
+                    to: ev,
+                    duration_seconds: duration,
+                    label: timeLabel,
+                    start_time: timing.start_time || '',
+                    end_time: timing.end_time || '',
+                    start_datetime: timing.start_datetime || '',
+                    end_datetime: timing.end_datetime || '',
+                });
+                
+                prevEvent = ev;
+            }
+        });
+
+        // Ensure End is at the very end (only one "End" for the entire merged flow)
+        if (mergedPathSequence.length === 0 || mergedPathSequence[mergedPathSequence.length - 1] !== 'End') {
+            // Remove any existing "End" entries first
+            while (mergedPathSequence.length > 0 && mergedPathSequence[mergedPathSequence.length - 1] === 'End') {
+                mergedPathSequence.pop();
+                if (mergedTimings.length > 0) {
+                    mergedTimings.pop();
+                }
+            }
+            // Update prevEvent
+            if (mergedPathSequence.length > 0) {
+                prevEvent = mergedPathSequence[mergedPathSequence.length - 1];
+            }
+            // Add final "End"
+            mergedPathSequence.push('End');
+            mergedTimings.push({
+                from: prevEvent,
+                to: 'End',
+                duration_seconds: 0,
+                label: 'End',
+                start_time: '',
+                end_time: '',
+                start_datetime: '',
+                end_datetime: '',
+            });
+        }
+
+        // Build event list from merged sequence - include ALL unique events that appear (in order of first appearance)
+        // This ensures the diagram shows all event boxes needed for the merged flow
+        // NOTE: We include unique events for boxes, but the path_sequence has ALL events (including duplicates)
+        // so edges will be created correctly from consecutive events in path_sequence
+        const seen = {};
+        const allEvents = ['Process'];
+        mergedPathSequence.forEach(function (ev) {
+            if (!ev || ev === 'Process' || ev === 'End') return;
+            if (!seen[ev]) {
+                seen[ev] = true;
+                allEvents.push(ev);
+            }
+        });
+        allEvents.push('End');
+        
+        // Also ensure we include ALL events from original paths (in case merge missed some)
+        filteredPaths.forEach(function (p) {
+            const seq = Array.isArray(p.path_sequence) ? p.path_sequence : [];
+            seq.forEach(function (ev) {
+                if (!ev || ev === 'Process' || ev === 'End') return;
+                if (!seen[ev]) {
+                    seen[ev] = true;
+                    allEvents.splice(allEvents.length - 1, 0, ev); // Insert before 'End'
+                }
+            });
+        });
+
+        // Verify we have a valid merged sequence
+        if (mergedPathSequence.length < 3) { // At least Process, one event, End
+            container.innerHTML = '<div style="color: #b91c1c;">Error: Merged sequence is too short. Found ' + filteredPaths.length + ' case(s) but could not merge them properly.<br><small>Merged sequence: ' + JSON.stringify(mergedPathSequence) + '</small></div>';
+            return;
+        }
+
+        // Create merged case path with new synthetic Case ID
+        const maxCaseId = filteredPaths.reduce(function (m, p) {
+            const v = Number(p.case_id) || 0;
+            return v > m ? v : m;
+        }, 0);
+        const baseColor = filteredPaths[0].color || '#0f172a';
+
+        const mergedPath = {
+            case_id: maxCaseId + 1,
+            user_id: userId,
+            color: baseColor,
+            path_sequence: mergedPathSequence,
+            timings: mergedTimings,
+            total_duration: mergedTimings.reduce(function (sum, t) { return sum + (t.duration_seconds || 0); }, 0),
+        };
+
+        // Create flow data with single merged path
+        // Use the merged sequence events, but ensure we include ALL events that appear in the merged path_sequence
+        // This is critical: all_event_types determines which event boxes are drawn
+        const finalEventTypes = allEvents.length > 2 ? allEvents : (activeUnifiedData.all_event_types || []);
+        
+        // Double-check: ensure every event in mergedPathSequence is in finalEventTypes (except Process/End which are always there)
+        const eventTypesSet = new Set(finalEventTypes);
+        mergedPathSequence.forEach(function(ev) {
+            if (ev && ev !== 'Process' && ev !== 'End' && !eventTypesSet.has(ev)) {
+                console.warn('Warning: Event "' + ev + '" in merged sequence but not in all_event_types. Adding it.');
+                finalEventTypes.splice(finalEventTypes.length - 1, 0, ev); // Insert before 'End'
+                eventTypesSet.add(ev);
+            }
+        });
+        
+        const mergedFlowData = {
+            all_event_types: finalEventTypes,
+            case_paths: [mergedPath],  // Single merged path with ALL case IDs combined
+            total_cases: 1,
+            same_time_groups: [],
+            filterLabel: 'User ' + userId,  // So diagram title shows "User X – Step-by-Step Flow"
+        };
+
+        // Debug: log merged sequence
+        console.log('=== USER MERGE DEBUG ===');
+        console.log('User ID:', userId);
+        console.log('Filtered paths count:', filteredPaths.length);
+        console.log('Original case IDs:', caseIds);
+        console.log('Original paths:');
+        filteredPaths.forEach(function(p, idx) {
+            console.log('  Path ' + idx + ' (Case ' + p.case_id + '):', p.path_sequence);
+        });
+        console.log('Merged path sequence:', mergedPathSequence);
+        console.log('Merged path sequence length:', mergedPathSequence.length);
+        console.log('Merged timings length:', mergedTimings.length);
+        console.log('Merged timings:', mergedTimings);
+        console.log('All event types (unique):', allEvents);
+        console.log('Merged path object:', mergedPath);
+        console.log('Merged flow data:', mergedFlowData);
+        console.log('========================');
+
+        // Verify merged path is valid before rendering
+        if (mergedPathSequence.length < 3) {
+            container.innerHTML = '<div style="color: #b91c1c; padding: 1rem; background: #fef2f2; border-radius: 6px;">' +
+                '⚠️ Error: Merged sequence is too short (' + mergedPathSequence.length + ' events). ' +
+                'Expected at least Process → [events] → End.<br>' +
+                '<small>Merged sequence: ' + JSON.stringify(mergedPathSequence) + '</small><br>' +
+                '<small>Original paths: ' + filteredPaths.length + ' case(s)</small><br>' +
+                '<small>Filtered paths details: ' + JSON.stringify(filteredPaths.map(p => ({ case_id: p.case_id, seq_length: (p.path_sequence || []).length }))) + '</small>' +
+                '</div>';
+            return;
+        }
+        
+        // Validate: merged sequence should start with Process and end with End
+        if (mergedPathSequence[0] !== 'Process') {
+            console.warn('Warning: Merged sequence does not start with Process. Prepending Process.');
+            mergedPathSequence.unshift('Process');
+            // Add a timing entry for Process if needed
+            if (mergedTimings.length === 0 || mergedTimings[0].from !== 'Process') {
+                mergedTimings.unshift({
+                    from: 'Process',
+                    to: mergedPathSequence[1] || 'End',
+                    duration_seconds: 0,
+                    label: 'Start',
+                });
+            }
+        }
+        if (mergedPathSequence[mergedPathSequence.length - 1] !== 'End') {
+            console.warn('Warning: Merged sequence does not end with End. Appending End.');
+            mergedPathSequence.push('End');
+            const lastEvent = mergedPathSequence[mergedPathSequence.length - 2] || 'Process';
+            mergedTimings.push({
+                from: lastEvent,
+                to: 'End',
+                duration_seconds: 0,
+                label: 'End',
+            });
+        }
+        
+        // Update mergedPath with validated sequence
+        mergedPath.path_sequence = mergedPathSequence;
+        mergedPath.timings = mergedTimings;
+
+        // Render the merged diagram
+        console.log('Calling renderMergedCaseFlowDiagram with:', mergedFlowData);
+        const html = renderMergedCaseFlowDiagram(mergedFlowData);
+        console.log('renderMergedCaseFlowDiagram returned HTML length:', html ? html.length : 0);
+        
+        // Show full merged sequence for verification
+        const fullSequence = mergedPathSequence.join(' → ');
+        
+        const explanation = '<div style="background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">' +
+            '<strong style="color: #0ea5e9;">✅ Merged View:</strong> Combined all <strong>' + filteredPaths.length + ' Case ID(s)</strong> for user <strong>' + userId + '</strong> (Case IDs: <strong>' + caseIds + '</strong>) into one continuous flow.<br>' +
+            '<div style="background: white; padding: 0.75rem; border-radius: 6px; margin-top: 0.75rem; font-family: monospace; font-size: 0.85rem; color: #1e40af; border: 1px solid #bfdbfe;">' +
+            '<strong>Full Merged Sequence (' + mergedPathSequence.length + ' steps):</strong><br>' +
+            '<div style="margin-top: 0.5rem; word-break: break-all; line-height: 1.6;">' + fullSequence + '</div>' +
+            '</div>' +
+            '</div>';
+        
+        if (!html || html.trim() === '') {
+            container.innerHTML = explanation + '<div style="color: #b91c1c; margin-top: 1rem; padding: 1rem; background: #fef2f2; border-radius: 6px;">⚠️ Diagram rendering failed. Merged path has ' + mergedPathSequence.length + ' events. Check console for details.</div>';
+            console.error('renderMergedCaseFlowDiagram returned empty HTML');
+            console.error('Merged flow data:', JSON.stringify(mergedFlowData, null, 2));
+        } else {
+            container.innerHTML = explanation + html;
+            console.log('✅ Successfully rendered merged diagram');
+        }
+
+        if (body) {
+            body.style.display = 'block';
+        }
+        const containerWrapper = document.getElementById('single-case-flow-container');
+        if (containerWrapper && containerWrapper.scrollIntoView) {
+            containerWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    } catch (e) {
+        console.error('showUserMergedFlow error', e);
+        const container = document.getElementById('single-case-flow-content');
+        if (container) {
+            container.innerHTML = '<div style="color: #b91c1c;">Error filtering user flow: ' + String(e.message || e) + '</div>';
+        }
+    }
+};
+
+window.toggleSingleCaseFlow = function (evt) {
+    try {
+        var body = null;
+        if (evt && evt.target) {
+            var btn = evt.target.closest ? evt.target.closest('button') : null;
+            if (btn && btn.nextElementSibling) {
+                body = btn.nextElementSibling;
+            }
+        }
+        if (!body) {
+            body = document.getElementById('single-case-flow-body');
+        }
         if (!body) return;
-        const isHidden = body.style.display === 'none' || body.style.display === '';
+        var isHidden = body.style.display === 'none' || body.style.display === '';
         body.style.display = isHidden ? 'block' : 'none';
     } catch (e) {
         console.error('toggleSingleCaseFlow error', e);
@@ -1068,10 +1418,20 @@ if (typeof document !== 'undefined' && document.addEventListener) {
         var target = evt.target;
         if (!target || !(target.closest)) return;
         var chip = target.closest('[data-single-case-id]');
-        if (!chip) return;
-        var cid = chip.getAttribute('data-single-case-id');
-        if (cid) {
-            window.showSingleCaseFlow(cid);
+        if (chip) {
+            var cid = chip.getAttribute('data-single-case-id');
+            if (cid) {
+                window.showSingleCaseFlow(cid);
+            }
+            return;
+        }
+        // User merge button: data-user-merge-id (avoids broken onclick quotes)
+        var userBtn = target.closest('[data-user-merge-id]');
+        if (userBtn) {
+            var uid = userBtn.getAttribute('data-user-merge-id');
+            if (uid != null) {
+                window.showUserMergedFlow(uid);
+            }
         }
     });
 }
@@ -1100,37 +1460,87 @@ function renderMergedCaseFlowDiagram(flowData) {
         eventTypes.push('End');
     }
 
-    // Aggregate edges: each unique from→to pair with counts across Case IDs
-    const edgeMap = {}; // key: "from→to" -> { from, to, segmentCount, caseIds:Set }
-    casePaths.forEach(function (p) {
-        const seq = p.path_sequence || [];
-        const cid = p.case_id;
-        for (let i = 0; i < seq.length - 1; i++) {
-            const from = seq[i];
-            const to = seq[i + 1];
+    // Check if this is a merged single-path flow (user filter) vs multi-path aggregated flow
+    const isMergedSinglePath = casePaths.length === 1 && casePaths[0].path_sequence && casePaths[0].path_sequence.length > 0;
+    
+    let edges = [];
+    
+    if (isMergedSinglePath) {
+        // For merged single-path flow: show sequential steps, each as separate arrow; count repeats
+        const mergedPath = casePaths[0];
+        const seq = mergedPath.path_sequence || [];
+        var fromToCounts = {}; // key "from→to" -> count (how many times this transition appears)
+        for (var i = 0; i < seq.length - 1; i++) {
+            var from = seq[i];
+            var to = seq[i + 1];
             if (!from || !to) continue;
-            const key = from + '→' + to;
-            if (!edgeMap[key]) {
-                edgeMap[key] = { from: from, to: to, segmentCount: 0, caseIds: new Set() };
-            }
-            edgeMap[key].segmentCount += 1;
-            if (cid != null) {
-                edgeMap[key].caseIds.add(cid);
-            }
+            var key = from + '→' + to;
+            fromToCounts[key] = (fromToCounts[key] || 0) + 1;
         }
-    });
+        
+        var stepNumber = 1;
+        for (var j = 0; j < seq.length - 1; j++) {
+            var fromEv = seq[j];
+            var toEv = seq[j + 1];
+            if (!fromEv || !toEv) continue;
+            var edgeKey = fromEv + '→' + toEv;
+            var repeatCount = fromToCounts[edgeKey] || 1;
+            var stepLabel = 'Step ' + stepNumber;
+            if (repeatCount > 1) {
+                stepLabel += ' (' + repeatCount + 'x)';
+            }
+            
+            edges.push({
+                from: fromEv,
+                to: toEv,
+                segmentCount: 1,
+                caseCount: 1,
+                stepNumber: stepNumber,
+                stepLabel: stepLabel,
+                repeatCount: repeatCount
+            });
+            stepNumber++;
+        }
+        
+        console.log('=== MERGED SINGLE-PATH FLOW ===');
+        console.log('Total steps:', edges.length);
+        edges.forEach(function(e) {
+            console.log('  ' + e.stepLabel + ': ' + e.from + ' → ' + e.to);
+        });
+        console.log('===============================');
+    } else {
+        // For multi-path aggregated flow: aggregate by unique from→to pairs
+        const edgeMap = {}; // key: "from→to" -> { from, to, segmentCount, caseIds:Set }
+        casePaths.forEach(function (p) {
+            const seq = p.path_sequence || [];
+            const cid = p.case_id;
+            for (let i = 0; i < seq.length - 1; i++) {
+                const from = seq[i];
+                const to = seq[i + 1];
+                if (!from || !to) continue;
+                const key = from + '→' + to;
+                if (!edgeMap[key]) {
+                    edgeMap[key] = { from: from, to: to, segmentCount: 0, caseIds: new Set() };
+                }
+                edgeMap[key].segmentCount += 1;
+                if (cid != null) {
+                    edgeMap[key].caseIds.add(cid);
+                }
+            }
+        });
 
-    const edges = Object.values(edgeMap).map(function (e) {
-        return {
-            from: e.from,
-            to: e.to,
-            segmentCount: e.segmentCount,
-            caseCount: e.caseIds.size || e.segmentCount
-        };
-    }).filter(function (e) {
-        // Drop trivial edges with zero counts (defensive)
-        return e.segmentCount > 0;
-    });
+        edges = Object.values(edgeMap).map(function (e) {
+            return {
+                from: e.from,
+                to: e.to,
+                segmentCount: e.segmentCount,
+                caseCount: e.caseIds.size || e.segmentCount
+            };
+        }).filter(function (e) {
+            // Drop trivial edges with zero counts (defensive)
+            return e.segmentCount > 0;
+        });
+    }
     if (edges.length === 0) {
         return '';
     }
@@ -1270,10 +1680,14 @@ function renderMergedCaseFlowDiagram(flowData) {
     // Make the container height track the available viewport height so the diagram looks "full screen"
     const diagramMinHeight = Math.max(availableHeight, 420);
 
-    // Stroke width scale based on case count
-    const maxCaseCount = edges.reduce(function (m, e) { return Math.max(m, e.caseCount); }, 0) || 1;
+    // Stroke width scale based on case count or step number
+    const maxCaseCount = edges.reduce(function (m, e) { return Math.max(m, e.caseCount || 1); }, 0) || 1;
     function edgeStrokeWidth(e) {
-        const ratio = e.caseCount / maxCaseCount;
+        if (isMergedSinglePath && e.stepNumber) {
+            // For merged flows, use consistent stroke width (all steps are equal)
+            return 2.5;
+        }
+        const ratio = (e.caseCount || 1) / maxCaseCount;
         return 1.5 + ratio * 5; // between 1.5 and 6.5
     }
 
@@ -1285,6 +1699,28 @@ function renderMergedCaseFlowDiagram(flowData) {
         </defs>
     `;
 
+    // Check for bidirectional edges (return paths) to use curved arrows
+    // This helps visualize when flow goes A→B→A (return path)
+    const bidirectionalEdges = new Set();
+    edges.forEach(function(e1) {
+        edges.forEach(function(e2) {
+            if (e1.from === e2.to && e1.to === e2.from) {
+                bidirectionalEdges.add(e1.from + '→' + e1.to);
+                bidirectionalEdges.add(e2.from + '→' + e2.to);
+            }
+        });
+    });
+    
+    if (!isMergedSinglePath) {
+        console.log('=== MERGED DIAGRAM EDGES (Aggregated) ===');
+        console.log('Total edges:', edges.length);
+        console.log('Bidirectional edges (return paths):', Array.from(bidirectionalEdges));
+        edges.forEach(function(e) {
+            console.log('  ' + e.from + ' → ' + e.to + ': ' + e.segmentCount + ' step(s)');
+        });
+        console.log('==========================================');
+    }
+    
     edges.forEach(function (e) {
         const fromPos = eventPositions[e.from];
         const toPos = eventPositions[e.to];
@@ -1293,20 +1729,64 @@ function renderMergedCaseFlowDiagram(flowData) {
         const y1 = fromPos.y + boxHeight / 2;
         const x2 = toPos.x + boxWidth / 2;
         const y2 = toPos.y + boxHeight / 2;
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
         const sw = edgeStrokeWidth(e);
-        const label = e.caseCount + ' case' + (e.caseCount === 1 ? '' : 's');
-        svgHTML += `
-            <g>
-                <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+        
+        // Use step label for merged flows, otherwise use count
+        let label = '';
+        if (isMergedSinglePath && e.stepLabel) {
+            label = e.stepLabel; // "Step 1", "Step 2", etc.
+        } else {
+            label = e.segmentCount + ' step' + (e.segmentCount === 1 ? '' : 's');
+        }
+        
+        const edgeKey = e.from + '→' + e.to;
+        const isBidirectional = bidirectionalEdges.has(edgeKey);
+        
+        // For return paths (bidirectional edges), use curved path to avoid overlap
+        let pathElement = '';
+        let labelX = (x1 + x2) / 2;
+        let labelY = (y1 + y2) / 2;
+        
+        if (isBidirectional) {
+            // Determine curve direction: if going backwards (x2 < x1), curve up; otherwise curve down
+            // Also check if it's a true return (same event appears twice in sequence)
+            const isReturnPath = x2 < x1 || (e.from !== 'Process' && e.to !== 'End' && Math.abs(x2 - x1) < 100);
+            const curveDirection = isReturnPath ? -1 : 1;
+            const curveOffset = Math.max(80, Math.abs(x2 - x1) * 0.3) * curveDirection;
+            const controlX1 = x1 + (x2 - x1) * 0.25;
+            const controlY1 = y1 + curveOffset;
+            const controlX2 = x1 + (x2 - x1) * 0.75;
+            const controlY2 = y2 + curveOffset;
+            // Adjust label position to be on the curve
+            labelX = (controlX1 + controlX2) / 2;
+            labelY = (controlY1 + controlY2) / 2;
+            // Use a smoother curve for return paths with dashed style to distinguish
+            pathElement = `<path d="M ${x1} ${y1} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${x2} ${y2}"
+                      stroke="#475569"
+                      stroke-width="${sw.toFixed(1)}"
+                      fill="none"
+                      marker-end="url(#merged-arrow)"
+                      opacity="0.9"
+                      style="stroke-dasharray: ${isReturnPath ? '5,3' : 'none'};" />`;
+        } else {
+            // Straight line for forward paths
+            pathElement = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
                       stroke="#475569"
                       stroke-width="${sw.toFixed(1)}"
                       marker-end="url(#merged-arrow)"
-                      opacity="0.9" />
-                <rect x="${midX - 40}" y="${midY - 16}" width="80" height="20" rx="10"
+                      opacity="0.9" />`;
+        }
+        
+        // Adjust label box width based on label length
+        const labelWidth = isMergedSinglePath && e.stepLabel ? 90 : 80;
+        const labelOffset = labelWidth / 2;
+        
+        svgHTML += `
+            <g>
+                ${pathElement}
+                <rect x="${labelX - labelOffset}" y="${labelY - 16}" width="${labelWidth}" height="20" rx="10"
                       fill="white" stroke="#475569" stroke-width="0.8" opacity="0.96" />
-                <text x="${midX}" y="${midY - 2}" text-anchor="middle"
+                <text x="${labelX}" y="${labelY - 2}" text-anchor="middle"
                       font-size="10" font-weight="600" fill="#111827">
                     ${label}
                 </text>
@@ -1352,13 +1832,21 @@ function renderMergedCaseFlowDiagram(flowData) {
         `;
     });
 
+    const filterLabel = (flowData && flowData.filterLabel) ? flowData.filterLabel : '';
+    const diagramTitle = isMergedSinglePath 
+        ? (filterLabel ? filterLabel + ' – Step-by-Step Flow' : 'Step-by-Step Flow (Sequential Steps)')
+        : 'Event-to-Event Counts (Merged Across Case IDs)';
+    const diagramDescription = isMergedSinglePath
+        ? 'Each arrow is one step in the sequence. Steps are numbered in order from start to end.'
+        : 'Each arrow shows how many Case IDs move from one event to the next. No per-case splitting – only merged counts.';
+    
     return `
         <section style="margin-bottom: 2.5rem;">
             <h2 style="font-size: 1.6rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center;">
-                Event-to-Event Counts (Merged Across Case IDs)
+                ${diagramTitle}
             </h2>
             <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem; text-align: center;">
-                Each arrow shows how many Case IDs move from one event to the next. No per-case splitting – only merged counts.
+                ${diagramDescription}
             </p>
             <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
                 <div style="position: relative; min-height: ${diagramMinHeight}px; height: ${diagramMinHeight}px; overflow: auto;">
@@ -2794,6 +3282,28 @@ function showBankingAnalysisResults(profile) {
                 </div>
             </section>
 
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">User Flow Filter (Merged Case IDs)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a user button below to see ALL Case IDs for that user merged into one continuous flow diagram.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; padding-bottom: 0.25rem;">
+                    ${users.map(u => {
+        const userCases = caseDetails.filter(c => c.user_id === u);
+        const ids = userCases.map(c => c.case_id);
+        const caseCount = ids.length;
+        return '<button type="button" data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" ' +
+               'style="cursor:pointer; border-radius:999px; border:1px solid ' + BANK_COLOR + '; ' +
+               'padding:0.4rem 0.8rem; font-size:0.85rem; background:#ffffff; color:' + BANK_COLOR + '; ' +
+               'display:inline-flex; align-items:center; gap:0.4rem; box-shadow:0 1px 2px rgba(15,23,42,0.08); font-weight:600;">' +
+               '<span style="font-size:0.9rem;">👤</span>' +
+               '<span>' + u + '</span>' +
+               '<span style="background:' + BANK_COLOR + '; color:#ffffff; border-radius:999px; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:700;">' + caseCount + ' Case' + (caseCount !== 1 ? 's' : '') + '</span>' +
+               '</button>';
+    }).join('')}
+                </div>
+            </section>
+
             ${buildEventBlueprintFromBackend(bkData.event_columns, caseDetails)}
             
             ${renderMergedCaseFlowDiagram(bkData.unified_flow_data)}
@@ -2801,7 +3311,7 @@ function showBankingAnalysisResults(profile) {
             <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
                 <div id="single-case-flow-container" style="border-top: 1px dashed ${BANK_BORDER}; padding-top: 1.25rem;">
                     <button type="button"
-                            onclick="window.toggleSingleCaseFlow()"
+                            onclick="window.toggleSingleCaseFlow(event)"
                             style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${BANK_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
                         <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
                         <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
@@ -2826,13 +3336,13 @@ function showBankingAnalysisResults(profile) {
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">ðŸ‘¥ Users & Case IDs</h2>
                 <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;">
-                    Case IDs are in order of start time. Click a case to see its steps.
+                    Case IDs are in order of start time. Click a user card below to filter and see ALL Case IDs for that user in the diagram.
                 </p>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2rem;">
                     ${users.map(u => {
         const userCases = caseDetails.filter(c => c.user_id === u);
         const ids = userCases.map(c => c.case_id);
-        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #0F766E;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">â†’ Case IDs: ' + ids.join(', ') + '</span></div>';
+        return '<div data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" style="cursor:pointer; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #0F766E;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + ' (click to filter)</span></div>';
     }).join('')}
                 </div>
             </section>
@@ -2927,12 +3437,34 @@ function showRetailAnalysisResults(profile) {
                 </div>
             </section>
 
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">User Flow Filter (Merged Case IDs)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a customer button below to see ALL Case IDs for that customer merged into one continuous flow diagram.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; padding-bottom: 0.25rem;">
+                    ${(customers || []).map(function (u) {
+                var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+                var ids = userCases.map(function (c) { return c.case_id; });
+                var caseCount = ids.length;
+                return '<button type="button" data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" ' +
+                       'style="cursor:pointer; border-radius:999px; border:1px solid ' + RETAIL_COLOR + '; ' +
+                       'padding:0.4rem 0.8rem; font-size:0.85rem; background:#ffffff; color:' + RETAIL_COLOR + '; ' +
+                       'display:inline-flex; align-items:center; gap:0.4rem; box-shadow:0 1px 2px rgba(15,23,42,0.08); font-weight:600;">' +
+                       '<span style="font-size:0.9rem;">👤</span>' +
+                       '<span>' + u + '</span>' +
+                       '<span style="background:' + RETAIL_COLOR + '; color:#ffffff; border-radius:999px; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:700;">' + caseCount + ' Case' + (caseCount !== 1 ? 's' : '') + '</span>' +
+                       '</button>';
+            }).join('')}
+                </div>
+            </section>
+
             ${renderMergedCaseFlowDiagram(unifiedFlowData)}
 
             <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
                 <div id="single-case-flow-container" style="border-top: 1px dashed ${RETAIL_BORDER}; padding-top: 1.25rem;">
                     <button type="button"
-                            onclick="window.toggleSingleCaseFlow()"
+                            onclick="window.toggleSingleCaseFlow(event)"
                             style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${RETAIL_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
                         <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
                         <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
@@ -3032,7 +3564,7 @@ function showRetailAnalysisResults(profile) {
                     ${(customers || []).map(function (u) {
                 var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
                 var ids = userCases.map(function (c) { return c.case_id; });
-                return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #F59E0B;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+                return '<div data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" style="cursor:pointer; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #F59E0B;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + ' (click to filter)</span></div>';
             }).join('')}
                 </div>
             </section>
@@ -3136,12 +3668,34 @@ function showInsuranceAnalysisResults(profile) {
                 </div>
             </section>
 
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">User Flow Filter (Merged Case IDs)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a customer button below to see ALL Case IDs for that customer merged into one continuous flow diagram.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; padding-bottom: 0.25rem;">
+                    ${(customers || []).map(function (u) {
+                        var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+                        var ids = userCases.map(function (c) { return c.case_id; });
+                        var caseCount = ids.length;
+                        return '<button type="button" data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" ' +
+                               'style="cursor:pointer; border-radius:999px; border:1px solid ' + INS_COLOR + '; ' +
+                               'padding:0.4rem 0.8rem; font-size:0.85rem; background:#ffffff; color:' + INS_COLOR + '; ' +
+                               'display:inline-flex; align-items:center; gap:0.4rem; box-shadow:0 1px 2px rgba(15,23,42,0.08); font-weight:600;">' +
+                               '<span style="font-size:0.9rem;">👤</span>' +
+                               '<span>' + u + '</span>' +
+                               '<span style="background:' + INS_COLOR + '; color:#ffffff; border-radius:999px; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:700;">' + caseCount + ' Case' + (caseCount !== 1 ? 's' : '') + '</span>' +
+                               '</button>';
+                    }).join('')}
+                </div>
+            </section>
+
             ${renderMergedCaseFlowDiagram(unifiedFlowData)}
 
             <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
                 <div id="single-case-flow-container" style="border-top: 1px dashed ${INS_BORDER}; padding-top: 1.25rem;">
                     <button type="button"
-                            onclick="window.toggleSingleCaseFlow()"
+                            onclick="window.toggleSingleCaseFlow(event)"
                             style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${INS_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
                         <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
                         <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
@@ -3170,7 +3724,7 @@ function showInsuranceAnalysisResults(profile) {
                     ${(customers || []).map(function (u) {
                         var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
                         var ids = userCases.map(function (c) { return c.case_id; });
-                        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #7C3AED;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+                        return '<div data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" style="cursor:pointer; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #7C3AED;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + ' (click to filter)</span></div>';
                     }).join('')}
                 </div>
             </section>
@@ -3274,12 +3828,34 @@ function showFinanceAnalysisResults(profile) {
                 </div>
             </section>
 
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">User Flow Filter (Merged Case IDs)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a customer button below to see ALL Case IDs for that customer merged into one continuous flow diagram.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; padding-bottom: 0.25rem;">
+                    ${(customers || []).map(function (u) {
+                        var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+                        var ids = userCases.map(function (c) { return c.case_id; });
+                        var caseCount = ids.length;
+                        return '<button type="button" data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" ' +
+                               'style="cursor:pointer; border-radius:999px; border:1px solid ' + FIN_COLOR + '; ' +
+                               'padding:0.4rem 0.8rem; font-size:0.85rem; background:#ffffff; color:' + FIN_COLOR + '; ' +
+                               'display:inline-flex; align-items:center; gap:0.4rem; box-shadow:0 1px 2px rgba(15,23,42,0.08); font-weight:600;">' +
+                               '<span style="font-size:0.9rem;">👤</span>' +
+                               '<span>' + u + '</span>' +
+                               '<span style="background:' + FIN_COLOR + '; color:#ffffff; border-radius:999px; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:700;">' + caseCount + ' Case' + (caseCount !== 1 ? 's' : '') + '</span>' +
+                               '</button>';
+                    }).join('')}
+                </div>
+            </section>
+
             ${renderMergedCaseFlowDiagram(unifiedFlowData)}
 
             <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
                 <div id="single-case-flow-container" style="border-top: 1px dashed ${FIN_BORDER}; padding-top: 1.25rem;">
                     <button type="button"
-                            onclick="window.toggleSingleCaseFlow()"
+                            onclick="window.toggleSingleCaseFlow(event)"
                             style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${FIN_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
                         <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
                         <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
@@ -3308,7 +3884,7 @@ function showFinanceAnalysisResults(profile) {
                     ${(customers || []).map(function (u) {
                         var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
                         var ids = userCases.map(function (c) { return c.case_id; });
-                        return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #4F46E5;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + '</span></div>';
+                        return '<div data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" style="cursor:pointer; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #4F46E5;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">→ Case IDs: ' + ids.join(', ') + ' (click to filter)</span></div>';
                     }).join('')}
                 </div>
             </section>
@@ -3671,12 +4247,34 @@ function showHealthcareAnalysisResults(profile) {
                 </div>
             </section>
 
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">User Flow Filter (Merged Case IDs)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a patient button below to see ALL Case IDs for that patient merged into one continuous flow diagram.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; padding-bottom: 0.25rem;">
+                    ${(users || []).map(function (u) {
+            var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+            var ids = userCases.map(function (c) { return c.case_id; });
+            var caseCount = ids.length;
+            return '<button type="button" data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" ' +
+                   'style="cursor:pointer; border-radius:999px; border:1px solid ' + HC_COLOR + '; ' +
+                   'padding:0.4rem 0.8rem; font-size:0.85rem; background:#ffffff; color:' + HC_COLOR + '; ' +
+                   'display:inline-flex; align-items:center; gap:0.4rem; box-shadow:0 1px 2px rgba(15,23,42,0.08); font-weight:600;">' +
+                   '<span style="font-size:0.9rem;">👤</span>' +
+                   '<span>' + u + '</span>' +
+                   '<span style="background:' + HC_COLOR + '; color:#ffffff; border-radius:999px; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:700;">' + caseCount + ' Case' + (caseCount !== 1 ? 's' : '') + '</span>' +
+                   '</button>';
+        }).join('')}
+                </div>
+            </section>
+
             ${renderMergedCaseFlowDiagram(unifiedFlowData)}
 
             <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
                 <div id="single-case-flow-container" style="border-top: 1px dashed ${HC_BORDER}; padding-top: 1.25rem;">
                     <button type="button"
-                            onclick="window.toggleSingleCaseFlow()"
+                            onclick="window.toggleSingleCaseFlow(event)"
                             style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${HC_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
                         <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
                         <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
@@ -3732,7 +4330,7 @@ function showHealthcareAnalysisResults(profile) {
                     ${(users || []).map(function (u) {
             var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
             var ids = userCases.map(function (c) { return c.case_id; });
-            return '<div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #14B8A6;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">\u2192 Case IDs: ' + ids.join(', ') + '</span></div>';
+            return '<div data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" style="cursor:pointer; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem;"><strong style="color: #14B8A6;">' + u + '</strong><span style="color: var(--text-muted); margin-left: 0.5rem;">\u2192 Case IDs: ' + ids.join(', ') + ' (click to filter)</span></div>';
         }).join('')}
                 </div>
             </section>
