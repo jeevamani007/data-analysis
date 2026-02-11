@@ -1,0 +1,4 @@
+customer_id,first_name,last_name,dob,phone,email,city
+C001,Ravi,Kumar,1990-05-12,9876543210,ravi@gmail.com,Chennai
+C002,Anita,Sharma,1988-09-20,9123456780,anita@gmail.com,Bangalore
+C003,John,Peter,1995-01-10,9988776655,john@gmail.com,Hyderabad
