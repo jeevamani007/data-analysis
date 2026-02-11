@@ -1,0 +1,31 @@
+employee_id,employee_name,department,designation,attendance_days,late_count,salary,performance_rating
+E001,Karthika,HR,HR Executive,26,1,25000,4
+E002,Ravi,IT,Software Engineer,24,2,40000,3
+E003,Anitha,Finance,Accountant,27,0,35000,5
+E004,Suresh,HR,Recruiter,25,1,28000,4
+E005,Manoj,IT,Backend Developer,23,3,42000,3
+E006,Priya,Sales,Sales Executive,26,1,30000,4
+E007,Arun,Operations,Supervisor,28,0,38000,5
+E008,Divya,HR,HR Manager,27,0,50000,5
+E009,Kumar,IT,Frontend Developer,24,2,39000,3
+E010,Meena,Finance,Analyst,26,1,36000,4
+E011,Raj,Sales,Sales Manager,25,2,45000,4
+E012,Nisha,HR,HR Executive,26,1,26000,4
+E013,Vignesh,IT,Software Tester,23,3,32000,3
+E014,Pooja,Finance,Clerk,27,0,28000,4
+E015,Bala,Operations,Technician,24,2,30000,3
+E016,Sindhu,HR,Recruiter,26,1,29000,4
+E017,Madhan,IT,DevOps Engineer,25,1,48000,4
+E018,Keerthi,Sales,Sales Executive,27,0,31000,5
+E019,Prakash,Finance,Auditor,26,1,40000,4
+E020,Lavanya,HR,HR Analyst,25,2,33000,3
+E021,Saravanan,IT,System Admin,28,0,46000,5
+E022,Aishwarya,Sales,Sales Coordinator,24,2,29000,3
+E023,Gokul,Operations,Manager,26,1,52000,4
+E024,Revathi,HR,HR Executive,27,0,27000,5
+E025,Naveen,IT,Data Analyst,25,1,44000,4
+E026,Sneha,Finance,Billing Executive,26,1,31000,4
+E027,Karthik,Sales,Sales Executive,23,3,30000,3
+E028,Deepa,HR,HR Manager,28,0,55000,5
+E029,Ajith,IT,Mobile Developer,24,2,41000,3
+E030,Shalini,Finance,Finance Manager,27,0,60000,5

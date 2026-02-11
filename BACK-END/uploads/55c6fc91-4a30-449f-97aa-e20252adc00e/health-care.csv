@@ -1,0 +1,31 @@
+patient_id,disease,treatment_cost,doctor_id,hospital,medicine,diagnosis_date,age
+1001,Flu,250.50,201,City Hospital,Paracetamol,2025-01-15,34
+1002,Diabetes,1200.00,202,Green Valley Clinic,Insulin,2025-02-20,56
+1003,Hypertension,950.75,203,Sunrise Medical,Ventolin,2025-03-10,45
+1004,Covid-19,1500.00,204,River Health Center,Ibuprofen,2025-04-05,60
+1005,Asthma,320.25,205,City Hospital,Azithromycin,2025-05-01,29
+1006,Flu,450.50,206,Green Valley Clinic,Paracetamol,2025-05-20,40
+1007,Diabetes,1800.75,207,Sunrise Medical,Insulin,2025-06-15,50
+1008,Hypertension,780.00,208,River Health Center,Ventolin,2025-07-01,65
+1009,Covid-19,2200.25,209,City Hospital,Ibuprofen,2025-07-20,38
+1010,Asthma,310.00,210,Green Valley Clinic,Azithromycin,2025-08-05,27
+1011,Flu,500.50,211,Sunrise Medical,Paracetamol,2025-08-18,33
+1012,Diabetes,1400.75,212,River Health Center,Insulin,2025-09-01,55
+1013,Hypertension,800.25,213,City Hospital,Ventolin,2025-09-12,47
+1014,Covid-19,1700.00,214,Green Valley Clinic,Ibuprofen,2025-10-03,62
+1015,Asthma,400.50,215,Sunrise Medical,Azithromycin,2025-10-15,30
+1016,Flu,275.75,216,River Health Center,Paracetamol,2025-11-01,36
+1017,Diabetes,1250.00,217,City Hospital,Insulin,2025-11-18,59
+1018,Hypertension,900.25,218,Green Valley Clinic,Ventolin,2025-12-01,49
+1019,Covid-19,2000.00,219,Sunrise Medical,Ibuprofen,2025-12-15,61
+1020,Asthma,350.75,220,River Health Center,Azithromycin,2025-12-30,28
+1021,Flu,420.00,221,City Hospital,Paracetamol,2025-01-10,37
+1022,Diabetes,1500.50,222,Green Valley Clinic,Insulin,2025-02-05,54
+1023,Hypertension,850.25,223,Sunrise Medical,Ventolin,2025-03-01,46
+1024,Covid-19,1800.75,224,River Health Center,Ibuprofen,2025-03-20,63
+1025,Asthma,310.50,225,City Hospital,Azithromycin,2025-04-15,32
+1026,Flu,460.00,226,Green Valley Clinic,Paracetamol,2025-05-10,39
+1027,Diabetes,1350.25,227,Sunrise Medical,Insulin,2025-06-05,57
+1028,Hypertension,920.50,228,River Health Center,Ventolin,2025-06-20,48
+1029,Covid-19,2100.00,229,City Hospital,Ibuprofen,2025-07-10,64
+1030,Asthma,375.75,230,Green Valley Clinic,Azithromycin,2025-07-25,31

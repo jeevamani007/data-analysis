@@ -1,0 +1,4 @@
+account_number,account_type,customer_id,transaction_id,debit,credit
+123456789,SAVINGS,12345,ABC123,100,0
+987654321,CURRENT,67890,DEF456,200,0
+111222333,LOAN,11111,GHI789,300,0
