@@ -1,0 +1,5 @@
+cus_id,acc_no,acc_name,acc_type,bal_amt,branch_cd
+C001,1002345,Ramesh,SAV,25000,BR01
+C002,1002346,Sita,CUR,54000,BR02
+C003,1002347,Arun,SAV,18000,BR01
+C004,1002348,Meena,FD,100000,BR03

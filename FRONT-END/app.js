@@ -188,7 +188,10 @@ window.diagramState = {
     segmentOffsets: {}, // { [pathIdx]: { [segmentIdx]: {dx, dy} } } – manual arrow shifts
     same_time_groups: [], // [{ event, timestamp_str, case_ids }] – same timestamp across cases
     boxWidth: 160,
-    boxHeight: 70
+    boxHeight: 70,
+    // Controls whether per-segment time/date boxes are rendered on the diagram paths.
+    // Default: true (other diagrams can still use timing labels).
+    showTimeLabels: true
 };
 
 // Arrow drag state (for per-connector manual adjustment)
@@ -459,9 +462,11 @@ window.renderDiagramPaths = function () {
                       data-seg-idx="${i}" />
             `;
 
-                // Time Label (t=0.7): duration (event-to-event) + DB date-time per segment
+                // Time Label (t=0.7): duration (event-to-event) + DB date-time per segment.
+                // Can be globally disabled per-diagram via window.diagramState.showTimeLabels.
                 const timing = timings[i];
-                if (timing) {
+                const showTimeLabels = state.showTimeLabels !== false;
+                if (showTimeLabels && timing) {
                     const tTime = 0.7;
                     const lxTime = (1 - tTime) * (1 - tTime) * x1p + 2 * (1 - tTime) * tTime * cpxp + tTime * tTime * x2p;
                     const lyTime = (1 - tTime) * (1 - tTime) * y1p + 2 * (1 - tTime) * tTime * cpyp + tTime * tTime * y2p;
@@ -648,6 +653,17 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     }
 
     const casePaths = flowData.case_paths || [];
+    // Ensure each Case ID has a distinct color (backend may or may not send colors)
+    const CASE_COLOR_PALETTE = [
+        '#ef4444', '#3b82f6', '#10b981', '#f97316', '#8b5cf6',
+        '#ec4899', '#22c55e', '#0ea5e9', '#eab308', '#6366f1',
+        '#14b8a6', '#f43f5e', '#a855f7', '#84cc16', '#06b6d4'
+    ];
+    casePaths.forEach((p, idx) => {
+        if (!p.color) {
+            p.color = CASE_COLOR_PALETTE[idx % CASE_COLOR_PALETTE.length];
+        }
+    });
     // Derive event types from case paths if all_event_types missing/empty - ensures diagram shows all events
     let eventTypes = flowData.all_event_types || [];
     if (eventTypes.length === 0 && casePaths.length > 0) {
@@ -665,16 +681,22 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     }
     const totalCases = flowData.total_cases || 0;
 
-    // Build legend
-    let legendHTML = '<div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">';
+    // Build legend + clickable Case ID filter list
+    let legendHTML = '<div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.25rem;">';
+    legendHTML += '<div style="display: flex; flex-wrap: wrap; gap: 1rem;">';
     casePaths.forEach((path, idx) => {
+        const caseIdLabel = `Case ${String(path.case_id).padStart(3, '0')}`;
         legendHTML += `
-                <div style="display: flex; align-items: center; gap: 0.4rem;">
-                    <div style="width: 24px; height: 3px; background: ${path.color}; border-radius: 2px;"></div>
-                    <span style="font-size: 0.85rem; color: var(--text-primary); font-weight: 600;">Case ${String(path.case_id).padStart(3, '0')}</span>
-                </div>
+                <button type="button"
+                        onclick="window.showSingleCaseFlow('${String(path.case_id)}')"
+                        style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.65rem; border-radius: 999px; border: 1px solid rgba(148,163,184,0.7); background: #ffffff; cursor: pointer; font-size: 0.8rem; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,0.08);">
+                    <span style="width: 18px; height: 3px; background: ${path.color}; border-radius: 2px;"></span>
+                    <span style="font-weight: 600;">${caseIdLabel}</span>
+                </button>
             `;
     });
+    legendHTML += '</div>';
+    legendHTML += '<div style="font-size: 0.8rem; color: #6b7280;">Click any Case ID chip to see a separate, filtered diagram just for that case.</div>';
     legendHTML += '</div>';
 
     // Create event boxes layout (pan wrapper added after svgWidth/svgHeight are computed)
@@ -800,9 +822,20 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     const svgWidth = Math.max(900, maxX);
     const svgHeight = Math.max(500, maxY);
 
+    // Use viewport height so this unified flow diagram appears almost full-screen
+    let viewportHeight = 800;
+    try {
+        if (typeof window !== 'undefined' && window.innerHeight) {
+            viewportHeight = window.innerHeight;
+        }
+    } catch (e) {
+        // ignore, keep default
+    }
+    const availableHeightUnified = Math.max(viewportHeight - 180, 450);
+
     // Outer container (scroll) + pan wrapper (hit area) + pan content (SVG + boxes move together)
-    const diagramMinHeight = Math.min(svgHeight + 80, 650);
-    diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: ' + diagramMinHeight + 'px; padding: 1rem; overflow: auto; background: #fff; border-radius: 12px;">';
+    const diagramMinHeight = Math.max(Math.min(svgHeight + 80, availableHeightUnified), 500);
+    diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: ' + diagramMinHeight + 'px; height: ' + diagramMinHeight + 'px; padding: 1rem; overflow: auto; background: #fff; border-radius: 12px;">';
     diagramHTML += '<div id="diagram-pan-wrapper" style="position: relative; width: ' + svgWidth + 'px; min-height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="startDiagramPan(event)">';
     diagramHTML += '<div id="diagram-pan-content" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; will-change: transform;">';
 
@@ -847,6 +880,8 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     window.diagramState.boxWidth = boxWidth;
     window.diagramState.boxHeight = boxHeight;
     window.diagramState.same_time_groups = flowData.same_time_groups || [];
+    // For the unified diagram, hide the per-segment time/date boxes (only show colored paths + Case IDs).
+    window.diagramState.showTimeLabels = false;
     if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
 
     // Draw paths after DOM is ready; retry for slow layout (healthcare view loads diagram async)
@@ -926,11 +961,20 @@ function renderUnifiedCaseFlowDiagram(flowData) {
                 
                 <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
                     <div style="margin-bottom: 1rem;">
-                        <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Legend</div>
+                        <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">Legend & Case Filter</div>
                         ${legendHTML}
                     </div>
                     
                     ${diagramHTML}
+
+                    <div id="single-case-flow-container" style="margin-top: 1.75rem; border-top: 1px dashed #e5e7eb; padding-top: 1.25rem;">
+                        <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">
+                            Single Case Flow (Filtered)
+                        </div>
+                        <div id="single-case-flow-content" style="font-size: 0.85rem; color: #6b7280;">
+                            Click a Case ID chip above to see the step-by-step flow for that single case only.
+                        </div>
+                    </div>
                 </div>
             </section>
         `;
@@ -938,6 +982,399 @@ function renderUnifiedCaseFlowDiagram(flowData) {
 
 // Make it accessible via window for inline handlers if needed
 window.renderUnifiedCaseFlowDiagram = renderUnifiedCaseFlowDiagram;
+
+// ---------------------------------------------------------------------------
+// Single Case Flow Diagram (filtered by Case ID)
+// ---------------------------------------------------------------------------
+
+window.showSingleCaseFlow = function (caseIdStr) {
+    try {
+        const container = document.getElementById('single-case-flow-content');
+        if (!container) return;
+        const body = document.getElementById('single-case-flow-body');
+
+        const activeUnifiedData =
+            window.currentBankingUnifiedFlowData ||
+            window.currentRetailUnifiedFlowData ||
+            window.currentInsuranceUnifiedFlowData ||
+            window.currentFinanceUnifiedFlowData ||
+            window.currentHealthcareUnifiedFlowData ||
+            null;
+        if (!activeUnifiedData || !activeUnifiedData.case_paths || !activeUnifiedData.case_paths.length) {
+            container.innerHTML = '<div style="color: #b91c1c;">No unified flow data is loaded. Please run analysis first.</div>';
+            return;
+        }
+
+        const caseIdNum = isNaN(Number(caseIdStr)) ? caseIdStr : Number(caseIdStr);
+        const match = activeUnifiedData.case_paths.find(function (p) {
+            return String(p.case_id) === String(caseIdStr) || p.case_id === caseIdNum;
+        });
+        if (!match) {
+            container.innerHTML = '<div style="color: #b91c1c;">Selected Case ID not found in current results.</div>';
+            return;
+        }
+
+        // Build event list only from this one case so unrelated events/boxes are not shown
+        let singleEvents = [];
+        if (match.path_sequence && Array.isArray(match.path_sequence)) {
+            const seen = {};
+            singleEvents.push('Process');
+            match.path_sequence.forEach(function (ev) {
+                if (!ev || ev === 'Process' || ev === 'End') return;
+                if (!seen[ev]) {
+                    seen[ev] = true;
+                    singleEvents.push(ev);
+                }
+            });
+            singleEvents.push('End');
+        }
+
+        const singleFlowData = {
+            all_event_types: singleEvents.length ? singleEvents : (activeUnifiedData.all_event_types || []),
+            case_paths: [match],
+            total_cases: 1,
+            same_time_groups: [],
+        };
+
+        const html = renderMergedCaseFlowDiagram(singleFlowData);
+        container.innerHTML = html || '<div style="color: #6b7280;">No steps available for this Case ID.</div>';
+
+        // Reveal accordion body and scroll into view for better UX
+        if (body) {
+            body.style.display = 'block';
+        }
+        const containerWrapper = document.getElementById('single-case-flow-container');
+        if (containerWrapper && containerWrapper.scrollIntoView) {
+            containerWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    } catch (e) {
+        console.error('showSingleCaseFlow error', e);
+    }
+};
+
+window.toggleSingleCaseFlow = function () {
+    try {
+        const body = document.getElementById('single-case-flow-body');
+        if (!body) return;
+        const isHidden = body.style.display === 'none' || body.style.display === '';
+        body.style.display = isHidden ? 'block' : 'none';
+    } catch (e) {
+        console.error('toggleSingleCaseFlow error', e);
+    }
+};
+// Delegate clicks from any Case ID chip with data-single-case-id
+if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('click', function (evt) {
+        var target = evt.target;
+        if (!target || !(target.closest)) return;
+        var chip = target.closest('[data-single-case-id]');
+        if (!chip) return;
+        var cid = chip.getAttribute('data-single-case-id');
+        if (cid) {
+            window.showSingleCaseFlow(cid);
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Merged Event-to-Event Diagram (aggregated across all Case IDs)
+// ---------------------------------------------------------------------------
+function renderMergedCaseFlowDiagram(flowData) {
+    if (!flowData || !flowData.case_paths || flowData.case_paths.length === 0) {
+        return '';
+    }
+
+    const casePaths = flowData.case_paths || [];
+    let eventTypes = flowData.all_event_types || [];
+    if (!eventTypes || eventTypes.length === 0) {
+        const seen = new Set();
+        eventTypes = ['Process'];
+        casePaths.forEach(function (p) {
+            (p.path_sequence || []).forEach(function (s) {
+                if (s && s !== 'Process' && s !== 'End' && !seen.has(s)) {
+                    seen.add(s);
+                    eventTypes.push(s);
+                }
+            });
+        });
+        eventTypes.push('End');
+    }
+
+    // Aggregate edges: each unique from→to pair with counts across Case IDs
+    const edgeMap = {}; // key: "from→to" -> { from, to, segmentCount, caseIds:Set }
+    casePaths.forEach(function (p) {
+        const seq = p.path_sequence || [];
+        const cid = p.case_id;
+        for (let i = 0; i < seq.length - 1; i++) {
+            const from = seq[i];
+            const to = seq[i + 1];
+            if (!from || !to) continue;
+            const key = from + '→' + to;
+            if (!edgeMap[key]) {
+                edgeMap[key] = { from: from, to: to, segmentCount: 0, caseIds: new Set() };
+            }
+            edgeMap[key].segmentCount += 1;
+            if (cid != null) {
+                edgeMap[key].caseIds.add(cid);
+            }
+        }
+    });
+
+    const edges = Object.values(edgeMap).map(function (e) {
+        return {
+            from: e.from,
+            to: e.to,
+            segmentCount: e.segmentCount,
+            caseCount: e.caseIds.size || e.segmentCount
+        };
+    }).filter(function (e) {
+        // Drop trivial edges with zero counts (defensive)
+        return e.segmentCount > 0;
+    });
+    if (edges.length === 0) {
+        return '';
+    }
+
+    // Standard layout (reuse fixed positions from unified diagram)
+    const fixedPositions = {
+        'Process': { x: 50, y: 250 },
+        'Created Account': { x: 400, y: 150 },
+        'Account Open': { x: 400, y: 150 },
+        'Login': { x: 750, y: 150 },
+        'Login / Logout': { x: 750, y: 150 },
+        'Check Balance': { x: 1100, y: 150 },
+        'Balance Inquiry': { x: 1100, y: 150 },
+        'Withdrawal Transaction': { x: 1450, y: 150 },
+        'Credit': { x: 400, y: 450 },
+        'Deposit': { x: 400, y: 450 },
+        'Logout': { x: 750, y: 450 },
+        'End': { x: 1250, y: 250 },
+        // Healthcare events
+        'Register': { x: 100, y: 250 },
+        'Visit': { x: 400, y: 250 },
+        'Appointment': { x: 400, y: 250 },
+        'Procedure': { x: 550, y: 250 },
+        'Treatment': { x: 550, y: 250 },
+        'Pharmacy': { x: 700, y: 250 },
+        'LabTest': { x: 850, y: 250 },
+        'Lab Test': { x: 850, y: 250 },
+        'Billing': { x: 1000, y: 250 },
+        'Admission': { x: 450, y: 400 },
+        'Discharge': { x: 700, y: 400 },
+        'Doctor': { x: 950, y: 400 },
+        // Retail events
+        'Customer Visit': { x: 80, y: 250 }, 'Product View': { x: 200, y: 250 }, 'Product Search': { x: 320, y: 250 },
+        'Add To Cart': { x: 440, y: 250 }, 'Remove From Cart': { x: 560, y: 250 }, 'Apply Coupon': { x: 680, y: 250 },
+        'Checkout Started': { x: 800, y: 250 }, 'Address Entered': { x: 920, y: 250 }, 'Payment Selected': { x: 1040, y: 250 },
+        'Payment Success': { x: 1160, y: 250 }, 'Payment Failed': { x: 1280, y: 250 }, 'Order Placed': { x: 200, y: 400 },
+        'Order Confirmed': { x: 320, y: 400 }, 'Invoice Generated': { x: 440, y: 400 }, 'Order Packed': { x: 560, y: 400 },
+        'Order Shipped': { x: 680, y: 400 }, 'Out For Delivery': { x: 800, y: 400 }, 'Order Delivered': { x: 920, y: 400 },
+        'Order Cancelled': { x: 1040, y: 400 }, 'Return Initiated': { x: 200, y: 550 }, 'Return Received': { x: 320, y: 550 },
+        'Refund Processed': { x: 440, y: 550 }, 'User Signed Up': { x: 80, y: 400 }, 'User Logged In': { x: 80, y: 550 },
+        'User Logged Out': { x: 200, y: 150 },
+        // Insurance events
+        'Customer Registered': { x: 80, y: 250 }, 'KYC Completed': { x: 200, y: 250 }, 'Policy Quoted': { x: 320, y: 250 },
+        'Policy Purchased': { x: 440, y: 250 }, 'Policy Activated': { x: 560, y: 250 }, 'Premium Due': { x: 680, y: 250 },
+        'Premium Paid': { x: 800, y: 250 }, 'Policy Renewed': { x: 80, y: 400 },
+        'Policy Expired': { x: 200, y: 400 }, 'Claim Requested': { x: 320, y: 400 }, 'Claim Registered': { x: 440, y: 400 },
+        'Claim Verified': { x: 560, y: 400 }, 'Claim Assessed': { x: 680, y: 400 }, 'Claim Approved': { x: 800, y: 400 },
+        'Claim Rejected': { x: 920, y: 400 }, 'Claim Paid': { x: 80, y: 550 }, 'Nominee Updated': { x: 200, y: 550 },
+        'Policy Cancelled': { x: 320, y: 550 }, 'Policy Closed': { x: 440, y: 550 },
+        // Finance events
+        'Account Opened': { x: 320, y: 250 }, 'Account Closed': { x: 440, y: 250 },
+        'Invest': { x: 560, y: 250 }, 'Value Update': { x: 680, y: 250 }, 'Redeem': { x: 800, y: 250 },
+        'Switch': { x: 920, y: 250 }, 'Dividend': { x: 80, y: 400 },
+        'Transfer Initiated': { x: 560, y: 400 }, 'Transfer Completed': { x: 680, y: 400 },
+        'Payment Initiated': { x: 1040, y: 250 }, 'Loan Applied': { x: 80, y: 550 },
+        'Loan Approved': { x: 200, y: 550 }, 'Loan Disbursed': { x: 320, y: 550 },
+        'Application Submitted': { x: 80, y: 700 }, 'Application Reviewed': { x: 200, y: 700 },
+        'Proposal Generated': { x: 320, y: 700 }, 'Proposal Accepted': { x: 440, y: 700 },
+        'Identity Verified': { x: 560, y: 700 }, 'Address Verified': { x: 680, y: 700 },
+        'Income Verified': { x: 800, y: 700 }, 'Beneficiary Added': { x: 920, y: 700 },
+        'Beneficiary Updated': { x: 80, y: 850 }, 'Coverage Activated': { x: 200, y: 850 },
+        'Coverage Changed': { x: 320, y: 850 }, 'Installment Generated': { x: 440, y: 850 },
+        'Installment Paid': { x: 560, y: 850 }, 'Penalty Applied': { x: 680, y: 850 },
+        'Discount Applied': { x: 800, y: 850 }, 'Case Escalated': { x: 920, y: 850 },
+        'Case Resolved': { x: 80, y: 1000 }, 'Support Ticket Created': { x: 200, y: 1000 },
+        'Support Ticket Closed': { x: 320, y: 1000 }, 'Account Frozen': { x: 440, y: 1000 }
+    };
+
+    const boxWidth = 160;
+    const boxHeight = 70;
+
+    const eventPositions = {};
+    let dynamicX = 50;
+    const takenPositions = Object.values(fixedPositions).map(function (p) { return p.x + ',' + p.y; });
+    function resolveEventPosition(ev, posMap) {
+        if (posMap[ev]) return posMap[ev];
+        if (posMap[ev.replace(/\s+/g, '')]) return posMap[ev.replace(/\s+/g, '')];
+        if (posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')]) return posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')];
+        return null;
+    }
+    eventTypes.forEach(function (event) {
+        const pos = fixedPositions[event] || fixedPositions[event.replace('Transaction', '').trim()] || resolveEventPosition(event, fixedPositions);
+        if (pos) {
+            eventPositions[event] = pos;
+        } else {
+            let placed = false;
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 5; c++) {
+                    const tx = 50 + c * 350;
+                    const ty = 150 + r * 300;
+                    const key = tx + ',' + ty;
+                    if (takenPositions.indexOf(key) === -1 && !placed) {
+                        eventPositions[event] = { x: tx, y: ty };
+                        takenPositions.push(key);
+                        placed = true;
+                    }
+                }
+            }
+            if (!placed) {
+                eventPositions[event] = { x: dynamicX, y: 750 };
+                dynamicX += 350;
+            }
+        }
+    });
+
+    const maxX = Math.max.apply(null, Object.values(eventPositions).map(function (p) { return p.x; })) + 250;
+    const maxY = Math.max.apply(null, Object.values(eventPositions).map(function (p) { return p.y; })) + 150;
+    const svgWidth = Math.max(900, maxX);
+    const svgHeight = Math.max(400, maxY);
+
+    // Auto-scale diagram so it fits nicely inside the visible screen for ALL domains
+    // – both horizontally and vertically – without becoming blurry.
+    let viewportWidth = 1200;
+    let viewportHeight = 800;
+    try {
+        if (typeof window !== 'undefined') {
+            if (window.innerWidth) viewportWidth = window.innerWidth;
+            if (window.innerHeight) viewportHeight = window.innerHeight;
+        }
+    } catch (e) {
+        // ignore, use defaults
+    }
+
+    // Leave only a small margin for headers/buttons so the diagram can use almost the full screen
+    const availableWidth = Math.max(viewportWidth - 80, 600);
+    const availableHeight = Math.max(viewportHeight - 180, 400);
+
+    const scaleX = availableWidth / svgWidth;
+    const scaleY = availableHeight / svgHeight;
+    // Allow a bit of upscaling (up to 1.4x) so the diagram can genuinely feel "full screen"
+    const autoScale = Math.min(scaleX, scaleY, 1.4);
+
+    const scaledWidth = svgWidth * autoScale;
+    const scaledHeight = svgHeight * autoScale;
+    const scaleStyle = autoScale !== 1 ? `transform: scale(${autoScale}); transform-origin: 0 0;` : '';
+
+    // Make the container height track the available viewport height so the diagram looks "full screen"
+    const diagramMinHeight = Math.max(availableHeight, 420);
+
+    // Stroke width scale based on case count
+    const maxCaseCount = edges.reduce(function (m, e) { return Math.max(m, e.caseCount); }, 0) || 1;
+    function edgeStrokeWidth(e) {
+        const ratio = e.caseCount / maxCaseCount;
+        return 1.5 + ratio * 5; // between 1.5 and 6.5
+    }
+
+    let svgHTML = `<svg width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 1; transform-origin: 0 0;">
+        <defs>
+            <marker id="merged-arrow" markerWidth="9" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 9 3, 0 6" fill="#475569" />
+            </marker>
+        </defs>
+    `;
+
+    edges.forEach(function (e) {
+        const fromPos = eventPositions[e.from];
+        const toPos = eventPositions[e.to];
+        if (!fromPos || !toPos) return;
+        const x1 = fromPos.x + boxWidth / 2;
+        const y1 = fromPos.y + boxHeight / 2;
+        const x2 = toPos.x + boxWidth / 2;
+        const y2 = toPos.y + boxHeight / 2;
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        const sw = edgeStrokeWidth(e);
+        const label = e.caseCount + ' case' + (e.caseCount === 1 ? '' : 's');
+        svgHTML += `
+            <g>
+                <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+                      stroke="#475569"
+                      stroke-width="${sw.toFixed(1)}"
+                      marker-end="url(#merged-arrow)"
+                      opacity="0.9" />
+                <rect x="${midX - 40}" y="${midY - 16}" width="80" height="20" rx="10"
+                      fill="white" stroke="#475569" stroke-width="0.8" opacity="0.96" />
+                <text x="${midX}" y="${midY - 2}" text-anchor="middle"
+                      font-size="10" font-weight="600" fill="#111827">
+                    ${label}
+                </text>
+            </g>
+        `;
+    });
+
+    svgHTML += '</svg>';
+
+    let boxesHTML = '';
+    eventTypes.forEach(function (event) {
+        const pos = eventPositions[event];
+        if (!pos) return;
+        const isEnd = event === 'End';
+        let boxBg = '#0f172a';
+        if (event === 'Process') boxBg = '#1e40af';
+        else if (isEnd) boxBg = '#ffffff';
+        else boxBg = '#64748b';
+        const borderStyle = isEnd
+            ? 'border: 3px solid #1e40af; background: white; color: #1e40af;'
+            : `background: ${boxBg}; color: white; box-shadow: 0 3px 6px rgba(15,23,42,0.25);`;
+        boxesHTML += `
+            <div style="
+                position: absolute;
+                left: ${pos.x}px;
+                top: ${pos.y}px;
+                width: ${boxWidth}px;
+                height: ${boxHeight}px;
+                ${borderStyle}
+                border-radius: ${isEnd ? '50px' : '12px'};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                font-weight: 700;
+                font-size: 0.95rem;
+                z-index: 2;
+                padding: 0.5rem;
+                line-height: 1.2;
+            ">
+                ${event}
+            </div>
+        `;
+    });
+
+    return `
+        <section style="margin-bottom: 2.5rem;">
+            <h2 style="font-size: 1.6rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center;">
+                Event-to-Event Counts (Merged Across Case IDs)
+            </h2>
+            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem; text-align: center;">
+                Each arrow shows how many Case IDs move from one event to the next. No per-case splitting – only merged counts.
+            </p>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
+                <div style="position: relative; min-height: ${diagramMinHeight}px; height: ${diagramMinHeight}px; overflow: auto;">
+                    <div style="position: relative; width: ${scaledWidth}px; height: ${scaledHeight}px; margin: 0 auto;">
+                        <div style="position: absolute; left: 0; top: 0; width: ${svgWidth}px; height: ${svgHeight}px; ${scaleStyle}">
+                            ${svgHTML}
+                            ${boxesHTML}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+window.renderMergedCaseFlowDiagram = renderMergedCaseFlowDiagram;
 
 // DOM Elements
 const dropZone = document.getElementById('dropZone');
@@ -1901,6 +2338,17 @@ function showBankingAnalysisResults(profile) {
 
         const eventTypes = flowData.all_event_types || [];
         const casePaths = flowData.case_paths || [];
+        // Ensure each Case ID has a distinct color (backend may or may not send colors)
+        const CASE_COLOR_PALETTE = [
+            '#ef4444', '#3b82f6', '#10b981', '#f97316', '#8b5cf6',
+            '#ec4899', '#22c55e', '#0ea5e9', '#eab308', '#6366f1',
+            '#14b8a6', '#f43f5e', '#a855f7', '#84cc16', '#06b6d4'
+        ];
+        casePaths.forEach((p, idx) => {
+            if (!p.color) {
+                p.color = CASE_COLOR_PALETTE[idx % CASE_COLOR_PALETTE.length];
+            }
+        });
         const totalCases = flowData.total_cases || 0;
 
         // Build legend
@@ -2026,6 +2474,8 @@ function showBankingAnalysisResults(profile) {
         window.diagramState.boxWidth = boxWidth;
         window.diagramState.boxHeight = boxHeight;
         window.diagramState.same_time_groups = flowData.same_time_groups || [];
+        // For the unified diagram, hide the per-segment time/date boxes (only show colored paths + Case IDs).
+        window.diagramState.showTimeLabels = false;
         if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
 
         setTimeout(() => window.renderDiagramPaths(), 100);
@@ -2285,6 +2735,11 @@ function showBankingAnalysisResults(profile) {
     const explanations = bkData.explanations || [];
     const totalActivities = bkData.total_activities || 0;
 
+    // Expose unified flow data globally for Single Case Flow filter
+    if (bkData.unified_flow_data && bkData.unified_flow_data.case_paths && bkData.unified_flow_data.case_paths.length > 0) {
+        window.currentBankingUnifiedFlowData = bkData.unified_flow_data;
+    }
+
     if (caseDetails.length === 0) {
         mainContent.innerHTML = `
             <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
@@ -2311,9 +2766,53 @@ function showBankingAnalysisResults(profile) {
                 ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} user(s) â€¢ ${totalActivities} activities
             </p>
 
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a Case ID chip below to see a separate flow diagram only for that Case ID (shown under the merged diagram).
+                </p>
+                <div style="display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem;">
+                    ${(function () {
+                        var unified = bkData.unified_flow_data || {};
+                        var paths = (unified.case_paths || []);
+                        var colorById = {};
+                        paths.forEach(function (p) {
+                            colorById[String(p.case_id)] = p.color || '${BANK_COLOR}';
+                        });
+                        return (caseDetails || []).map(function (c) {
+                            var cid = String(c.case_id);
+                            var color = colorById[cid] || '${BANK_COLOR}';
+                            return '<button type="button" data-single-case-id="' + cid + '" ' +
+                                   'style="cursor:pointer; border-radius:999px; border:1px solid ' + color + '; ' +
+                                   'padding:0.3rem 0.7rem; font-size:0.8rem; background:#ffffff; color:' + color + '; ' +
+                                   'display:inline-flex; align-items:center; gap:0.35rem; box-shadow:0 1px 2px rgba(15,23,42,0.08);">' +
+                                   '<span style="width:14px; height:3px; border-radius:2px; background:' + color + ';"></span>' +
+                                   '<span>Case ' + cid + '</span>' +
+                                   '</button>';
+                        }).join('');
+                    })()}
+                </div>
+            </section>
+
             ${buildEventBlueprintFromBackend(bkData.event_columns, caseDetails)}
             
-            ${renderUnifiedCaseFlowDiagram(bkData.unified_flow_data)}
+            ${renderMergedCaseFlowDiagram(bkData.unified_flow_data)}
+
+            <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
+                <div id="single-case-flow-container" style="border-top: 1px dashed ${BANK_BORDER}; padding-top: 1.25rem;">
+                    <button type="button"
+                            onclick="window.toggleSingleCaseFlow()"
+                            style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${BANK_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
+                        <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
+                    </button>
+                    <div id="single-case-flow-body" style="display: none; margin-top: 0.25rem;">
+                        <div id="single-case-flow-content" style="font-size: 0.85rem; color: #6b7280;">
+                            Pick a Case ID chip above to see the event-to-event flow for that single case only.
+                        </div>
+                    </div>
+                </div>
+            </section>
             
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">‹ Explanations</h2>
@@ -2390,6 +2889,8 @@ function showRetailAnalysisResults(profile) {
     const RETAIL_BORDER = 'rgba(245,158,11,0.3)';
 
     if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        // Expose unified flow data globally for Single Case Flow filter
+        window.currentRetailUnifiedFlowData = unifiedFlowData;
         let html = `
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
@@ -2398,7 +2899,51 @@ function showRetailAnalysisResults(profile) {
                 ${profile.database_name} • ${totalCases} Case ID(s) • ${totalCustomers} customer(s) • ${totalActivities} events
             </p>
 
-            ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a Case ID chip to see a separate flow diagram only for that order journey (shown under the merged diagram).
+                </p>
+                <div style="display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem;">
+                    ${(function () {
+                        var unified = unifiedFlowData || {};
+                        var paths = (unified.case_paths || []);
+                        var colorById = {};
+                        paths.forEach(function (p) {
+                            colorById[String(p.case_id)] = p.color || '${RETAIL_COLOR}';
+                        });
+                        return (caseDetails || []).map(function (c) {
+                            var cid = String(c.case_id);
+                            var color = colorById[cid] || '${RETAIL_COLOR}';
+                            return '<button type="button" data-single-case-id="' + cid + '" ' +
+                                   'style="cursor:pointer; border-radius:999px; border:1px solid ' + color + '; ' +
+                                   'padding:0.3rem 0.7rem; font-size:0.8rem; background:#ffffff; color:' + color + '; ' +
+                                   'display:inline-flex; align-items:center; gap:0.35rem; box-shadow:0 1px 2px rgba(15,23,42,0.08);">' +
+                                   '<span style="width:14px; height:3px; border-radius:2px; background:' + color + ';"></span>' +
+                                   '<span>Case ' + cid + '</span>' +
+                                   '</button>';
+                        }).join('');
+                    })()}
+                </div>
+            </section>
+
+            ${renderMergedCaseFlowDiagram(unifiedFlowData)}
+
+            <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
+                <div id="single-case-flow-container" style="border-top: 1px dashed ${RETAIL_BORDER}; padding-top: 1.25rem;">
+                    <button type="button"
+                            onclick="window.toggleSingleCaseFlow()"
+                            style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${RETAIL_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
+                        <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
+                    </button>
+                    <div id="single-case-flow-body" style="display: none; margin-top: 0.25rem;">
+                        <div id="single-case-flow-content" style="font-size: 0.85rem; color: #6b7280;">
+                            Pick a Case ID chip above to see the event-to-event flow for that single Case ID only.
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             ${(function () {
                 // Build the detected events set from all case activities
@@ -2553,6 +3098,8 @@ function showInsuranceAnalysisResults(profile) {
     const INS_BORDER = 'rgba(124,58,237,0.3)';
 
     if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        // Expose unified flow data globally for Single Case Flow filter
+        window.currentInsuranceUnifiedFlowData = unifiedFlowData;
         let html = `
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
@@ -2561,7 +3108,51 @@ function showInsuranceAnalysisResults(profile) {
                 ${profile.database_name} • ${totalCases} Case ID(s) • ${totalCustomers} customer(s) • ${totalActivities} events
             </p>
 
-            ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a Case ID chip to see a separate diagram only for that insurance journey (shown under the merged diagram).
+                </p>
+                <div style="display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem;">
+                    ${(function () {
+                        var unified = unifiedFlowData || {};
+                        var paths = (unified.case_paths || []);
+                        var colorById = {};
+                        paths.forEach(function (p) {
+                            colorById[String(p.case_id)] = p.color || '${INS_COLOR}';
+                        });
+                        return (caseDetails || []).map(function (c) {
+                            var cid = String(c.case_id);
+                            var color = colorById[cid] || '${INS_COLOR}';
+                            return '<button type="button" data-single-case-id="' + cid + '" ' +
+                                   'style="cursor:pointer; border-radius:999px; border:1px solid ' + color + '; ' +
+                                   'padding:0.3rem 0.7rem; font-size:0.8rem; background:#ffffff; color:' + color + '; ' +
+                                   'display:inline-flex; align-items:center; gap:0.35rem; box-shadow:0 1px 2px rgba(15,23,42,0.08);">' +
+                                   '<span style="width:14px; height:3px; border-radius:2px; background:' + color + ';"></span>' +
+                                   '<span>Case ' + cid + '</span>' +
+                                   '</button>';
+                        }).join('');
+                    })()}
+                </div>
+            </section>
+
+            ${renderMergedCaseFlowDiagram(unifiedFlowData)}
+
+            <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
+                <div id="single-case-flow-container" style="border-top: 1px dashed ${INS_BORDER}; padding-top: 1.25rem;">
+                    <button type="button"
+                            onclick="window.toggleSingleCaseFlow()"
+                            style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${INS_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
+                        <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
+                    </button>
+                    <div id="single-case-flow-body" style="display: none; margin-top: 0.25rem;">
+                        <div id="single-case-flow-content" style="font-size: 0.85rem; color: #6b7280;">
+                            Pick a Case ID chip above to see the event-to-event flow for that single Case ID only.
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> How It Works</h2>
@@ -2645,15 +3236,61 @@ function showFinanceAnalysisResults(profile) {
     const FIN_BORDER = 'rgba(79,70,229,0.3)';
 
     if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        // Expose unified flow data globally for Single Case Flow filter
+        window.currentFinanceUnifiedFlowData = unifiedFlowData;
         let html = `
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
             <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${FIN_COLOR};"> Finance Case IDs</h1>
             <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
-                ${profile.database_name} • ${totalCases} Case ID(s) • ${totalCustomers} customer(s) • ${totalActivities} events
+                ${profile.database_name} • ${totalCases} Case(s) • ${totalCustomers} customer(s) • ${totalActivities} events
             </p>
 
-            ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a Case ID chip to see a separate diagram only for that finance journey (shown under the merged diagram).
+                </p>
+                <div style="display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem;">
+                    ${(function () {
+                        var unified = unifiedFlowData || {};
+                        var paths = (unified.case_paths || []);
+                        var colorById = {};
+                        paths.forEach(function (p) {
+                            colorById[String(p.case_id)] = p.color || '${FIN_COLOR}';
+                        });
+                        return (caseDetails || []).map(function (c) {
+                            var cid = String(c.case_id);
+                            var color = colorById[cid] || '${FIN_COLOR}';
+                            return '<button type="button" data-single-case-id="' + cid + '" ' +
+                                   'style="cursor:pointer; border-radius:999px; border:1px solid ' + color + '; ' +
+                                   'padding:0.3rem 0.7rem; font-size:0.8rem; background:#ffffff; color:' + color + '; ' +
+                                   'display:inline-flex; align-items:center; gap:0.35rem; box-shadow:0 1px 2px rgba(15,23,42,0.08);">' +
+                                   '<span style="width:14px; height:3px; border-radius:2px; background:' + color + ';"></span>' +
+                                   '<span>Case ' + cid + '</span>' +
+                                   '</button>';
+                        }).join('');
+                    })()}
+                </div>
+            </section>
+
+            ${renderMergedCaseFlowDiagram(unifiedFlowData)}
+
+            <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
+                <div id="single-case-flow-container" style="border-top: 1px dashed ${FIN_BORDER}; padding-top: 1.25rem;">
+                    <button type="button"
+                            onclick="window.toggleSingleCaseFlow()"
+                            style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${FIN_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
+                        <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
+                    </button>
+                    <div id="single-case-flow-body" style="display: none; margin-top: 0.25rem;">
+                        <div id="single-case-flow-content" style="font-size: 0.85rem; color: #6b7280;">
+                            Pick a Case ID chip above to see the event-to-event flow for that single Case ID only.
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> How It Works</h2>
@@ -2996,6 +3633,8 @@ function showHealthcareAnalysisResults(profile) {
     const HC_BORDER = 'rgba(20,184,166,0.3)';
 
     if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        // Expose unified flow data globally for Single Case Flow filter
+        window.currentHealthcareUnifiedFlowData = unifiedFlowData;
         var html = `
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">â† Back</button>
@@ -3004,7 +3643,51 @@ function showHealthcareAnalysisResults(profile) {
                 ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} patient(s) â€¢ ${totalActivities} activities
             </p>
 
-            ${renderUnifiedCaseFlowDiagram(unifiedFlowData)}
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a Case ID chip to see a separate diagram only for that patient journey (shown under the merged diagram).
+                </p>
+                <div style="display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem;">
+                    ${(function () {
+                        var unified = unifiedFlowData || {};
+                        var paths = (unified.case_paths || []);
+                        var colorById = {};
+                        paths.forEach(function (p) {
+                            colorById[String(p.case_id)] = p.color || '${HC_COLOR}';
+                        });
+                        return (caseDetails || []).map(function (c) {
+                            var cid = String(c.case_id);
+                            var color = colorById[cid] || '${HC_COLOR}';
+                            return '<button type="button" data-single-case-id="' + cid + '" ' +
+                                   'style="cursor:pointer; border-radius:999px; border:1px solid ' + color + '; ' +
+                                   'padding:0.3rem 0.7rem; font-size:0.8rem; background:#ffffff; color:' + color + '; ' +
+                                   'display:inline-flex; align-items:center; gap:0.35rem; box-shadow:0 1px 2px rgba(15,23,42,0.08);">' +
+                                   '<span style="width:14px; height:3px; border-radius:2px; background:' + color + ';"></span>' +
+                                   '<span>Case ' + cid + '</span>' +
+                                   '</button>';
+                        }).join('');
+                    })()}
+                </div>
+            </section>
+
+            ${renderMergedCaseFlowDiagram(unifiedFlowData)}
+
+            <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
+                <div id="single-case-flow-container" style="border-top: 1px dashed ${HC_BORDER}; padding-top: 1.25rem;">
+                    <button type="button"
+                            onclick="window.toggleSingleCaseFlow()"
+                            style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${HC_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
+                        <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
+                    </button>
+                    <div id="single-case-flow-body" style="display: none; margin-top: 0.25rem;">
+                        <div id="single-case-flow-content" style="font-size: 0.85rem; color: #6b7280;">
+                            Pick a Case ID chip above to see the event-to-event flow for that single Case ID only.
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <section style="margin-bottom: 2rem;">
                 <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> How It Works</h2>

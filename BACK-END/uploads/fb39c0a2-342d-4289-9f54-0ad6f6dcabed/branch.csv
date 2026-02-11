@@ -1,0 +1,11 @@
+BranchID,BranchName,Location,Manager,CreatedDate
+BR001,Central Bank,New Delhi,Rahul Mehra,2023-12-01 09:15:00
+BR002,City Bank,Mumbai,Anita Kapoor,2023-12-05 10:30:45
+BR003,State Bank,Bangalore,Karan Singh,2023-12-10 11:45:20
+BR004,Union Bank,Chennai,Pooja Reddy,2023-12-12 13:10:35
+BR005,National Bank,Hyderabad,Vikram Joshi,2023-12-15 14:25:50
+BR006,Capital Bank,Kolkata,Rekha Desai,2023-12-18 15:40:10
+BR007,Commerce Bank,Pune,Arjun Sharma,2023-12-20 16:55:05
+BR008,Global Bank,Ahmedabad,Divya Patel,2023-12-22 09:05:15
+BR009,Trust Bank,Jaipur,Sneha Rao,2023-12-25 10:20:30
+BR010,Union Finance,Chandigarh,Manoj Verma,2023-12-28 11:35:45
