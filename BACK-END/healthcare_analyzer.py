@@ -909,8 +909,11 @@ class HealthcareAnalyzer:
 
     def _record_to_step_name(self, rec: Dict[str, Any]) -> str:
         """
-        Event name: prefer table role when time column is generic (visit_date, activity_date, etc.),
-        so we get Register, Procedure, Billing instead of all Visit. Use time column when it is specific.
+        Event name for diagram steps.
+
+        Strong rule: **always prefer the inferred table workflow role** (register, appointment,
+        admission, treatment, lab, billing, discharge, etc.) whenever we can map it to a
+        canonical event. Only fall back to the time column naming when role is unknown.
         """
         time_col = (rec.get('_event_time_column') or '').strip().lower().replace('-', '_')
         role_info = rec.get('table_workflow_role') or {}
@@ -921,17 +924,20 @@ class HealthcareAnalyzer:
             'treatment': 'Procedure', 'lab': 'LabTest', 'billing': 'Billing',
             'discharge': 'Discharge', 'doctor': 'Doctor', 'donation': 'Procedure',
         }
-        # When time column is generic, use table role first so different tables show different events
-        if time_col and any(g in time_col for g in self._GENERIC_DATE_COLUMNS):
-            if role and role in ROLE_TO_EVENT:
-                return ROLE_TO_EVENT[role]
-        # Specific time column (register_time, procedure_time, bill_time, etc.) or no role match
+
+        # 1) If we know the table workflow role and can map it, ALWAYS use that first.
+        #    This ensures different tables (registration, lab, billing, admission, etc.)
+        #    show different event types instead of everything collapsing to "Visit".
+        if role and role in ROLE_TO_EVENT:
+            return ROLE_TO_EVENT[role]
+
+        # 2) Otherwise, try deriving from the time column name (register_time, bill_time, etc.).
         if time_col:
             event = self._time_column_to_event_name(time_col)
             if event and event not in ('Other', 'Unknown'):
                 return event
-        if role and role in ROLE_TO_EVENT:
-            return ROLE_TO_EVENT[role]
+
+        # 3) Fallback: inspect raw column names to infer event type.
         raw = rec.get('record') or {}
         for col in raw:
             ev = self._time_column_to_event_name(str(col).lower())
