@@ -1,0 +1,4 @@
+customer_id,first_name,last_name,gender,dob,phone,email,city,signup_date,signup_time,signup_timestamp
+301,Karthik,Raman,Male,1990-05-12,9876543210,karthik@gmail.com,Chennai,2024-01-05,09:30:00,2024-01-05 09:30:00
+302,Divya,Singh,Female,1992-08-20,9123456780,divya@gmail.com,Bangalore,2024-01-10,10:15:00,2024-01-10 10:15:00
+303,Manoj,Verma,Male,1988-11-02,9988776655,manoj@gmail.com,Hyderabad,2024-01-15,11:00:00,2024-01-15 11:00:00

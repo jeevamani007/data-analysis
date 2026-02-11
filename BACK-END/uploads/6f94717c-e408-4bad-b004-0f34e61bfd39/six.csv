@@ -1,0 +1,5 @@
+transaction_id,account_id,transaction_date,transaction_type,amount
+T001,A1001,2025-01-10,Deposit,10000
+T002,A1001,2025-01-11,Withdraw,2000
+T003,A1002,2025-01-12,Deposit,5000
+T004,A1003,2025-01-13,Withdraw,3000
