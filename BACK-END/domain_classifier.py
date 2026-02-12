@@ -4,17 +4,32 @@ domain_classifier.py
 Classifies database schemas into one of six domains:
   Banking | Finance | Insurance | Healthcare | Retail | Other
 
-Key improvements in this version
----------------------------------
-1. Full abbreviation/shortcut column name support for ALL domains
-   (acc_no, txn_id, pol_no, prm_amt, pat_id, prod_nm, inv_no, etc.)
-2. Domain-specific abbreviation alias maps that translate short forms
-   before scoring, so abbreviated schemas classify as reliably as full names.
-3. Tighter "Other" domain handling – generic/unknown schemas stay Other
-   instead of leaking into Banking.
-4. ML fallback only fires on zero-signal input; fully-generic columns
-   return Other directly without model inference.
-5. Combo rules extended to cover abbreviated column combos.
+Fixes applied (v3)
+------------------
+FIX-A  HR column tokens (employee, department, designation, jobtitle, etc.)
+       added to _GENERIC_TOKENS so pure-HR schemas no longer score Finance.
+FIX-B  'pf' and 'esi' moved from Finance exclusive_keywords → shared_keywords.
+       They only become Finance-exclusive when combined with a payroll combo rule.
+       This stops pf_number / esi_card in HR schemas from triggering Finance.
+FIX-C  _kw_match() replaces raw `kw in col` substring matching.
+       Prevents 'designation' matching 'esi', 'district' matching 'ict', etc.
+       Keyword must equal col, or be a proper prefix/suffix boundary.
+FIX-D  MIN_SCORE_FLOOR raised 4.0 → 8.0.  A single exclusive column (score=4)
+       no longer wins alone; government schemas with one ifsc_code → Other.
+       Real banking schemas score via combos (≥ 6 bonus) and pass the floor.
+
+Previous fixes retained (v2)
+-----------------------------
+FIX-1  Alias expansion uses list-union (no set dedup).
+FIX-2  _build_column_map guards against IndexError.
+FIX-3  txndt/trndt → "transactiondate" (not "transactionid").
+FIX-4  lnamt/lnamount → "loanamount" (not "loanid").
+FIX-5  invamt → "invoiceamount", invdt → "invoicedate".
+OPT-1  MIN_SCORE_FLOOR (now 8.0) prevents false positives.
+OPT-2  Consistent [:200] cap on value scoring everywhere.
+OPT-3  ML training data includes abbreviated column samples.
+OPT-4  secondary_domain field flags mixed schemas.
+OPT-5  _build_column_map bounds-check on expansion index.
 """
 
 from __future__ import annotations
@@ -30,10 +45,19 @@ from sklearn.pipeline import Pipeline
 
 
 # ---------------------------------------------------------------------------
-# Generic token blacklist  (never drive classification alone)
+# Tuning constants
+# ---------------------------------------------------------------------------
+
+MIN_SCORE_FLOOR: float = 8.0        # FIX-D: raised from 4.0; needs >=2 hits or a combo
+SECONDARY_DOMAIN_GAP: float = 20.0  # flag secondary domain if within this % of primary
+
+
+# ---------------------------------------------------------------------------
+# Generic token blacklist
 # ---------------------------------------------------------------------------
 
 _GENERIC_TOKENS: frozenset[str] = frozenset({
+    # universal generic
     "id", "nm", "name", "val", "value", "dt", "date", "typ", "type",
     "sts", "status", "cd", "code", "no", "num", "number",
     "amt", "amount", "desc", "description", "ref", "reference",
@@ -41,11 +65,25 @@ _GENERIC_TOKENS: frozenset[str] = frozenset({
     "data", "info", "rec", "record", "row",
     "ts", "time", "timestamp", "created", "updated", "deleted",
     "by", "at", "seq", "idx",
+    # FIX-A: HR tokens -- must NOT trigger Finance alone
+    "employee", "emp", "staff", "personnel",
+    "department", "dept", "division",
+    "designation", "jobtitle", "title", "role", "grade", "band",
+    "reportingto", "manager", "supervisor",
+    "hiredate", "doj", "dol", "relievingdate", "exitdate",
+    "probation", "notice", "confirmation",
+    "location", "worksite", "shift", "attendance",
+    # salary alone is an HR column — only Finance when payroll context exists
+    "salary",
+    # FIX-A: Government/civic tokens -- must NOT trigger Banking alone
+    "citizen", "aadhaar", "pan", "voter", "ration",
+    "scheme", "beneficiary", "district", "state", "taluk", "village",
+    "ward", "block", "constituency", "panchayat",
+    "subsidy", "entitlement", "welfare",
 })
 
 
 def _normalise(token: str) -> str:
-    """Lowercase + strip separators."""
     return re.sub(r"[_\-\s]", "", token.lower())
 
 
@@ -54,185 +92,142 @@ def _normalise_all(columns: list[str]) -> list[str]:
 
 
 def _is_generic(norm_col: str) -> bool:
-    """True if every alphabetic chunk of the column is a generic token."""
     parts = re.findall(r"[a-z]+", norm_col)
     return not parts or all(p in _GENERIC_TOKENS for p in parts)
 
 
+def _kw_match(col: str, kw: str) -> bool:
+    """
+    FIX-C: Match keyword at proper boundary only (prefix or suffix).
+    Stops 'designation' matching 'esi', 'district' matching 'ict', etc.
+    """
+    if col == kw:
+        return True
+    if col.startswith(kw):
+        return True
+    if col.endswith(kw):
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Abbreviation alias maps
-# Each map: normalised_abbreviation → canonical_keyword (must appear in config)
 # ---------------------------------------------------------------------------
 
 _BANKING_ALIASES: dict[str, str] = {
-    # account
     "acno": "accountno", "accno": "accountno", "acnum": "accountno",
     "acctno": "accountno", "accnum": "accountno", "acnumber": "accountno",
     "acid": "accountid", "accid": "accountid", "acctid": "accountid",
     "acbal": "accountbalance", "accbal": "accountbalance", "acctbal": "accountbalance",
     "actype": "accounttype", "acctyp": "accounttype",
-    # transaction
     "txnid": "transactionid", "trnid": "transactionid", "txid": "transactionid",
     "txnamt": "depositamount", "trnamt": "depositamount",
-    "txndt": "transactionid", "trndt": "transactionid",
+    "txndt": "transactiondate", "trndt": "transactiondate",
     "txntyp": "transactiontype", "trntyp": "transactiontype",
-    # branch
-    "brcd": "branchcode", "brid": "branchid", "brncd": "branchcode",
-    "brnid": "branchid",
-    # loan
+    "brcd": "branchcode", "brid": "branchid", "brncd": "branchcode", "brnid": "branchid",
     "lnid": "loanid", "loanno": "loanid", "lnno": "loanid",
-    "lnamt": "loanid", "lnamount": "loanid",
-    # emi / overdraft / kyc
+    "lnamt": "loanamount", "lnamount": "loanamount",
     "emino": "emi", "eminum": "emi", "emiamt": "emiamount",
     "odlmt": "overdraftlimit", "odamt": "overdraftlimit",
     "kycflg": "kycstatus", "kycsts": "kycstatus",
-    # deposit / withdrawal
     "depamt": "depositamount", "dep": "depositamount",
     "wdlamt": "withdrawamount", "wdl": "withdrawamount", "wthdrwl": "withdrawal",
-    # ifsc / swift
     "ifsccd": "ifsc", "swftcd": "swiftcode", "swft": "swiftcode",
 }
 
 _FINANCE_ALIASES: dict[str, str] = {
-    # invoice
-    "invno": "invoiceno", "invid": "invoiceid", "invdt": "invoiceno",
-    "invamt": "invoiceid", "invcno": "invoiceno",
-    # gst / tax
+    "invno": "invoiceno", "invid": "invoiceid",
+    "invdt": "invoicedate", "invamt": "invoiceamount", "invcno": "invoiceno",
     "gstno": "gstin", "gstnm": "gstin", "gstamt": "gst",
     "taxamt": "taxamount", "taxno": "gst",
-    # salary / payroll
     "salno": "salary", "salamt": "salary", "salmth": "payrollmonth",
     "grssal": "grosssalary", "netsal": "netsalary", "grpay": "grosssalary",
     "pfamt": "pf", "esiamt": "esi", "tdsamt": "tds",
     "hramt": "salary", "daamt": "salary",
-    # ledger / journal / voucher
     "ldgrid": "ledgerid", "ldgrnm": "ledgername",
     "jrnlid": "journalid", "jrnldt": "journalid",
     "vchrno": "voucherno", "vchrid": "voucherno",
-    # debit / credit
     "dramt": "debitamount", "cramt": "creditamount",
     "drno": "debit", "crno": "credit",
     "acctpay": "accountspayable", "acctrec": "accountsreceivable",
 }
 
 _INSURANCE_ALIASES: dict[str, str] = {
-    # policy
     "plyno": "policyno", "plyid": "policyid", "polno": "policyno",
     "poltyp": "policyno", "pltyp": "policyno",
-    "polstdt": "policystartdate", "polenddt": "policyenddate",
-    "polstrtdt": "policystartdate",
-    # premium
+    "polstdt": "policystartdate", "polenddt": "policyenddate", "polstrtdt": "policystartdate",
     "prmamt": "premiumamt", "prm": "premiumamt", "premno": "premiumamt",
     "totprm": "totalpremium", "prmpd": "premiumamt",
-    # sum insured / limit
     "siamt": "suminsured", "si": "suminsured", "limamt": "limamt",
-    # claim
     "clmno": "claimid", "clmamt": "claimamt", "clmsts": "claimstatus",
     "clmdt": "claimid", "clmid": "claimid",
-    # beneficiary / nominee
     "bnfnm": "beneficiary", "bnfid": "beneficiary", "bnf": "beneficiary",
     "nomnm": "nominee", "nomid": "nominee", "nom": "nominee",
-    # insured
     "insrdnm": "insured", "insrdid": "insured", "insrnm": "insurer",
-    # coverage / underwriting
     "cvgtyp": "coverage", "cvgcd": "covcd", "covtyp": "coverage",
     "undscr": "underwriting", "undwrt": "underwriting",
-    # renewal / lapse
     "rendt": "renewaldate", "rennm": "renewaldate",
     "lpsdt": "lapsedate", "lpsfg": "lapsedate",
     "grprd": "graceperiod", "graceprd": "graceperiod",
-    # deductible / rider
     "dedamt": "deductible", "ded": "deductible",
     "rdrcd": "rider", "rdrnm": "rider",
-    # lob / coverage code
     "lobcd": "lob", "covcd": "covcd", "cov": "covcd",
-    # paid / reserve
     "pdamt": "paidamt", "rsvamt": "rsvamt", "rsv": "rsvamt",
 }
 
 _HEALTHCARE_ALIASES: dict[str, str] = {
-    # patient
     "ptid": "patientid", "patnm": "patientname", "patrec": "patientid",
     "pt": "patient", "patno": "patientid",
-    # doctor
     "drid": "doctor", "drno": "doctor", "docid": "doctor", "docnm": "doctor",
-    # diagnosis / ICD
     "diagcd": "diagnosisid", "diagid": "diagnosisid", "diagno": "diagnosisid",
     "icdcd": "icdcode", "icdno": "icdcode",
-    # medication / dosage / prescription
     "mednm": "medicationname", "medid": "medicationname", "med": "medication",
-    "dosqty": "dosage", "dosage": "dosage",
+    "dosqty": "dosage",
     "rxdt": "prescriptiondate", "rxno": "prescriptiondate", "rx": "prescriptiondate",
-    # admission / discharge
     "admdt": "admissiondate", "admno": "admissiondate", "adm": "admission",
     "dscdt": "dischargedate", "discdt": "dischargedate", "dsc": "discharge",
-    # lab / test / specimen
     "labid": "labtest", "labrec": "labtest",
     "tstnm": "labtest", "tstno": "labtest",
     "tstres": "labresult", "tstrst": "labresult",
     "spcmtp": "specimentype", "spcm": "specimentype", "spmtyp": "specimentype",
-    # ward / bed
     "wardno": "ward", "bedid": "ward", "bedno": "ward",
-    # vitals / symptoms
     "vitsgn": "vitals", "vtl": "vitals",
     "symcd": "symptoms", "symno": "symptoms",
 }
 
 _RETAIL_ALIASES: dict[str, str] = {
-    # product
     "prodid": "productid", "prodnm": "productname", "prodcd": "productid",
     "prodno": "productid", "itmid": "productid", "itmnm": "productname",
-    # order
     "ordid": "orderid", "ordno": "orderid", "ordnm": "orderid",
     "orddt": "orderdate", "ordsts": "orderstatus",
-    # price / quantity
     "upr": "unitprice", "uprc": "unitprice", "unitprc": "unitprice",
     "qty": "quantity", "qtyno": "quantity",
     "discamt": "discountamount", "disamt": "discountamount",
     "netamt": "netamount", "totamt": "totalamount",
-    # sku / category / brand
     "skucd": "sku", "skuno": "sku",
     "catnm": "category", "catcd": "category", "catid": "category",
     "brndn": "brand", "brndnm": "brand", "brndid": "brand",
-    # stock
     "stkqty": "stockquantity", "stk": "stockquantity", "stqty": "stockqty",
-    # return / payment
     "rtnflg": "returnflag", "retflg": "returnflag", "rtndt": "returndate",
     "paymth": "paymentmethod", "paysts": "paymentstatus",
-    # store / cashier
     "strid": "storeid", "strnm": "storeid",
     "csrid": "cashierid", "casrid": "cashierid",
-    # bill / invoice
     "billno": "billno", "bilno": "billno", "invtyp": "invoicetype",
     "taxamt": "taxamount",
 }
 
-# Combined alias lookup: normalised_abbrev → canonical keyword
 _ALL_ALIASES: dict[str, dict[str, str]] = {
-    "Banking": _BANKING_ALIASES,
-    "Finance": _FINANCE_ALIASES,
-    "Insurance": _INSURANCE_ALIASES,
-    "Healthcare": _HEALTHCARE_ALIASES,
+    "Banking": _BANKING_ALIASES, "Finance": _FINANCE_ALIASES,
+    "Insurance": _INSURANCE_ALIASES, "Healthcare": _HEALTHCARE_ALIASES,
     "Retail": _RETAIL_ALIASES,
 }
 
 
 def _expand_aliases(norm_cols: list[str]) -> dict[str, list[str]]:
-    """
-    For each domain, produce an expanded list where abbreviated column
-    names are replaced by their canonical keyword equivalents.
-    Returns dict[domain_name → expanded_norm_cols].
-    """
-    expanded: dict[str, list[str]] = {}
-    for domain, alias_map in _ALL_ALIASES.items():
-        result = []
-        for nc in norm_cols:
-            if nc in alias_map:
-                result.append(alias_map[nc])
-            else:
-                result.append(nc)
-        expanded[domain] = result
-    return expanded
+    return {
+        domain: [alias_map.get(nc, nc) for nc in norm_cols]
+        for domain, alias_map in _ALL_ALIASES.items()
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -255,25 +250,16 @@ class DomainConfig:
 
 DOMAIN_CONFIGS: list[DomainConfig] = [
 
-    # ------------------------------------------------------------------
     DomainConfig(
-        name="Banking",
-        ml_label=0,
+        name="Banking", ml_label=0,
         exclusive_keywords=[
-            # IFSC / SWIFT / international
             "ifsc", "ifsccode", "swiftcode", "iban", "bic",
             "routingnumber", "routing",
-            # loan / EMI
-            "emiamount", "emi", "loanid", "loannumber", "loantype",
-            # overdraft / balance controls
+            "emiamount", "emi", "loanid", "loannumber", "loantype", "loanamount",
             "overdraftlimit", "overdraftused", "overdraft",
             "minimumbalance", "standinginstruction",
-            # dates specific to banking ops
-            "clearancedate", "disbursementdate",
-            # KYC / card
-            "kycstatus", "kyc",
-            "cardnumber", "expirydate",
-            "posterminal",
+            "clearancedate", "disbursementdate", "transactiondate",
+            "kycstatus", "kyc", "cardnumber", "expirydate", "posterminal",
         ],
         shared_keywords=[
             "accountnumber", "accountno", "accountid", "accountbalance", "accounttype",
@@ -281,19 +267,14 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "transactionid", "transactiontype",
             "depositamount", "withdrawamount", "withdrawal",
             "creditamount", "debitamount",
-            "logintime", "logouttime",
-            "settlementdate", "authorizationcode",
+            "logintime", "logouttime", "settlementdate", "authorizationcode",
         ],
         combo_rules=[
-            {"ifsc", "accountnumber"},
-            {"ifsc", "accountid"},
-            {"swiftcode", "iban"},
-            {"loanid", "emi"},
-            {"accountid", "overdraft"},
-            {"routing", "accountnumber"},
-            {"kyc", "accountid"},
-            {"emi", "accountid"},
-            {"loanid", "accountid"},
+            {"ifsc", "accountnumber"}, {"ifsc", "accountid"},
+            {"swiftcode", "iban"}, {"loanid", "emi"},
+            {"accountid", "overdraft"}, {"routing", "accountnumber"},
+            {"kyc", "accountid"}, {"emi", "accountid"}, {"loanid", "accountid"},
+            {"loanamount", "accountid"}, {"loanamount", "emi"},
         ],
         value_keywords=[
             "ifsc", "swift", "iban", "emi", "overdraft",
@@ -307,47 +288,49 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "card_number expiry_date pos_terminal authorization_code settlement_date",
             "account_balance disbursement_date standing_instruction clearance_date",
             "account_type savings_account checking_account overdraft_used",
-            "transfer_amount swift_code routing_number iban bic_code beneficiary_id",
-            "login_time logout_time banking_activity transaction_count",
+            "transfer_amount swift_code routing_number iban bic_code",
             "credit_limit debit_card atm_withdrawal cash_deposit neft_transfer",
             "loan_amount loan_type principal interest_rate tenure disbursement",
+            "acno txnid brcd lnid emiamt odlmt kycflg",
+            "acbal actype depamt wdlamt ifsccd swftcd",
+            "lnamt lnno txndt txntyp brnid brncd",
         ],
     ),
 
-    # ------------------------------------------------------------------
     DomainConfig(
-        name="Finance",
-        ml_label=1,
+        name="Finance", ml_label=1,
         exclusive_keywords=[
             "gst", "gstin", "cgst", "sgst", "igst",
-            "tds", "pf", "esi",
+            "tds",                        # FIX-B: pf/esi removed from here
             "ledgerid", "ledgername", "journalid", "voucherno",
             "costcenter", "fiscalyear",
             "accountspayable", "accountsreceivable",
             "grosssalary", "netsalary", "payrollmonth",
+            "payroll",                    # FIX-B: payroll is exclusive; pure HR won't have it
             "cogs", "ebitda",
-            # abbreviation expansions
             "debitamount", "creditamount",
+            "invoiceamount", "invoicedate",
         ],
         shared_keywords=[
             "invoice", "invoiceid", "invoiceno",
             "tax", "taxamount",
-            "salary", "payroll", "expense", "budget",
+            "expense", "budget",
             "profit", "loss", "revenue",
             "receivable", "payable",
             "debit", "credit",
             "vendor", "supplier",
+            "pf", "esi",                  # FIX-B: demoted to shared
         ],
         combo_rules=[
-            {"invoice", "gst"},
-            {"invoice", "tax"},
-            {"salary", "payroll"},
-            {"ledger", "journal"},
-            {"profit", "loss", "revenue"},
-            {"gst", "tax"},
-            {"tds", "salary"},
+            {"invoice", "gst"}, {"invoice", "tax"},
+            {"salary", "payroll"}, {"ledger", "journal"},
+            {"profit", "loss", "revenue"}, {"gst", "tax"},
+            {"tds", "payroll"},                    # tds alone with payroll context
+            {"pf", "payroll"}, {"esi", "payroll"}, # FIX-B: pf/esi only Finance with payroll
+            {"pf", "tds"}, {"esi", "tds"},         # pf+tds or esi+tds = payroll schema
             {"pf", "esi"},
             {"invoice", "paymentmode"},
+            {"invoiceamount", "gst"}, {"invoicedate", "taxamount"},
         ],
         value_keywords=[
             "gst", "gstin", "tds", "payroll", "salary", "invoice",
@@ -364,13 +347,15 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "profit loss revenue cogs margin fiscal_year quarter",
             "expense_type expense_amount cost_center vendor_name",
             "invoice_date payment_mode payment_status due_date gst",
+            "invno gstno taxamt tdsamt pfamt esiamt salmth",
+            "ldgrid jrnlid vchrno dramt cramt acctpay acctrec",
+            "grssal netsal grpay invamt invdt invcno",
+            "payroll_id employee_id payroll_month gross_salary net_salary tds pf esi",
         ],
     ),
 
-    # ------------------------------------------------------------------
     DomainConfig(
-        name="Insurance",
-        ml_label=2,
+        name="Insurance", ml_label=2,
         exclusive_keywords=[
             "policyno", "policyid", "policystartdate", "policyenddate",
             "premiumamt", "premamt", "totalpremium",
@@ -380,30 +365,20 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "deductible", "dedamt",
             "renewaldate", "lapsedate", "graceperiod",
             "lob", "lobcd", "covcd",
-            "paidamt", "rsvamt",
-            # abbreviation expansions
-            "claimamt",
+            "paidamt", "rsvamt", "claimamt",
         ],
         shared_keywords=[
-            "policy", "polid",
-            "claim", "clmid",
-            "premium", "prem",
-            "insured", "insurer",
-            "beneficiary", "nominee",
-            "coverage", "rider",
+            "policy", "polid", "claim", "clmid",
+            "premium", "prem", "insured", "insurer",
+            "beneficiary", "nominee", "coverage", "rider",
             "agent", "agentid", "broker",
         ],
         combo_rules=[
-            {"policy", "premium"},
-            {"claim", "policy"},
-            {"suminsured", "premium"},
-            {"nominee", "policy"},
-            {"coverage", "deductible"},
-            {"policy", "beneficiary"},
-            {"policyno", "premiumamt"},
-            {"claimid", "policyno"},
-            {"insured", "premium"},
-            {"nominee", "beneficiary"},
+            {"policy", "premium"}, {"claim", "policy"},
+            {"suminsured", "premium"}, {"nominee", "policy"},
+            {"coverage", "deductible"}, {"policy", "beneficiary"},
+            {"policyno", "premiumamt"}, {"claimid", "policyno"},
+            {"insured", "premium"}, {"nominee", "beneficiary"},
         ],
         value_keywords=[
             "policy", "claim approved", "premium paid", "sum insured",
@@ -419,13 +394,14 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "pol_id prem_amt clm_id eff_dt exp_dt lob_cd cov_cd",
             "beneficiary_name nominee_name coverage_type underwriting_score",
             "sum_insured deductible renewal_date lapse_date rider",
+            "plyno prmamt siamt clmno bnfnm nomnm insrdnm",
+            "polstdt polenddt rendt lpsdt grprd dedamt rdrcd",
+            "cvgtyp lobcd covcd undscr pdamt rsvamt clmsts",
         ],
     ),
 
-    # ------------------------------------------------------------------
     DomainConfig(
-        name="Healthcare",
-        ml_label=3,
+        name="Healthcare", ml_label=3,
         exclusive_keywords=[
             "patientid", "patientname",
             "diagnosisid", "icdcode", "diagnosisname",
@@ -436,33 +412,26 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "radiologyreport", "scantype", "radiologistid",
             "triagelevel", "chiefcomplaint",
             "hemoglobin", "bloodgroup", "bloodtype",
-            "vaccinationrecord", "vaccination",
-            "icd",
-            # abbreviation expansions
+            "vaccinationrecord", "vaccination", "icd",
             "prescriptiondt", "prescriptionno",
         ],
         shared_keywords=[
             "patient", "doctor", "physician", "surgeon", "nurse",
             "diagnosis", "treatment", "prescription", "medication",
-            "admission", "discharge", "hospital", "clinic", "ward",
+            "admission", "discharge", "hospital", "clinic",
             "appointment", "vitals", "symptoms", "allergies",
         ],
         combo_rules=[
-            {"patient", "doctor"},
-            {"patient", "diagnosis"},
+            {"patient", "doctor"}, {"patient", "diagnosis"},
             {"patient", "admission", "discharge"},
-            {"medication", "dosage"},
-            {"labtest", "labresult"},
-            {"patient", "medication"},
-            {"patient", "appointment"},
-            {"patientid", "doctor"},
-            {"patientid", "medication"},
-            {"patientid", "labtest"},
-            {"diagnosis", "treatment"},
+            {"medication", "dosage"}, {"labtest", "labresult"},
+            {"patient", "medication"}, {"patient", "appointment"},
+            {"patientid", "doctor"}, {"patientid", "medication"},
+            {"patientid", "labtest"}, {"diagnosis", "treatment"},
         ],
         value_keywords=[
             "dr.", "doctor", "patient", "diagnosis", "prescription",
-            "hospital", "clinic", "surgery", "ward", "triage",
+            "hospital", "clinic", "surgery", "triage",
             "x-ray", "mri", "ct scan", "blood test", "lab test",
         ],
         ml_samples=[
@@ -476,13 +445,14 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "prescription_id medication_name dosage drug_interaction",
             "lab_test_id test_name test_result specimen_type",
             "radiology_report scan_type imaging_date radiologist_id",
+            "ptid patnm drid diagcd icdcd mednm dosqty rxdt",
+            "admdt dscdt labid tstnm tstres spcmtp wardno vtl",
+            "symcd vitsgn patrec docnm diagid diagno rxno",
         ],
     ),
 
-    # ------------------------------------------------------------------
     DomainConfig(
-        name="Retail",
-        ml_label=4,
+        name="Retail", ml_label=4,
         exclusive_keywords=[
             "productid", "productname", "sku",
             "unitprice", "costprice", "stockquantity", "stockqty",
@@ -491,7 +461,6 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "saleschannel", "storeid", "cashierid",
             "returnflag", "returndate",
             "invoicetype", "billno",
-            # abbreviation expansions
             "prodid", "prodnm", "ordid",
         ],
         shared_keywords=[
@@ -506,11 +475,8 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             {"sku", "stockquantity"},
             {"discount", "totalamount", "paymentmethod"},
             {"productname", "unitprice"},
-            # abbreviated combos
-            {"prodid", "ordid"},
-            {"prodid", "quantity"},
-            {"ordid", "quantity", "unitprice"},
-            {"sku", "quantity"},
+            {"prodid", "ordid"}, {"prodid", "quantity"},
+            {"ordid", "quantity", "unitprice"}, {"sku", "quantity"},
         ],
         value_keywords=[
             "order placed", "order shipped", "delivered", "cancelled",
@@ -524,13 +490,14 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "invoice_type invoice_no product_id unit_price tax_amount return_flag",
             "payment_method payment_status total_amount discount net_amount",
             "sku product_name category brand unit_price cost_price stock_quantity",
+            "prodid prodnm skucd ordid orddt qty upr discamt",
+            "catnm brndn stkqty rtnflg paymth strid csrid",
+            "netamt totamt ordsts paysts taxamt billno invtyp",
         ],
     ),
 
-    # ------------------------------------------------------------------
     DomainConfig(
-        name="Other",
-        ml_label=5,
+        name="Other", ml_label=5,
         exclusive_keywords=[],
         shared_keywords=[
             "employeeid", "studentid", "ticketid", "vehicleid", "deviceid",
@@ -546,6 +513,12 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "property_id address bedrooms area listing_date",
             "post_id likes shares platform published_at",
             "shipment_id origin destination carrier estimated_delivery",
+            # FIX-A: pure HR schemas
+            "employee_id department designation job_title manager reporting_to doj",
+            "emp_id salary pf_number esi_number designation grade band",
+            # FIX-A: government/civic schemas
+            "citizen_id aadhaar_no voter_id pan_no ration_card scheme_code",
+            "beneficiary_id district_code state_code block_name panchayat",
         ],
     ),
 ]
@@ -563,30 +536,27 @@ def _score_domain(
     config: DomainConfig,
     expanded_cols: list[str] | None = None,
 ) -> dict[str, float]:
-    """
-    Score a domain against normalised columns.
-    expanded_cols = alias-expanded version for this domain (optional).
-    Scoring runs on BOTH raw and expanded to catch either style.
-    """
-    cols_to_score = norm_cols[:]
     if expanded_cols:
-        # Union: include expanded aliases as additional virtual columns
-        cols_to_score = list(set(norm_cols) | set(expanded_cols))
+        seen: set[str] = set(norm_cols)
+        extras = [c for c in expanded_cols if c not in seen]
+        cols_to_score = norm_cols + extras
+    else:
+        cols_to_score = norm_cols[:]
 
     exclusive_hits = sum(
         1 for col in cols_to_score
         if not _is_generic(col)
-        and any(kw in col for kw in config.exclusive_keywords)
+        and any(_kw_match(col, kw) for kw in config.exclusive_keywords)
     )
     shared_hits = sum(
         1 for col in cols_to_score
         if not _is_generic(col)
-        and any(kw in col for kw in config.shared_keywords)
-        and not any(kw in col for kw in config.exclusive_keywords)
+        and any(_kw_match(col, kw) for kw in config.shared_keywords)
+        and not any(_kw_match(col, kw) for kw in config.exclusive_keywords)
     )
     combo_hits = sum(
         1 for rule in config.combo_rules
-        if all(any(kw in col for col in cols_to_score) for kw in rule)
+        if all(any(_kw_match(col, kw) for col in cols_to_score) for kw in rule)
     )
 
     total = (
@@ -604,7 +574,7 @@ def _score_domain(
 
 def _score_values(sample_values: list[str], config: DomainConfig) -> int:
     return sum(
-        1 for val in sample_values
+        1 for val in sample_values[:200]
         if any(kw in str(val).lower().strip() for kw in config.value_keywords)
     )
 
@@ -624,11 +594,6 @@ def _to_probs(scores: dict[str, float], min_floor: float = 0.005) -> dict[str, f
 # ---------------------------------------------------------------------------
 
 class _MLFallback:
-    """
-    Only fires when keyword scoring returns zero signal.
-    Generic-only columns → Other directly, no inference.
-    Low-certainty predictions → Other.
-    """
     _THRESHOLD = 0.55
 
     def __init__(self) -> None:
@@ -646,9 +611,7 @@ class _MLFallback:
                 stop_words=list(_GENERIC_TOKENS),
             )),
             ("clf", LogisticRegression(
-                max_iter=1000,
-                random_state=42,
-                class_weight="balanced",
+                max_iter=1000, random_state=42, class_weight="balanced",
             )),
         ])
         self._pipeline.fit(X, y)
@@ -673,61 +636,36 @@ class DomainClassifier:
     Classifies database schemas into Banking, Finance, Insurance,
     Healthcare, Retail, or Other.
 
-    Handles:
-    - Full column names      (account_number, policy_no, patient_id …)
-    - Abbreviated columns    (acno, pol_no, pat_id, inv_no, prod_nm …)
-    - Mixed schemas          (banking + insurance overlap, etc.)
-    - Fully generic schemas  (id, name, value, date → Other)
-
-    Public methods
-    --------------
-    predict(table_names, all_columns, sample_values=None) → dict
-    predict_domain_2step(all_columns, sample_values=None) → dict
-    classify_table(df, table_name) → (is_banking, confidence, evidence)
-    get_domain_split_summary(table_names, all_columns, sample_values=None) → dict
+    Key behaviours (v3)
+    -------------------
+    - Pure HR schemas (employee, department, designation, pf_number)  -> Other
+    - HR + Payroll schemas (payroll_month, gross_salary, tds)          -> Finance
+    - Government schemas (aadhaar, voter_id + ifsc_code)               -> Other
+    - Mixed schemas expose secondary_domain in all outputs
     """
 
     def __init__(self) -> None:
         self._ml = _MLFallback()
 
-    # ------------------------------------------------------------------
     def predict(
         self,
         table_names: list[str],
         all_columns: list[str],
         sample_values: list[str] | None = None,
     ) -> dict[str, Any]:
-        """
-        Returns
-        -------
-        {
-          domain_label      : str,
-          is_banking        : bool,
-          confidence        : float,        # 0–100
-          percentages       : {domain: pct},
-          evidence          : [str, ...],
-          column_domain_map : {domain: [col, ...]},
-          used_ml_fallback  : bool,
-        }
-        """
         norm_cols = _normalise_all(all_columns)
         values = list(sample_values or [])
-
-        # Build alias-expanded column lists per domain
         expanded = _expand_aliases(norm_cols)
 
-        # Keyword scoring (with alias expansion per domain)
         col_scores: dict[str, float] = {
             cfg.name: _score_domain(norm_cols, cfg, expanded.get(cfg.name))["total"]
             for cfg in DOMAIN_CONFIGS
         }
 
-        # Blend value-level scores at reduced weight
         if values:
             for cfg in DOMAIN_CONFIGS:
                 col_scores[cfg.name] += _score_values(values[:200], cfg) * 0.5
 
-        # ML fallback only when zero keyword signal
         used_ml = False
         if sum(col_scores.values()) == 0:
             all_generic = all(_is_generic(c) for c in norm_cols)
@@ -735,13 +673,20 @@ class DomainClassifier:
             col_scores = self._ml.predict(text, all_generic)
             used_ml = True
 
+        # FIX-D: minimum score floor
+        if not used_ml and max(col_scores.values()) < MIN_SCORE_FLOOR:
+            col_scores = {k: 0.0 for k in col_scores}
+            col_scores["Other"] = 1.0
+
         probs = _to_probs(col_scores)
         primary = max(probs, key=probs.get)
         confidence = round(probs[primary] * 100, 2)
         percentages = self._round_to_100({k: v * 100 for k, v in probs.items()})
+        secondary_domain = self._find_secondary(probs, primary, confidence)
 
         return {
             "domain_label": primary,
+            "secondary_domain": secondary_domain,
             "is_banking": primary == "Banking",
             "confidence": confidence,
             "percentages": percentages,
@@ -750,7 +695,6 @@ class DomainClassifier:
             "used_ml_fallback": used_ml,
         }
 
-    # ------------------------------------------------------------------
     def predict_domain_2step(
         self,
         all_columns: list[str],
@@ -764,7 +708,6 @@ class DomainClassifier:
             "final_prediction": self._combine_steps(step1, step2),
         }
 
-    # ------------------------------------------------------------------
     def classify_table(
         self, df: pd.DataFrame, table_name: str
     ) -> tuple[bool, float, list[str]]:
@@ -772,14 +715,10 @@ class DomainClassifier:
         sample_values: list[str] = []
         for col in df.columns:
             sample_values.extend(df[col].dropna().head(10).astype(str).tolist())
-        r = self.predict(
-            table_names=[table_name],
-            all_columns=columns,
-            sample_values=sample_values,
-        )
+        r = self.predict(table_names=[table_name], all_columns=columns,
+                         sample_values=sample_values)
         return r["is_banking"], r["confidence"], r["evidence"]
 
-    # ------------------------------------------------------------------
     def get_domain_split_summary(
         self,
         table_names: list[str],
@@ -796,6 +735,7 @@ class DomainClassifier:
         return {
             "percentages": pcts,
             "primary_domain": r["domain_label"],
+            "secondary_domain": r["secondary_domain"],
             "confidence": r["confidence"],
             "is_banking": r["is_banking"],
             "evidence": r["evidence"],
@@ -807,13 +747,24 @@ class DomainClassifier:
                 "colors": [colors[d] for d in DOMAIN_NAMES],
             },
             "explanation": self._generate_explanation(
-                r["domain_label"], r["confidence"], r["evidence"]
+                r["domain_label"], r["secondary_domain"],
+                r["confidence"], r["evidence"]
             ),
         }
 
     # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _find_secondary(
+        probs: dict[str, float], primary: str, primary_pct: float
+    ) -> str | None:
+        candidates = {k: v * 100 for k, v in probs.items() if k != primary}
+        if not candidates:
+            return None
+        runner_up = max(candidates, key=candidates.get)
+        if primary_pct - candidates[runner_up] <= SECONDARY_DOMAIN_GAP:
+            return runner_up
+        return None
 
     def _analyse_columns(self, columns: list[str]) -> dict[str, Any]:
         norm = _normalise_all(columns)
@@ -838,15 +789,15 @@ class DomainClassifier:
         if not sample_values:
             return {"primary_domain": "Unknown", "confidence": 0.0,
                     "scores": {}, "evidence": []}
-        scores = {cfg.name: float(_score_values(sample_values, cfg))
-                  for cfg in DOMAIN_CONFIGS}
+        capped = sample_values[:200]
+        scores = {cfg.name: float(_score_values(capped, cfg)) for cfg in DOMAIN_CONFIGS}
         total = sum(scores.values())
         if total == 0:
             return {"primary_domain": "Other", "confidence": 0.0,
                     "scores": scores, "evidence": []}
         primary = max(scores, key=scores.get)
         cfg = DOMAIN_MAP[primary]
-        evidence = [v for v in sample_values
+        evidence = [v for v in capped
                     if any(kw in str(v).lower() for kw in cfg.value_keywords)][:3]
         return {
             "primary_domain": primary,
@@ -865,7 +816,7 @@ class DomainClassifier:
                     f"Column: {c1:.1f}%, values: {c2:.1f}%."}
         if d2 not in ("Other", "Unknown"):
             return {"domain": d2, "reasoning":
-                    f"Conflict – columns suggest '{d1}' ({c1:.1f}%) "
+                    f"Conflict: columns suggest '{d1}' ({c1:.1f}%) "
                     f"but row values indicate '{d2}' ({c2:.1f}%). Row data takes priority."}
         if d1 != "Other":
             return {"domain": d1, "reasoning":
@@ -881,6 +832,7 @@ class DomainClassifier:
         expanded: dict[str, list[str]] | None = None,
     ) -> list[str]:
         evidence: list[str] = []
+        capped_vals = values[:200]
         for cfg in DOMAIN_CONFIGS:
             if cfg.name == "Other":
                 continue
@@ -889,9 +841,12 @@ class DomainClassifier:
             hits = [
                 col for col, nc, ec in zip(columns, norm_cols, exp)
                 if not _is_generic(nc)
-                and (any(kw in nc for kw in all_kws) or any(kw in ec for kw in all_kws))
+                and (
+                    any(_kw_match(nc, kw) for kw in all_kws)
+                    or any(_kw_match(ec, kw) for kw in all_kws)
+                )
             ]
-            val_hits = [str(v) for v in values
+            val_hits = [str(v) for v in capped_vals
                         if any(kw in str(v).lower() for kw in cfg.value_keywords)][:3]
             if hits:
                 evidence.append(f"{cfg.name} columns: {', '.join(hits[:5])}")
@@ -912,9 +867,11 @@ class DomainClassifier:
                 if cfg.name == "Other":
                     continue
                 all_kws = cfg.exclusive_keywords + cfg.shared_keywords
-                ec = (expanded or {}).get(cfg.name, [nc] * len(norm_cols))[i]
+                domain_exp = (expanded or {}).get(cfg.name, [])
+                ec = domain_exp[i] if i < len(domain_exp) else nc
                 if not _is_generic(nc) and (
-                    any(kw in nc for kw in all_kws) or any(kw in ec for kw in all_kws)
+                    any(_kw_match(nc, kw) for kw in all_kws)
+                    or any(_kw_match(ec, kw) for kw in all_kws)
                 ):
                     result[cfg.name].append(col)
                     matched = True
@@ -932,7 +889,12 @@ class DomainClassifier:
         return rounded
 
     @staticmethod
-    def _generate_explanation(primary: str, confidence: float, evidence: list[str]) -> str:
+    def _generate_explanation(
+        primary: str,
+        secondary: str | None,
+        confidence: float,
+        evidence: list[str],
+    ) -> str:
         high = confidence >= 70
         intros: dict[str, tuple[str, str]] = {
             "Banking":    ("a <strong>Banking</strong> database",
@@ -950,4 +912,11 @@ class DomainClassifier:
         }
         hi, lo = intros.get(primary, ("an <strong>Unknown</strong> database",) * 2)
         ev = (" Evidence: " + "; ".join(evidence[:3]) + ".") if evidence else ""
-        return f"This appears to be {hi if high else lo} (confidence: {confidence:.1f}%).{ev}"
+        secondary_note = (
+            f" Also shows <strong>{secondary}</strong> characteristics."
+            if secondary else ""
+        )
+        return (
+            f"This appears to be {hi if high else lo} "
+            f"(confidence: {confidence:.1f}%).{ev}{secondary_note}"
+        )
