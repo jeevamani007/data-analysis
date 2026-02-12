@@ -1,0 +1,4 @@
+CustomerID,Name,Email,Phone,DateJoined
+CUST001,John Doe,john.doe@email.com,1234567890,2025-01-10 09:23:45
+CUST002,Jane Smith,jane.smith@email.com,2345678901,2025-02-15 14:11:32
+CUST003,Robert Brown,robert.brown@email.com,3456789012,2025-03-22 10:05:18
