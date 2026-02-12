@@ -191,7 +191,10 @@ window.diagramState = {
     boxHeight: 70,
     // Controls whether per-segment time/date boxes are rendered on the diagram paths.
     // Default: true (other diagrams can still use timing labels).
-    showTimeLabels: true
+    showTimeLabels: true,
+    // Optional filter: when set to a Set of case_id strings, only these
+    // pipelines are rendered on the main Sankey diagram. null/empty = all.
+    visibleCaseIds: null
 };
 
 // Arrow drag state (for per-connector manual adjustment)
@@ -355,7 +358,28 @@ window.renderDiagramPaths = function () {
     let pathsHTML = '';
     const boxWidth = state.boxWidth;
     const boxHeight = state.boxHeight;
-    const totalInDiagram = state.paths.length;
+
+    // Determine which case paths are currently visible (for Sankey-style overlap control)
+    const visibleSet = (state.visibleCaseIds && typeof state.visibleCaseIds.size === 'number' && state.visibleCaseIds.size > 0)
+        ? state.visibleCaseIds
+        : null;
+    const visibleIndexMap = {};
+    const visibleIdxs = [];
+    state.paths.forEach(function (p, idx) {
+        const idStr = String(p.case_id);
+        if (!visibleSet || visibleSet.has(idStr)) {
+            visibleIdxs.push(idx);
+            visibleIndexMap[idx] = visibleIdxs.length - 1;
+        }
+    });
+    const totalInDiagram = visibleIdxs.length || state.paths.length;
+    // Dynamic spread factor so connectors separate more clearly when many Case IDs
+    // are drawn in the same unified diagram. Keeps 2–3 paths fairly tight, but
+    // fans out more aggressively when we have many pipelines.
+    const spreadFactor = 1 + Math.min(2.5, Math.max(0, (totalInDiagram - 1) / 3));
+    // Dynamic stroke width so paths are visibly thicker on the main diagram,
+    // while not becoming too heavy when there are many pipelines.
+    const baseStrokeWidth = totalInDiagram <= 3 ? 4.5 : (totalInDiagram <= 7 ? 3.8 : 3.2);
     /** Where each path touches each event (segment end point). Used to link same-time case paths. */
     const touchPointsByEvent = {};
 
@@ -368,6 +392,13 @@ window.renderDiagramPaths = function () {
             return null;
         }
         state.paths.forEach((path, pathIdx) => {
+            // Skip hidden pipelines (when user has toggled Case IDs)
+            const visOrdinal = Object.prototype.hasOwnProperty.call(visibleIndexMap, pathIdx)
+                ? visibleIndexMap[pathIdx]
+                : null;
+            if (visOrdinal === null) {
+                return;
+            }
             const sequence = path.sequence;
             const color = path.color;
             const timings = state.timings[pathIdx] || [];
@@ -397,8 +428,8 @@ window.renderDiagramPaths = function () {
 
                 // Small static root offset per case so connectors don’t sit
                 // exactly on top of each other where they touch the event boxes.
-                const idxFromCenterRoot = (pathIdx - (totalInDiagram - 1) / 2);
-                const rootPerpStep = 4; // px spacing at node
+                const idxFromCenterRoot = (visOrdinal - (totalInDiagram - 1) / 2);
+                const rootPerpStep = 8 * spreadFactor; // px spacing at node (scaled by path count, more separation)
                 const rootPerpOffset = idxFromCenterRoot * rootPerpStep;
                 if (len > 0 && rootPerpOffset !== 0) {
                     const nxUnitRoot = nx / len;
@@ -414,9 +445,9 @@ window.renderDiagramPaths = function () {
                     ny = deltaX;
                 }
 
-                // Offset Logic (per-case curve separation)
-                const offsetStep = 6;
-                const offset = (pathIdx - (totalInDiagram - 1) / 2) * offsetStep;
+                // Offset Logic (per-case curve separation) – scaled by spreadFactor
+                const offsetStep = 10 * spreadFactor;
+                const offset = (visOrdinal - (totalInDiagram - 1) / 2) * offsetStep;
 
                 // Curve Logic
                 const mx = (x1 + x2) / 2;
@@ -452,7 +483,7 @@ window.renderDiagramPaths = function () {
                 pathsHTML += `
                 <path d="M ${x1p},${y1p} Q ${cpxp},${cpyp} ${x2p},${y2p}" 
                       stroke="${color}" 
-                      stroke-width="3" 
+                      stroke-width="${baseStrokeWidth.toFixed(1)}" 
                       fill="none" 
                       marker-end="url(#arrow-${path.case_id})"
                       opacity="0.9"
@@ -505,12 +536,12 @@ window.renderDiagramPaths = function () {
                 let lxCase = (1 - tCase) * (1 - tCase) * x1p + 2 * (1 - tCase) * tCase * cpxp + tCase * tCase * x2p;
                 let lyCase = (1 - tCase) * (1 - tCase) * y1p + 2 * (1 - tCase) * tCase * cpyp + tCase * tCase * y2p;
 
-                // Extra offset per case path so labels don't overlap:
+                // Extra offset per visible case path so labels don't overlap:
                 // - perpendicular to the line to spread them "above/below"
                 // - slightly along the line so pills don't sit exactly on top
-                const idxFromCenter = (pathIdx - (totalInDiagram - 1) / 2);
-                const labelPerpStep = 16;   // distance between stacked labels
-                const labelAlongStep = 6;   // small along-the-line separation
+                const idxFromCenter = (visOrdinal - (totalInDiagram - 1) / 2);
+                const labelPerpStep = 20 * spreadFactor;   // distance between stacked labels
+                const labelAlongStep = 10 * spreadFactor;  // small along-the-line separation
                 const labelPerpOffset = idxFromCenter * labelPerpStep;
                 const labelAlongOffset = idxFromCenter * labelAlongStep;
 
@@ -615,6 +646,45 @@ window.renderDiagramPaths = function () {
     }
 };
 
+// Toggle which Case IDs are drawn on the main Sankey-style diagram.
+// - First click on a case chip: show only that pipeline.
+// - Click more chips: add/remove pipelines.
+// - When all chips are turned off, we reset to "show all".
+window.toggleUnifiedCaseVisibility = function (caseId) {
+    try {
+        var state = window.diagramState;
+        if (!state || !state.paths) return;
+        var idStr = String(caseId);
+
+        // Initialize visibility set if needed
+        if (!state.visibleCaseIds || typeof state.visibleCaseIds.size !== 'number') {
+            state.visibleCaseIds = new Set();
+        }
+        var set = state.visibleCaseIds;
+
+        if (set.has(idStr)) {
+            // Turn OFF this pipeline
+            set.delete(idStr);
+            // If none left selected, reset filter to "all visible"
+            if (set.size === 0) {
+                state.visibleCaseIds = null;
+            }
+        } else {
+            // If currently no filter, start a new filter with just this case
+            if (!set || state.visibleCaseIds === null) {
+                state.visibleCaseIds = new Set([idStr]);
+            } else {
+                set.add(idStr);
+            }
+        }
+
+        // Re-render with updated visibility
+        window.renderDiagramPaths();
+    } catch (e) {
+        console.error('toggleUnifiedCaseVisibility error', e);
+    }
+};
+
 // Global arrow-drag handlers
 window.onArrowDragMove = function (e) {
     if (!window.arrowDrag || !window.arrowDrag.active) return;
@@ -688,7 +758,8 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         const caseIdLabel = `Case ${String(path.case_id).padStart(3, '0')}`;
         legendHTML += `
                 <button type="button"
-                        onclick="window.showSingleCaseFlow('${String(path.case_id)}')"
+                        data-single-case-id="${String(path.case_id)}"
+                        data-case-toggle="1"
                         style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.65rem; border-radius: 999px; border: 1px solid rgba(148,163,184,0.7); background: #ffffff; cursor: pointer; font-size: 0.8rem; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,0.08);">
                     <span style="width: 18px; height: 3px; background: ${path.color}; border-radius: 2px;"></span>
                     <span style="font-weight: 600;">${caseIdLabel}</span>
@@ -770,8 +841,10 @@ function renderUnifiedCaseFlowDiagram(flowData) {
         'Support Ticket Closed': { x: 320, y: 1000 }, 'Account Frozen': { x: 440, y: 1000 }
     };
 
-    const boxWidth = 160;
-    const boxHeight = 70; // Slightly shorter boxes
+    // Slightly larger boxes so the main Sankey-style diagram feels bigger
+    // and easier to read for end users.
+    const boxWidth = 190;
+    const boxHeight = 80; // Taller boxes for better label legibility
 
     // Calculate positions
     const eventPositions = {};
@@ -834,7 +907,9 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     const availableHeightUnified = Math.max(viewportHeight - 180, 450);
 
     // Outer container (scroll) + pan wrapper (hit area) + pan content (SVG + boxes move together)
-    const diagramMinHeight = Math.max(Math.min(svgHeight + 80, availableHeightUnified), 500);
+    // Make the unified diagram occupy more vertical space on the page so
+    // the full pipeline is clearly visible without feeling cramped.
+    const diagramMinHeight = Math.max(Math.min(svgHeight + 120, availableHeightUnified), 600);
     diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: ' + diagramMinHeight + 'px; height: ' + diagramMinHeight + 'px; padding: 1rem; overflow: auto; background: #fff; border-radius: 12px;">';
     diagramHTML += '<div id="diagram-pan-wrapper" style="position: relative; width: ' + svgWidth + 'px; min-height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="startDiagramPan(event)">';
     diagramHTML += '<div id="diagram-pan-content" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; will-change: transform;">';
@@ -880,8 +955,11 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     window.diagramState.boxWidth = boxWidth;
     window.diagramState.boxHeight = boxHeight;
     window.diagramState.same_time_groups = flowData.same_time_groups || [];
-    // For the unified diagram, hide the per-segment time/date boxes (only show colored paths + Case IDs).
-    window.diagramState.showTimeLabels = false;
+    // For the unified diagram, keep the per-segment time/date boxes visible
+    // so users can see the full pipeline timing information on the main diagram.
+    window.diagramState.showTimeLabels = true;
+    // Reset any previous case visibility filter when a new unified diagram is rendered.
+    window.diagramState.visibleCaseIds = null;
     if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
 
     // Draw paths after DOM is ready; retry for slow layout (healthcare view loads diagram async)
@@ -1427,7 +1505,12 @@ if (typeof document !== 'undefined' && document.addEventListener) {
         if (chip) {
             var cid = chip.getAttribute('data-single-case-id');
             if (cid) {
+                // Always update the Single Case Flow panel
                 window.showSingleCaseFlow(cid);
+                // Additionally, toggle visibility of this Case ID in the main Sankey diagram
+                if (window.toggleUnifiedCaseVisibility) {
+                    window.toggleUnifiedCaseVisibility(cid);
+                }
             }
             return;
         }
@@ -3483,8 +3566,10 @@ function showBankingAnalysisResults(profile) {
         window.diagramState.boxWidth = boxWidth;
         window.diagramState.boxHeight = boxHeight;
         window.diagramState.same_time_groups = flowData.same_time_groups || [];
-        // For the unified diagram, hide the per-segment time/date boxes (only show colored paths + Case IDs).
+        // For the merged diagram, hide the per-segment time/date boxes (only show colored paths + Case IDs).
         window.diagramState.showTimeLabels = false;
+        // Reset any previous case visibility filter when a new merged diagram is rendered.
+        window.diagramState.visibleCaseIds = null;
         if (window.diagramPan) { window.diagramPan.translateX = 0; window.diagramPan.translateY = 0; }
 
         setTimeout(() => window.renderDiagramPaths(), 100);
