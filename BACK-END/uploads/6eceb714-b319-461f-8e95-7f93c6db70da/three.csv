@@ -1,0 +1,6 @@
+transaction_id,account_id,transaction_type,amount,transaction_date,merchant,transaction_status
+T001,A1001,Debit,2000,2024-01-10,Amazon,Success
+T002,A1001,Credit,5000,2024-01-12,Salary,Success
+T003,A1002,Debit,10000,2024-01-11,Flipkart,Success
+T004,A1003,Debit,1500,2024-01-15,Swiggy,Success
+T005,A1004,Credit,8000,2024-01-20,NEFT,Success

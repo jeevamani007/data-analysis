@@ -1,0 +1,4 @@
+TransactionID,AccountID,TransactionType,Amount,Currency,TransactionDate
+TXN5001,ACC1001,Deposit,500.00,USD,2025-01-12 10:05:30
+TXN5002,ACC1002,Withdrawal,300.00,USD,2025-02-17 15:20:45
+TXN5003,ACC1003,Deposit,700.25,USD,2025-03-24 12:35:50

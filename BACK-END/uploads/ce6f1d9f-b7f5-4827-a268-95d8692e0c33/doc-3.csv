@@ -1,0 +1,6 @@
+AppointmentID,PatientID,DoctorID,AppointmentDate,AppointmentTime,Reason,Status
+APT1001,PAT001,DOC001,2025-01-15,09:00:00,Regular Checkup,Completed
+APT1002,PAT002,DOC002,2025-02-20,11:30:00,Migraine,Completed
+APT1003,PAT003,DOC003,2025-03-25,14:15:00,Child Vaccination,Completed
+APT1004,PAT004,DOC004,2025-04-10,10:45:00,Joint Pain,Pending
+APT1005,PAT005,DOC005,2025-05-22,13:00:00,Skin Rash,Completed
