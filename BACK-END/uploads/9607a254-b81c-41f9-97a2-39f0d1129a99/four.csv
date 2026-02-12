@@ -1,0 +1,5 @@
+customer_id,first_name,last_name,dob,gender,phone,email,city,account_open_date
+C001,Ravi,Kumar,1995-06-12,Male,9876543210,ravi@gmail.com,Chennai,2020-01-10
+C002,Anu,Sharma,1992-03-05,Female,9876501234,anu@gmail.com,Bangalore,2019-05-22
+C003,John,Peter,1988-11-20,Male,9898989898,john@gmail.com,Hyderabad,2021-07-15
+C004,Priya,Menon,1996-02-18,Female,9797979797,priya@gmail.com,Kochi,2022-09-01
