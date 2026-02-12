@@ -1,0 +1,41 @@
+CustomerID,FirstName,LastName,DateOfBirth,Gender,Email,PhoneNumber,AddressLine1,City,State,PostalCode,Country,KYCStatus,RegistrationDate
+CUST00001,Yrdrkl,Xiabsyoo,1978-06-22,Female,user1@example.com,555-9780-310,897 ycEMw St,Paris,PAR,550207,UK,Rejected,2024-07-01
+CUST00002,Wnvfrz,Vqqcxoho,1983-10-22,Male,user2@example.com,555-0270-985,95 McSfs St,Paris,BER,191016,USA,Verified,2021-11-21
+CUST00003,Toyvpj,Eiyxcltj,1976-02-14,Male,user3@example.com,555-7369-524,400 wcSZn St,Paris,NY,869342,UK,Verified,2023-08-25
+CUST00004,Dkjwfj,Fnndltqz,1977-05-15,Female,user4@example.com,555-8431-986,856 DFkww St,London,BER,706672,Japan,Rejected,2023-08-02
+CUST00005,Uvaxim,Ptibogkq,1970-01-05,Female,user5@example.com,555-5565-467,937 qaLLi St,Tokyo,LON,468924,Germany,Rejected,2022-08-22
+CUST00006,Kotyvl,Wzrqtdyk,1973-07-06,Female,user6@example.com,555-5326-489,174 JzZHt St,New York,LON,456483,Germany,Verified,2024-04-10
+CUST00007,Dfpfgl,Xscmpcpn,1976-11-09,Female,user7@example.com,555-3598-471,770 DCKFb St,Paris,TOK,035994,Japan,Pending,2024-08-13
+CUST00008,Aninfj,Zhkmpnqs,1997-05-17,Male,user8@example.com,555-5190-471,193 bITIu St,New York,BER,288727,USA,Verified,2024-12-27
+CUST00009,Vjmioo,Fzvepgiq,1978-07-11,Female,user9@example.com,555-3029-172,117 hIxiX St,Tokyo,NY,208660,UK,Verified,2021-01-30
+CUST00010,Cvsueo,Kikrcgja,1995-02-03,Female,user10@example.com,555-2427-895,435 hkKmC St,London,TOK,262785,Japan,Rejected,2023-05-27
+CUST00011,Klubfn,Lsqsswlr,1992-01-01,Female,user11@example.com,555-2191-667,933 UYPpH St,Tokyo,LON,278344,Japan,Pending,2021-10-31
+CUST00012,Lburny,Ukrewcjz,2000-01-21,Male,user12@example.com,555-0067-580,539 PZLhT St,Tokyo,NY,633126,France,Rejected,2022-07-27
+CUST00013,Audfxm,Ajtgkttt,1980-09-12,Female,user13@example.com,555-2083-049,791 Jimxb St,London,PAR,382363,Germany,Pending,2022-06-05
+CUST00014,Uflrwd,Eqtqyhgy,1986-08-04,Male,user14@example.com,555-6701-311,122 bMrQd St,London,PAR,385888,France,Pending,2021-03-28
+CUST00015,Bvbwol,Zaavxbfe,1992-11-13,Male,user15@example.com,555-6027-307,81 GNKwC St,Berlin,BER,671815,UK,Rejected,2021-09-25
+CUST00016,Gaqbbs,Uzkandzs,1973-05-04,Female,user16@example.com,555-4742-821,717 fmTNJ St,London,LON,550038,USA,Pending,2023-11-08
+CUST00017,Jjobio,Homojorx,1970-10-12,Male,user17@example.com,555-0294-973,303 HXeBg St,New York,NY,874997,Germany,Rejected,2022-03-24
+CUST00018,Jngbho,Mesgneqb,1975-06-23,Male,user18@example.com,555-6304-871,88 jPgbh St,Paris,LON,913247,USA,Pending,2024-01-30
+CUST00019,Ugkrnz,Xrsmodtj,1997-01-16,Female,user19@example.com,555-4958-366,207 Czwte St,London,TOK,621382,USA,Pending,2023-04-16
+CUST00020,Luvbzx,Dewusizt,1984-03-25,Female,user20@example.com,555-8594-640,242 DlIqT St,London,BER,094156,UK,Rejected,2023-08-07
+CUST00021,Cgjkin,Zxiwrjby,1971-10-21,Male,user21@example.com,555-7483-565,96 smzqL St,New York,TOK,910326,France,Rejected,2023-03-25
+CUST00022,Sorady,Bplcgmtl,1995-04-24,Male,user22@example.com,555-0178-206,575 oLEBf St,Tokyo,NY,051133,USA,Pending,2023-05-30
+CUST00023,Qkhcoq,Nykeayvz,1998-05-07,Male,user23@example.com,555-6145-115,763 hLbKE St,Tokyo,PAR,200772,USA,Rejected,2024-02-25
+CUST00024,Rnizmn,Cxcvhkgk,1987-08-28,Female,user24@example.com,555-0650-862,232 USdEs St,Tokyo,PAR,874980,France,Verified,2024-05-13
+CUST00025,Zsquzr,Probliqe,1984-11-20,Female,user25@example.com,555-7420-134,767 GAHQK St,Tokyo,PAR,997565,Japan,Rejected,2021-04-02
+CUST00026,Uhingu,Qfoqdxru,1970-03-25,Male,user26@example.com,555-7741-078,438 xentH St,Paris,LON,696240,Japan,Rejected,2022-07-17
+CUST00027,Whcqqm,Orjwarcn,1984-11-27,Female,user27@example.com,555-4368-219,295 cNNmB St,Berlin,NY,797461,USA,Verified,2024-09-08
+CUST00028,Fnqyzc,Uqknkxve,1987-07-01,Male,user28@example.com,555-9111-031,142 OFoPM St,Tokyo,BER,210131,USA,Pending,2024-03-21
+CUST00029,Tsxals,Scybkqrf,1993-01-05,Female,user29@example.com,555-4685-139,531 pMCCa St,Tokyo,NY,353723,France,Verified,2021-05-18
+CUST00030,Wyoppu,Bzfwrxqo,1993-07-11,Female,user30@example.com,555-9750-988,506 OuUNp St,New York,TOK,244973,USA,Verified,2023-09-11
+CUST00031,Arrfsl,Gqxmxebb,1995-11-27,Male,user31@example.com,555-2324-593,99 Fhlab St,New York,PAR,125470,France,Verified,2023-11-05
+CUST00032,Gqxalp,Ebrdufma,1981-02-08,Male,user32@example.com,555-6282-705,931 vBPjT St,London,LON,631875,France,Verified,2021-06-17
+CUST00033,Zvfway,Jdernwkr,1983-05-12,Male,user33@example.com,555-2576-447,323 JuWgz St,Berlin,NY,197805,Japan,Verified,2024-10-25
+CUST00034,Sbadth,Rietjfis,1999-02-15,Male,user34@example.com,555-2712-417,814 CLszp St,Tokyo,BER,586656,UK,Rejected,2021-04-12
+CUST00035,Icixuo,Yqpyjqvz,1972-12-12,Male,user35@example.com,555-6430-599,909 auRCP St,London,NY,175740,Japan,Rejected,2022-04-25
+CUST00036,Jkomjr,Snxmumtm,1976-05-26,Female,user36@example.com,555-8936-807,673 heaBV St,Tokyo,PAR,664946,France,Pending,2021-02-14
+CUST00037,Jwpnrv,Exrgappx,2000-01-25,Female,user37@example.com,555-5780-851,14 GSYgm St,Tokyo,BER,364003,France,Verified,2021-03-14
+CUST00038,Czmlsj,Zcwwlmfv,1982-07-26,Male,user38@example.com,555-7920-039,22 kOOjA St,Tokyo,TOK,028028,UK,Verified,2022-08-11
+CUST00039,Oprmcc,Lwwvhtra,1989-07-22,Male,user39@example.com,555-3455-640,715 GkJXr St,New York,LON,210583,Japan,Verified,2023-06-16
+CUST00040,Bpqykx,Sblxzfvi,1976-07-27,Female,user40@example.com,555-7261-996,945 Qwomi St,Berlin,LON,904013,USA,Verified,2021-01-08

@@ -1040,6 +1040,9 @@ window.showSingleCaseFlow = function (caseIdStr) {
 
         const html = renderMergedCaseFlowDiagram(singleFlowData);
         container.innerHTML = html || '<div style="color: #6b7280;">No steps available for this Case ID.</div>';
+        if (window.initMergedStepDiagram) {
+            setTimeout(function () { window.initMergedStepDiagram(); }, 0);
+        }
 
         // Reveal accordion body and scroll into view for better UX
         if (body) {
@@ -1375,6 +1378,9 @@ window.showUserMergedFlow = function (userId) {
         } else {
             container.innerHTML = explanation + html;
             console.log('✅ Successfully rendered merged diagram');
+            if (window.initMergedStepDiagram) {
+                setTimeout(function () { window.initMergedStepDiagram(); }, 0);
+            }
         }
 
         if (body) {
@@ -1445,6 +1451,438 @@ function renderMergedCaseFlowDiagram(flowData) {
     }
 
     const casePaths = flowData.case_paths || [];
+    const firstPath = casePaths[0];
+    const isMergedSinglePath = casePaths.length === 1 && firstPath && Array.isArray(firstPath.path_sequence) && firstPath.path_sequence.length > 1;
+
+    // ---------------------------------------------------------------------
+    // 1) Single merged path (per-user or per-case) – tree layout, no duplicate boxes
+    // ---------------------------------------------------------------------
+    if (isMergedSinglePath) {
+        const mergedPath = firstPath;
+        const seq = mergedPath.path_sequence || [];
+
+        if (!seq || seq.length < 2) {
+            return '';
+        }
+
+        // Count how many times each from→to transition appears across the sequence
+        const fromToCounts = {};
+        const pairOccurrenceIndex = {};
+        for (let i = 0; i < seq.length - 1; i++) {
+            const from = seq[i];
+            const to = seq[i + 1];
+            if (!from || !to) continue;
+            const key = from + '→' + to;
+            fromToCounts[key] = (fromToCounts[key] || 0) + 1;
+        }
+
+        // Build unique event list from this sequence (no duplicate boxes)
+        const seenEvents = {};
+        const eventTypesSingle = ['Process'];
+        seq.forEach(function (ev) {
+            if (!ev || ev === 'Process' || ev === 'End') return;
+            if (!seenEvents[ev]) {
+                seenEvents[ev] = true;
+                eventTypesSingle.push(ev);
+            }
+        });
+        eventTypesSingle.push('End');
+
+        // Fixed positions to create a domain-aware tree layout (no duplicate nodes)
+        const fixedPositionsSingle = {
+            'Process': { x: 50, y: 250 },
+            'Created Account': { x: 400, y: 150 },
+            'Account Open': { x: 400, y: 150 },
+            'Login': { x: 750, y: 150 },
+            'Login / Logout': { x: 750, y: 150 },
+            'Check Balance': { x: 1100, y: 150 },
+            'Balance Inquiry': { x: 1100, y: 150 },
+            'Withdrawal Transaction': { x: 1450, y: 150 },
+            'Credit': { x: 400, y: 450 },
+            'Deposit': { x: 400, y: 450 },
+            'Logout': { x: 750, y: 450 },
+            'End': { x: 1250, y: 250 },
+            // Healthcare events
+            'Register': { x: 100, y: 250 },
+            'Visit': { x: 400, y: 250 },
+            'Appointment': { x: 400, y: 250 },
+            'Procedure': { x: 550, y: 250 },
+            'Treatment': { x: 550, y: 250 },
+            'Pharmacy': { x: 700, y: 250 },
+            'LabTest': { x: 850, y: 250 },
+            'Lab Test': { x: 850, y: 250 },
+            'Billing': { x: 1000, y: 250 },
+            'Admission': { x: 450, y: 400 },
+            'Discharge': { x: 700, y: 400 },
+            'Doctor': { x: 950, y: 400 },
+            // Retail events
+            'Customer Visit': { x: 80, y: 250 }, 'Product View': { x: 200, y: 250 }, 'Product Search': { x: 320, y: 250 },
+            'Add To Cart': { x: 440, y: 250 }, 'Remove From Cart': { x: 560, y: 250 }, 'Apply Coupon': { x: 680, y: 250 },
+            'Checkout Started': { x: 800, y: 250 }, 'Address Entered': { x: 920, y: 250 }, 'Payment Selected': { x: 1040, y: 250 },
+            'Payment Success': { x: 1160, y: 250 }, 'Payment Failed': { x: 1280, y: 250 }, 'Order Placed': { x: 200, y: 400 },
+            'Order Confirmed': { x: 320, y: 400 }, 'Invoice Generated': { x: 440, y: 400 }, 'Order Packed': { x: 560, y: 400 },
+            'Order Shipped': { x: 680, y: 400 }, 'Out For Delivery': { x: 800, y: 400 }, 'Order Delivered': { x: 920, y: 400 },
+            'Order Cancelled': { x: 1040, y: 400 }, 'Return Initiated': { x: 200, y: 550 }, 'Return Received': { x: 320, y: 550 },
+            'Refund Processed': { x: 440, y: 550 }, 'User Signed Up': { x: 80, y: 400 }, 'User Logged In': { x: 80, y: 550 },
+            'User Logged Out': { x: 200, y: 150 },
+            // Insurance events
+            'Customer Registered': { x: 80, y: 250 }, 'KYC Completed': { x: 200, y: 250 }, 'Policy Quoted': { x: 320, y: 250 },
+            'Policy Purchased': { x: 440, y: 250 }, 'Policy Activated': { x: 560, y: 250 }, 'Premium Due': { x: 680, y: 250 },
+            'Premium Paid': { x: 800, y: 250 }, 'Policy Renewed': { x: 80, y: 400 },
+            'Policy Expired': { x: 200, y: 400 }, 'Claim Requested': { x: 320, y: 400 }, 'Claim Registered': { x: 440, y: 400 },
+            'Claim Verified': { x: 560, y: 400 }, 'Claim Assessed': { x: 680, y: 400 }, 'Claim Approved': { x: 800, y: 400 },
+            'Claim Rejected': { x: 920, y: 400 }, 'Claim Paid': { x: 80, y: 550 }, 'Nominee Updated': { x: 200, y: 550 },
+            'Policy Cancelled': { x: 320, y: 550 }, 'Policy Closed': { x: 440, y: 550 },
+            // Finance events
+            'Account Opened': { x: 320, y: 250 }, 'Account Closed': { x: 440, y: 250 },
+            'Invest': { x: 560, y: 250 }, 'Value Update': { x: 680, y: 250 }, 'Redeem': { x: 800, y: 250 },
+            'Switch': { x: 920, y: 250 }, 'Dividend': { x: 80, y: 400 },
+            'Transfer Initiated': { x: 560, y: 400 }, 'Transfer Completed': { x: 680, y: 400 },
+            'Payment Initiated': { x: 1040, y: 250 }, 'Loan Applied': { x: 80, y: 550 },
+            'Loan Approved': { x: 200, y: 550 }, 'Loan Disbursed': { x: 320, y: 550 },
+            'Application Submitted': { x: 80, y: 700 }, 'Application Reviewed': { x: 200, y: 700 },
+            'Proposal Generated': { x: 320, y: 700 }, 'Proposal Accepted': { x: 440, y: 700 },
+            'Identity Verified': { x: 560, y: 700 }, 'Address Verified': { x: 680, y: 700 },
+            'Income Verified': { x: 800, y: 700 }, 'Beneficiary Added': { x: 920, y: 700 },
+            'Beneficiary Updated': { x: 80, y: 850 }, 'Coverage Activated': { x: 200, y: 850 },
+            'Coverage Changed': { x: 320, y: 850 }, 'Installment Generated': { x: 440, y: 850 },
+            'Installment Paid': { x: 560, y: 850 }, 'Penalty Applied': { x: 680, y: 850 },
+            'Discount Applied': { x: 800, y: 850 }, 'Case Escalated': { x: 920, y: 850 },
+            'Case Resolved': { x: 80, y: 1000 }, 'Support Ticket Created': { x: 200, y: 1000 },
+            'Support Ticket Closed': { x: 320, y: 1000 }, 'Account Frozen': { x: 440, y: 1000 }
+        };
+
+        const boxWidth = 160;
+        const boxHeight = 70;
+
+        const eventPositionsSingle = {};
+        let dynamicX = 50;
+        const takenPositionsSingle = Object.values(fixedPositionsSingle).map(function (p) { return p.x + ',' + p.y; });
+        function resolveEventPos(ev, posMap) {
+            if (posMap[ev]) return posMap[ev];
+            if (posMap[ev.replace(/\s+/g, '')]) return posMap[ev.replace(/\s+/g, '')];
+            if (posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')]) return posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')];
+            return null;
+        }
+        eventTypesSingle.forEach(function (event) {
+            const pos = fixedPositionsSingle[event] || fixedPositionsSingle[event.replace('Transaction', '').trim()] || resolveEventPos(event, fixedPositionsSingle);
+            if (pos) {
+                eventPositionsSingle[event] = pos;
+            } else {
+                let placed = false;
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 5; c++) {
+                        const tx = 50 + c * 350;
+                        const ty = 150 + r * 300;
+                        const key = tx + ',' + ty;
+                        if (takenPositionsSingle.indexOf(key) === -1 && !placed) {
+                            eventPositionsSingle[event] = { x: tx, y: ty };
+                            takenPositionsSingle.push(key);
+                            placed = true;
+                        }
+                    }
+                }
+                if (!placed) {
+                    eventPositionsSingle[event] = { x: dynamicX, y: 750 };
+                    dynamicX += 350;
+                }
+            }
+        });
+
+        const maxX = Math.max.apply(null, Object.values(eventPositionsSingle).map(function (p) { return p.x; })) + 250;
+        const maxY = Math.max.apply(null, Object.values(eventPositionsSingle).map(function (p) { return p.y; })) + 150;
+        const svgWidth = Math.max(900, maxX);
+        const svgHeight = Math.max(400, maxY);
+
+        // Auto-scale diagram so it fits nicely on screen
+        let viewportWidth = 1200;
+        let viewportHeight = 800;
+        try {
+            if (typeof window !== 'undefined') {
+                if (window.innerWidth) viewportWidth = window.innerWidth;
+                if (window.innerHeight) viewportHeight = window.innerHeight;
+            }
+        } catch (e) {
+            // ignore, use defaults
+        }
+
+        const availableWidth = Math.max(viewportWidth - 80, 600);
+        const availableHeight = Math.max(viewportHeight - 180, 400);
+
+        const scaleX = availableWidth / svgWidth;
+        const scaleY = availableHeight / svgHeight;
+        const autoScale = Math.min(scaleX, scaleY, 1.4);
+
+        const scaledWidth = svgWidth * autoScale;
+        const scaledHeight = svgHeight * autoScale;
+        const scaleStyle = autoScale !== 1 ? `transform: scale(${autoScale}); transform-origin: 0 0;` : '';
+        const diagramMinHeight = Math.max(availableHeight, 420);
+
+        // Build edges: every consecutive pair in the sequence becomes one arrow
+        const edges = [];
+        for (let j = 0; j < seq.length - 1; j++) {
+            const fromEv = seq[j];
+            const toEv = seq[j + 1];
+            if (!fromEv || !toEv) continue;
+
+            const edgeKey = fromEv + '→' + toEv;
+            const repeatCount = fromToCounts[edgeKey] || 1;
+            const stepNumber = j + 1;
+            let stepLabel = 'Step ' + stepNumber;
+            if (repeatCount > 1) {
+                stepLabel += ' (' + repeatCount + 'x)';
+            }
+
+            pairOccurrenceIndex[edgeKey] = (pairOccurrenceIndex[edgeKey] || 0) + 1;
+            const occurrenceIndex = pairOccurrenceIndex[edgeKey];
+
+            edges.push({
+                from: fromEv,
+                to: toEv,
+                stepNumber: stepNumber,
+                stepLabel: stepLabel,
+                repeatCount: repeatCount,
+                occurrenceIndex: occurrenceIndex,
+                totalPairCount: repeatCount
+            });
+        }
+
+        console.log('=== MERGED SINGLE-PATH FLOW (Tree) ===');
+        console.log('Total steps:', edges.length);
+        edges.forEach(function (e) {
+            console.log('  ' + e.stepLabel + ': ' + e.from + ' → ' + e.to);
+        });
+        console.log('========================================');
+
+        let svgHTML = `<svg width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 3; transform-origin: 0 0;">
+        <defs>
+            <marker id="merged-arrow" markerWidth="9" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 9 3, 0 6" fill="#475569" />
+            </marker>
+        </defs>
+        `;
+
+        // Draw arrows for each step between unique event boxes.
+        // - If from === to, draw a self-loop arc around the box.
+        // - If the same from→to pair repeats, fan the arrows using curved paths.
+        edges.forEach(function (e) {
+            const fromPos = eventPositionsSingle[e.from];
+            const toPos = eventPositionsSingle[e.to];
+            if (!fromPos || !toPos) return;
+
+            const x1 = fromPos.x + boxWidth / 2;
+            const y1 = fromPos.y + boxHeight / 2;
+            const rawX2 = toPos.x + boxWidth / 2;
+            const rawY2 = toPos.y + boxHeight / 2;
+
+            let labelX;
+            let labelY;
+            let pathElement = '';
+
+            const dxFull = rawX2 - x1;
+            const dyFull = rawY2 - y1;
+
+            // Self-loop: from event to same event – always show as a clear curved arrow
+            if (e.from === e.to) {
+                const radius = 55;
+                const startAngle = -Math.PI / 3; // angle for loop start
+                const endAngle = -2 * Math.PI / 3; // angle for loop end
+
+                const sx = x1 + radius * Math.cos(startAngle);
+                const sy = y1 + radius * Math.sin(startAngle);
+                const ex = x1 + radius * Math.cos(endAngle);
+                const ey = y1 + radius * Math.sin(endAngle);
+                const cx = x1 + radius * 1.2; // control point a bit outside
+                const cy = y1 - radius * 1.4;
+
+                labelX = x1 + radius * 1.1;
+                labelY = y1 - radius * 1.8;
+
+                pathElement = `<path d="M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}"
+                      stroke="#475569"
+                      stroke-width="2.8"
+                      fill="none"
+                      marker-end="url(#merged-arrow)"
+                      opacity="0.98" />`;
+            } else {
+                const lenFull = Math.sqrt(dxFull * dxFull + dyFull * dyFull) || 1;
+                const nx = -dyFull / lenFull;
+                const ny = dxFull / lenFull;
+
+                // Shorten arrow so head is just before the target box edge
+                const margin = 26;
+                const ux = dxFull / lenFull;
+                const uy = dyFull / lenFull;
+                const x2 = rawX2 - ux * margin;
+                const y2 = rawY2 - uy * margin;
+
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+
+                if (e.totalPairCount > 1) {
+                    // Fan multiple arrows for same from→to pair
+                    const baseOffset = 40;
+                    const groupIndex = e.occurrenceIndex - (e.totalPairCount + 1) / 2;
+                    const offset = groupIndex * baseOffset;
+
+                    const mx = (x1 + x2) / 2;
+                    const my = (y1 + y2) / 2;
+                    const cx = mx + nx * offset;
+                    const cy = my + ny * offset;
+
+                    // Move label slightly off the connector so arrow is fully visible
+                    labelX = cx + nx * 22;
+                    labelY = cy + ny * 22;
+
+                    pathElement = `<path d="M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}"
+                      stroke="#475569"
+                      stroke-width="2.6"
+                      fill="none"
+                      marker-end="url(#merged-arrow)"
+                      opacity="0.95" />`;
+                } else {
+                    // Single straight arrow
+                    const mx = (x1 + x2) / 2;
+                    const my = (y1 + y2) / 2;
+
+                    // Move label slightly off the connector so arrow is fully visible
+                    labelX = mx + nx * 22;
+                    labelY = my + ny * 22;
+
+                    pathElement = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+                      stroke="#475569"
+                      stroke-width="2.6"
+                      marker-end="url(#merged-arrow)"
+                      opacity="0.95" />`;
+                }
+            }
+
+            const labelWidth = 120;
+            const labelOffset = labelWidth / 2;
+
+            svgHTML += `
+            <g class="merged-step-edge" data-merged-step-edge="1" data-step-number="${e.stepNumber}">
+                ${pathElement}
+                <rect x="${labelX - labelOffset}" y="${labelY - 16}" width="${labelWidth}" height="22" rx="11"
+                      fill="white" stroke="#475569" stroke-width="0.9" opacity="0.96" />
+                <text x="${labelX}" y="${labelY - 1}" text-anchor="middle"
+                      font-size="10" font-weight="600" fill="#111827">
+                    ${e.stepLabel}
+                </text>
+            </g>
+            `;
+        });
+
+        svgHTML += '</svg>';
+
+        // Draw one box per unique event (tree layout – no duplicates)
+        let boxesHTML = '';
+        eventTypesSingle.forEach(function (event, idx) {
+            const pos = eventPositionsSingle[event];
+            if (!pos) return;
+
+            const ev = event;
+            const isFirst = idx === 0;
+            const isLast = idx === eventTypesSingle.length - 1;
+            const isEnd = ev === 'End' || isLast;
+
+            let boxBg = '#64748b';
+            if (ev === 'Process' || isFirst) boxBg = '#1e40af';
+            else if (isEnd) boxBg = '#ffffff';
+
+            const borderStyle = isEnd
+                ? 'border: 3px solid #1e40af; background: white; color: #1e40af;'
+                : `background: ${boxBg}; color: white; box-shadow: 0 3px 6px rgba(15,23,42,0.25);`;
+
+            boxesHTML += `
+            <div style="
+                position: absolute;
+                left: ${pos.x}px;
+                top: ${pos.y}px;
+                width: ${boxWidth}px;
+                height: ${boxHeight}px;
+                ${borderStyle}
+                border-radius: ${isEnd ? '50px' : '12px'};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                font-weight: 700;
+                font-size: 0.95rem;
+                z-index: 1;
+                padding: 0.5rem;
+                line-height: 1.2;
+            ">
+                ${ev}
+            </div>
+            `;
+        });
+
+        const filterLabel = (flowData && flowData.filterLabel) ? flowData.filterLabel : '';
+        const diagramTitle = filterLabel
+            ? filterLabel + ' – Step-by-Step Tree Flow'
+            : 'Step-by-Step Flow (Tree Structure)';
+        const diagramDescription = 'Each event appears once as a box. Every step draws an arrow from the previous event to the next, and repeated transitions fan out as multiple arrows without duplicating event boxes.';
+
+        // Expose total steps for global controls
+        if (typeof window !== 'undefined') {
+            window._mergedStepTotal = edges.length;
+        }
+
+        const stepButtonsHTML = edges.map(function (e) {
+            return `<button type="button"
+                        class="merged-step-chip"
+                        data-step-chip="${e.stepNumber}"
+                        onclick="window.jumpMergedStep && window.jumpMergedStep(${e.stepNumber});"
+                        style="padding: 0.2rem 0.65rem; font-size: 0.8rem; border-radius: 999px; border: 1px solid #cbd5e1; background: white; color: #0f172a; cursor: pointer;">
+                        ${e.stepNumber}
+                    </button>`;
+        }).join('');
+
+        return `
+        <section id="merged-step-flow-section" style="margin-bottom: 2.5rem;">
+            <h2 style="font-size: 1.6rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center;">
+                ${diagramTitle}
+            </h2>
+            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem; text-align: center;">
+                ${diagramDescription}
+            </p>
+            <div style="display:flex; justify-content:center; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+                <button type="button"
+                        onclick="window.prevMergedStep && window.prevMergedStep();"
+                        style="padding:0.3rem 0.75rem; font-size:0.8rem; border-radius:999px; border:1px solid #cbd5e1; background:white; cursor:pointer; color:#0f172a;">
+                    ◀ Prev
+                </button>
+                <div id="merged-step-indicator" style="font-size:0.85rem; color:#0f172a; font-weight:600;">
+                    Step 1 of ${edges.length}
+                </div>
+                <button type="button"
+                        onclick="window.nextMergedStep && window.nextMergedStep();"
+                        style="padding:0.3rem 0.75rem; font-size:0.8rem; border-radius:999px; border:1px solid #cbd5e1; background:white; cursor:pointer; color:#0f172a;">
+                    Next ▶
+                </button>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:0.35rem; margin-bottom:0.75rem;">
+                ${stepButtonsHTML}
+            </div>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
+                <div style="position: relative; min-height: ${diagramMinHeight}px; height: ${diagramMinHeight}px; overflow: auto;">
+                    <div style="position: relative; width: ${scaledWidth}px; height: ${scaledHeight}px; margin: 0 auto;">
+                        <div style="position: absolute; left: 0; top: 0; width: ${svgWidth}px; height: ${svgHeight}px; ${scaleStyle}">
+                            ${svgHTML}
+                            ${boxesHTML}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        `;
+    }
+
+    // ---------------------------------------------------------------------
+    // 2) Multi-path aggregated flow – keep existing "merged counts" diagram
+    // ---------------------------------------------------------------------
+
     let eventTypes = flowData.all_event_types || [];
     if (!eventTypes || eventTypes.length === 0) {
         const seen = new Set();
@@ -1460,190 +1898,125 @@ function renderMergedCaseFlowDiagram(flowData) {
         eventTypes.push('End');
     }
 
-    // Check if this is a merged single-path flow (user filter) vs multi-path aggregated flow
-    const isMergedSinglePath = casePaths.length === 1 && casePaths[0].path_sequence && casePaths[0].path_sequence.length > 0;
-    
-    let edges = [];
-    
-    if (isMergedSinglePath) {
-        // For merged single-path flow: show sequential steps, each as separate arrow; count repeats
-        const mergedPath = casePaths[0];
-        const seq = mergedPath.path_sequence || [];
-        var fromToCounts = {}; // key "from→to" -> count (how many times this transition appears)
-        for (var i = 0; i < seq.length - 1; i++) {
-            var from = seq[i];
-            var to = seq[i + 1];
-            if (!from || !to) continue;
-            var key = from + '→' + to;
-            fromToCounts[key] = (fromToCounts[key] || 0) + 1;
-        }
-        
-        var stepNumber = 1;
-        for (var j = 0; j < seq.length - 1; j++) {
-            var fromEv = seq[j];
-            var toEv = seq[j + 1];
-            if (!fromEv || !toEv) continue;
-            var edgeKey = fromEv + '→' + toEv;
-            var repeatCount = fromToCounts[edgeKey] || 1;
-            var stepLabel = 'Step ' + stepNumber;
-            if (repeatCount > 1) {
-                stepLabel += ' (' + repeatCount + 'x)';
-            }
-            
-            edges.push({
-                from: fromEv,
-                to: toEv,
-                segmentCount: 1,
-                caseCount: 1,
-                stepNumber: stepNumber,
-                stepLabel: stepLabel,
-                repeatCount: repeatCount
-            });
-            stepNumber++;
-        }
-        
-        console.log('=== MERGED SINGLE-PATH FLOW ===');
-        console.log('Total steps:', edges.length);
-        edges.forEach(function(e) {
-            console.log('  ' + e.stepLabel + ': ' + e.from + ' → ' + e.to);
-        });
-        console.log('===============================');
-    } else {
-        // For multi-path aggregated flow: aggregate by unique from→to pairs
-        const edgeMap = {}; // key: "from→to" -> { from, to, segmentCount, caseIds:Set }
-        casePaths.forEach(function (p) {
-            const seq = p.path_sequence || [];
-            const cid = p.case_id;
-            for (let i = 0; i < seq.length - 1; i++) {
-                const from = seq[i];
-                const to = seq[i + 1];
-                if (!from || !to) continue;
-                const key = from + '→' + to;
-                if (!edgeMap[key]) {
-                    edgeMap[key] = { from: from, to: to, segmentCount: 0, caseIds: new Set() };
-                }
-                edgeMap[key].segmentCount += 1;
-                if (cid != null) {
-                    edgeMap[key].caseIds.add(cid);
-                }
-            }
-        });
+    // Build unique user patterns and CRT (how many users follow each pattern),
+    // then create one edge per (pattern, from, to) with width ∝ CRT.
+    const patternSequences = {};   // patternKey -> sequence array
+    const patternUserSets = {};    // patternKey -> Set of user ids
 
-        edges = Object.values(edgeMap).map(function (e) {
-            return {
-                from: e.from,
-                to: e.to,
-                segmentCount: e.segmentCount,
-                caseCount: e.caseIds.size || e.segmentCount
-            };
-        }).filter(function (e) {
-            // Drop trivial edges with zero counts (defensive)
-            return e.segmentCount > 0;
-        });
-    }
+    casePaths.forEach(function (p) {
+        const seq = p.path_sequence || [];
+        if (!seq || seq.length < 2) return;
+
+        const patternKey = seq.join('→');
+        if (!patternSequences[patternKey]) {
+            patternSequences[patternKey] = seq;
+        }
+
+        const userKey = p.user_id != null ? String(p.user_id) : String(p.case_id);
+        if (!patternUserSets[patternKey]) {
+            patternUserSets[patternKey] = new Set();
+        }
+        patternUserSets[patternKey].add(userKey);
+    });
+
+    const patternCRT = {}; // patternKey -> number of users
+    Object.keys(patternSequences).forEach(function (pk) {
+        const s = patternUserSets[pk];
+        patternCRT[pk] = s ? s.size : 0;
+    });
+
+    const edgeMapByPattern = {}; // key: patternKey|from→to
+    Object.keys(patternSequences).forEach(function (patternKey) {
+        const seq = patternSequences[patternKey] || [];
+        const crt = patternCRT[patternKey] || 0;
+        if (crt <= 0 || seq.length < 2) return;
+
+        for (let i = 0; i < seq.length - 1; i++) {
+            const from = seq[i];
+            const to = seq[i + 1];
+            if (!from || !to) continue;
+            const k = patternKey + '|' + from + '→' + to;
+            if (!edgeMapByPattern[k]) {
+                edgeMapByPattern[k] = {
+                    from: from,
+                    to: to,
+                    segmentCount: 0,
+                    caseCount: crt,   // treat CRT as caseCount for width
+                    patternKey: patternKey
+                };
+            }
+            edgeMapByPattern[k].segmentCount += 1;
+        }
+    });
+
+    let edges = Object.values(edgeMapByPattern).filter(function (e) {
+        return e.caseCount > 0;
+    });
+
     if (edges.length === 0) {
         return '';
     }
 
-    // Standard layout (reuse fixed positions from unified diagram)
-    const fixedPositions = {
-        'Process': { x: 50, y: 250 },
-        'Created Account': { x: 400, y: 150 },
-        'Account Open': { x: 400, y: 150 },
-        'Login': { x: 750, y: 150 },
-        'Login / Logout': { x: 750, y: 150 },
-        'Check Balance': { x: 1100, y: 150 },
-        'Balance Inquiry': { x: 1100, y: 150 },
-        'Withdrawal Transaction': { x: 1450, y: 150 },
-        'Credit': { x: 400, y: 450 },
-        'Deposit': { x: 400, y: 450 },
-        'Logout': { x: 750, y: 450 },
-        'End': { x: 1250, y: 250 },
-        // Healthcare events
-        'Register': { x: 100, y: 250 },
-        'Visit': { x: 400, y: 250 },
-        'Appointment': { x: 400, y: 250 },
-        'Procedure': { x: 550, y: 250 },
-        'Treatment': { x: 550, y: 250 },
-        'Pharmacy': { x: 700, y: 250 },
-        'LabTest': { x: 850, y: 250 },
-        'Lab Test': { x: 850, y: 250 },
-        'Billing': { x: 1000, y: 250 },
-        'Admission': { x: 450, y: 400 },
-        'Discharge': { x: 700, y: 400 },
-        'Doctor': { x: 950, y: 400 },
-        // Retail events
-        'Customer Visit': { x: 80, y: 250 }, 'Product View': { x: 200, y: 250 }, 'Product Search': { x: 320, y: 250 },
-        'Add To Cart': { x: 440, y: 250 }, 'Remove From Cart': { x: 560, y: 250 }, 'Apply Coupon': { x: 680, y: 250 },
-        'Checkout Started': { x: 800, y: 250 }, 'Address Entered': { x: 920, y: 250 }, 'Payment Selected': { x: 1040, y: 250 },
-        'Payment Success': { x: 1160, y: 250 }, 'Payment Failed': { x: 1280, y: 250 }, 'Order Placed': { x: 200, y: 400 },
-        'Order Confirmed': { x: 320, y: 400 }, 'Invoice Generated': { x: 440, y: 400 }, 'Order Packed': { x: 560, y: 400 },
-        'Order Shipped': { x: 680, y: 400 }, 'Out For Delivery': { x: 800, y: 400 }, 'Order Delivered': { x: 920, y: 400 },
-        'Order Cancelled': { x: 1040, y: 400 }, 'Return Initiated': { x: 200, y: 550 }, 'Return Received': { x: 320, y: 550 },
-        'Refund Processed': { x: 440, y: 550 }, 'User Signed Up': { x: 80, y: 400 }, 'User Logged In': { x: 80, y: 550 },
-        'User Logged Out': { x: 200, y: 150 },
-        // Insurance events
-        'Customer Registered': { x: 80, y: 250 }, 'KYC Completed': { x: 200, y: 250 }, 'Policy Quoted': { x: 320, y: 250 },
-        'Policy Purchased': { x: 440, y: 250 }, 'Policy Activated': { x: 560, y: 250 }, 'Premium Due': { x: 680, y: 250 },
-        'Premium Paid': { x: 800, y: 250 }, 'Policy Renewed': { x: 80, y: 400 },
-        'Policy Expired': { x: 200, y: 400 }, 'Claim Requested': { x: 320, y: 400 }, 'Claim Registered': { x: 440, y: 400 },
-        'Claim Verified': { x: 560, y: 400 }, 'Claim Assessed': { x: 680, y: 400 }, 'Claim Approved': { x: 800, y: 400 },
-        'Claim Rejected': { x: 920, y: 400 }, 'Claim Paid': { x: 80, y: 550 }, 'Nominee Updated': { x: 200, y: 550 },
-        'Policy Cancelled': { x: 320, y: 550 }, 'Policy Closed': { x: 440, y: 550 },
-        // Finance events
-        'Account Opened': { x: 320, y: 250 }, 'Account Closed': { x: 440, y: 250 },
-        'Invest': { x: 560, y: 250 }, 'Value Update': { x: 680, y: 250 }, 'Redeem': { x: 800, y: 250 },
-        'Switch': { x: 920, y: 250 }, 'Dividend': { x: 80, y: 400 },
-        'Transfer Initiated': { x: 560, y: 400 }, 'Transfer Completed': { x: 680, y: 400 },
-        'Payment Initiated': { x: 1040, y: 250 }, 'Loan Applied': { x: 80, y: 550 },
-        'Loan Approved': { x: 200, y: 550 }, 'Loan Disbursed': { x: 320, y: 550 },
-        'Application Submitted': { x: 80, y: 700 }, 'Application Reviewed': { x: 200, y: 700 },
-        'Proposal Generated': { x: 320, y: 700 }, 'Proposal Accepted': { x: 440, y: 700 },
-        'Identity Verified': { x: 560, y: 700 }, 'Address Verified': { x: 680, y: 700 },
-        'Income Verified': { x: 800, y: 700 }, 'Beneficiary Added': { x: 920, y: 700 },
-        'Beneficiary Updated': { x: 80, y: 850 }, 'Coverage Activated': { x: 200, y: 850 },
-        'Coverage Changed': { x: 320, y: 850 }, 'Installment Generated': { x: 440, y: 850 },
-        'Installment Paid': { x: 560, y: 850 }, 'Penalty Applied': { x: 680, y: 850 },
-        'Discount Applied': { x: 800, y: 850 }, 'Case Escalated': { x: 920, y: 850 },
-        'Case Resolved': { x: 80, y: 1000 }, 'Support Ticket Created': { x: 200, y: 1000 },
-        'Support Ticket Closed': { x: 320, y: 1000 }, 'Account Frozen': { x: 440, y: 1000 }
-    };
-
+    // Sankey-style layout: columns by earliest step index, rows for events in that step.
     const boxWidth = 160;
     const boxHeight = 70;
 
-    const eventPositions = {};
-    let dynamicX = 50;
-    const takenPositions = Object.values(fixedPositions).map(function (p) { return p.x + ',' + p.y; });
-    function resolveEventPosition(ev, posMap) {
-        if (posMap[ev]) return posMap[ev];
-        if (posMap[ev.replace(/\s+/g, '')]) return posMap[ev.replace(/\s+/g, '')];
-        if (posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')]) return posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')];
-        return null;
-    }
-    eventTypes.forEach(function (event) {
-        const pos = fixedPositions[event] || fixedPositions[event.replace('Transaction', '').trim()] || resolveEventPosition(event, fixedPositions);
-        if (pos) {
-            eventPositions[event] = pos;
-        } else {
-            let placed = false;
-            for (let r = 0; r < 3; r++) {
-                for (let c = 0; c < 5; c++) {
-                    const tx = 50 + c * 350;
-                    const ty = 150 + r * 300;
-                    const key = tx + ',' + ty;
-                    if (takenPositions.indexOf(key) === -1 && !placed) {
-                        eventPositions[event] = { x: tx, y: ty };
-                        takenPositions.push(key);
-                        placed = true;
-                    }
-                }
+    // Determine earliest index (from Process) where each event appears in any pattern.
+    const stepIndexByEvent = {};
+    Object.values(patternSequences).forEach(function (seq) {
+        seq.forEach(function (ev, idx) {
+            if (!ev || ev === 'Process' || ev === 'End') return;
+            if (stepIndexByEvent[ev] == null || idx < stepIndexByEvent[ev]) {
+                stepIndexByEvent[ev] = idx;
             }
-            if (!placed) {
-                eventPositions[event] = { x: dynamicX, y: 750 };
-                dynamicX += 350;
-            }
+        });
+    });
+    let maxStepIndex = 0;
+    Object.keys(stepIndexByEvent).forEach(function (ev) {
+        if (stepIndexByEvent[ev] > maxStepIndex) {
+            maxStepIndex = stepIndexByEvent[ev];
         }
+    });
+
+    // Assign each event to a "level" (column)
+    const levelByEvent = {};
+    eventTypes.forEach(function (ev) {
+        if (ev === 'Process') {
+            levelByEvent[ev] = 0;
+        } else if (ev === 'End') {
+            levelByEvent[ev] = maxStepIndex + 1;
+        } else if (stepIndexByEvent[ev] != null) {
+            levelByEvent[ev] = stepIndexByEvent[ev] + 1; // shift right from Process
+        } else {
+            levelByEvent[ev] = 1;
+        }
+    });
+
+    // Group events by level to stack them vertically
+    const eventsByLevel = {};
+    Object.keys(levelByEvent).forEach(function (ev) {
+        const lvl = levelByEvent[ev];
+        if (!eventsByLevel[lvl]) eventsByLevel[lvl] = [];
+        eventsByLevel[lvl].push(ev);
+    });
+
+    const eventPositions = {};
+    const colGap = 260;
+    const rowGap = 110;
+    const baseX = 60;
+    const baseY = 220;
+
+    Object.keys(eventsByLevel).map(Number).sort(function (a, b) { return a - b; }).forEach(function (lvl) {
+        const nodes = eventsByLevel[lvl];
+        if (!nodes || !nodes.length) return;
+        nodes.sort();
+        const colX = baseX + lvl * colGap;
+        const totalHeight = (nodes.length - 1) * rowGap;
+        const colTop = baseY - totalHeight / 2;
+        nodes.forEach(function (ev, idx) {
+            const y = colTop + idx * rowGap;
+            eventPositions[ev] = { x: colX, y: y };
+        });
     });
 
     const maxX = Math.max.apply(null, Object.values(eventPositions).map(function (p) { return p.x; })) + 250;
@@ -1652,7 +2025,6 @@ function renderMergedCaseFlowDiagram(flowData) {
     const svgHeight = Math.max(400, maxY);
 
     // Auto-scale diagram so it fits nicely inside the visible screen for ALL domains
-    // – both horizontally and vertically – without becoming blurry.
     let viewportWidth = 1200;
     let viewportHeight = 800;
     try {
@@ -1664,34 +2036,31 @@ function renderMergedCaseFlowDiagram(flowData) {
         // ignore, use defaults
     }
 
-    // Leave only a small margin for headers/buttons so the diagram can use almost the full screen
     const availableWidth = Math.max(viewportWidth - 80, 600);
     const availableHeight = Math.max(viewportHeight - 180, 400);
 
     const scaleX = availableWidth / svgWidth;
     const scaleY = availableHeight / svgHeight;
-    // Allow a bit of upscaling (up to 1.4x) so the diagram can genuinely feel "full screen"
     const autoScale = Math.min(scaleX, scaleY, 1.4);
 
     const scaledWidth = svgWidth * autoScale;
     const scaledHeight = svgHeight * autoScale;
     const scaleStyle = autoScale !== 1 ? `transform: scale(${autoScale}); transform-origin: 0 0;` : '';
-
-    // Make the container height track the available viewport height so the diagram looks "full screen"
     const diagramMinHeight = Math.max(availableHeight, 420);
 
-    // Stroke width scale based on case count or step number
+    // Stroke width scale based on case count (CRT). We exaggerate differences
+    // so patterns followed by many users are clearly thicker than rare ones.
     const maxCaseCount = edges.reduce(function (m, e) { return Math.max(m, e.caseCount || 1); }, 0) || 1;
     function edgeStrokeWidth(e) {
-        if (isMergedSinglePath && e.stepNumber) {
-            // For merged flows, use consistent stroke width (all steps are equal)
-            return 2.5;
-        }
-        const ratio = (e.caseCount || 1) / maxCaseCount;
-        return 1.5 + ratio * 5; // between 1.5 and 6.5
+        const c = Math.max(1, e.caseCount || 1);
+        const ratio = c / maxCaseCount;          // 0..1
+        const boost = Math.sqrt(ratio);          // non-linear, emphasizes big flows
+        const minW = 2.0;
+        const maxW = 10.0;
+        return minW + (maxW - minW) * boost;     // between 2 and 10 px
     }
 
-    let svgHTML = `<svg width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 1; transform-origin: 0 0;">
+    let svgHTML = `<svg width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 3; transform-origin: 0 0;">
         <defs>
             <marker id="merged-arrow" markerWidth="9" markerHeight="6" refX="8" refY="3" orient="auto">
                 <polygon points="0 0, 9 3, 0 6" fill="#475569" />
@@ -1699,57 +2068,76 @@ function renderMergedCaseFlowDiagram(flowData) {
         </defs>
     `;
 
-    // Check for bidirectional edges (return paths) to use curved arrows
-    // This helps visualize when flow goes A→B→A (return path)
+    // Identify bidirectional edges (return paths) to curve them
     const bidirectionalEdges = new Set();
-    edges.forEach(function(e1) {
-        edges.forEach(function(e2) {
+    edges.forEach(function (e1) {
+        edges.forEach(function (e2) {
             if (e1.from === e2.to && e1.to === e2.from) {
                 bidirectionalEdges.add(e1.from + '→' + e1.to);
                 bidirectionalEdges.add(e2.from + '→' + e2.to);
             }
         });
     });
-    
-    if (!isMergedSinglePath) {
-        console.log('=== MERGED DIAGRAM EDGES (Aggregated) ===');
-        console.log('Total edges:', edges.length);
-        console.log('Bidirectional edges (return paths):', Array.from(bidirectionalEdges));
-        edges.forEach(function(e) {
-            console.log('  ' + e.from + ' → ' + e.to + ': ' + e.segmentCount + ' step(s)');
-        });
-        console.log('==========================================');
-    }
-    
+
+    // Assign a distinct color per edge pattern (from→to) so each flow stands out.
+    const edgeColorMap = {};
+    // Palette: one distinct color per patternKey (path pattern).
+    const edgePalette = [
+        '#2563eb', '#0f766e', '#f97316', '#ec4899', '#a855f7',
+        '#22c55e', '#facc15', '#f43f5e', '#06b6d4', '#4b5563',
+        '#15803d', '#1d4ed8', '#ea580c', '#be185d', '#7c2d12',
+        '#4c1d95', '#047857', '#b45309', '#4338ca', '#7f1d1d',
+        '#0e7490', '#16a34a', '#eab308', '#9d174d', '#1e293b',
+        '#10b981', '#3b82f6', '#f59e0b', '#6366f1', '#ef4444',
+        '#14b8a6', '#8b5cf6', '#fbbf24', '#fb7185', '#475569'
+    ];
+    let colorIdx = 0;
+    edges.forEach(function (e) {
+        const pk = e.patternKey || '';
+        if (!edgeColorMap[pk]) {
+            edgeColorMap[pk] = edgePalette[colorIdx % edgePalette.length];
+            colorIdx += 1;
+        }
+    });
+
+    console.log('=== MERGED DIAGRAM EDGES (Aggregated) ===');
+    console.log('Total edges:', edges.length);
+    console.log('Bidirectional edges (return paths):', Array.from(bidirectionalEdges));
+    edges.forEach(function (e) {
+        const pk = e.patternKey || '';
+        console.log('  ' + e.from + ' → ' + e.to + ': ' + e.segmentCount + ' seg(s), CRT=' + (e.caseCount || 0) + ', patternKey=' + pk + ', color=' + edgeColorMap[pk]);
+    });
+    console.log('==========================================');
+
     edges.forEach(function (e) {
         const fromPos = eventPositions[e.from];
         const toPos = eventPositions[e.to];
         if (!fromPos || !toPos) return;
         const x1 = fromPos.x + boxWidth / 2;
         const y1 = fromPos.y + boxHeight / 2;
-        const x2 = toPos.x + boxWidth / 2;
-        const y2 = toPos.y + boxHeight / 2;
+        const rawX2 = toPos.x + boxWidth / 2;
+        const rawY2 = toPos.y + boxHeight / 2;
         const sw = edgeStrokeWidth(e);
-        
-        // Use step label for merged flows, otherwise use count
-        let label = '';
-        if (isMergedSinglePath && e.stepLabel) {
-            label = e.stepLabel; // "Step 1", "Step 2", etc.
-        } else {
-            label = e.segmentCount + ' step' + (e.segmentCount === 1 ? '' : 's');
-        }
-        
+
+        const label = (e.caseCount || 0) + ' user' + ((e.caseCount || 0) === 1 ? '' : 's');
         const edgeKey = e.from + '→' + e.to;
         const isBidirectional = bidirectionalEdges.has(edgeKey);
-        
-        // For return paths (bidirectional edges), use curved path to avoid overlap
+        const strokeColor = edgeColorMap[e.patternKey || ''] || '#475569';
+
         let pathElement = '';
-        let labelX = (x1 + x2) / 2;
-        let labelY = (y1 + y2) / 2;
-        
+        let labelX;
+        let labelY;
+
+        const dxFull = rawX2 - x1;
+        const dyFull = rawY2 - y1;
+        const lenFull = Math.sqrt(dxFull * dxFull + dyFull * dyFull) || 1;
+        const ux = dxFull / lenFull;
+        const uy = dyFull / lenFull;
+        const margin = 26;
+        const x2 = rawX2 - ux * margin;
+        const y2 = rawY2 - uy * margin;
+
         if (isBidirectional) {
-            // Determine curve direction: if going backwards (x2 < x1), curve up; otherwise curve down
-            // Also check if it's a true return (same event appears twice in sequence)
             const isReturnPath = x2 < x1 || (e.from !== 'Process' && e.to !== 'End' && Math.abs(x2 - x1) < 100);
             const curveDirection = isReturnPath ? -1 : 1;
             const curveOffset = Math.max(80, Math.abs(x2 - x1) * 0.3) * curveDirection;
@@ -1757,37 +2145,41 @@ function renderMergedCaseFlowDiagram(flowData) {
             const controlY1 = y1 + curveOffset;
             const controlX2 = x1 + (x2 - x1) * 0.75;
             const controlY2 = y2 + curveOffset;
-            // Adjust label position to be on the curve
             labelX = (controlX1 + controlX2) / 2;
-            labelY = (controlY1 + controlY2) / 2;
-            // Use a smoother curve for return paths with dashed style to distinguish
+            labelY = (controlY1 + controlY2) / 2 - 6;
             pathElement = `<path d="M ${x1} ${y1} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${x2} ${y2}"
-                      stroke="#475569"
+                      stroke="${strokeColor}"
                       stroke-width="${sw.toFixed(1)}"
                       fill="none"
                       marker-end="url(#merged-arrow)"
                       opacity="0.9"
                       style="stroke-dasharray: ${isReturnPath ? '5,3' : 'none'};" />`;
         } else {
-            // Straight line for forward paths
+            const mx = (x1 + x2) / 2;
+            const my = (y1 + y2) / 2;
+            // Move label slightly off the connector so arrows are not covered
+            const nx = -dyFull / lenFull;
+            const ny = dxFull / lenFull;
+            labelX = mx + nx * 20;
+            labelY = my + ny * 20;
+
             pathElement = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-                      stroke="#475569"
+                      stroke="${strokeColor}"
                       stroke-width="${sw.toFixed(1)}"
                       marker-end="url(#merged-arrow)"
                       opacity="0.9" />`;
         }
-        
-        // Adjust label box width based on label length
-        const labelWidth = isMergedSinglePath && e.stepLabel ? 90 : 80;
+
+        const labelWidth = 80;
         const labelOffset = labelWidth / 2;
-        
+
         svgHTML += `
             <g>
                 ${pathElement}
                 <rect x="${labelX - labelOffset}" y="${labelY - 16}" width="${labelWidth}" height="20" rx="10"
-                      fill="white" stroke="#475569" stroke-width="0.8" opacity="0.96" />
+                      fill="white" stroke="${strokeColor}" stroke-width="0.8" opacity="0.96" />
                 <text x="${labelX}" y="${labelY - 2}" text-anchor="middle"
-                      font-size="10" font-weight="600" fill="#111827">
+                      font-size="10" font-weight="600" fill="#0f172a">
                     ${label}
                 </text>
             </g>
@@ -1833,13 +2225,9 @@ function renderMergedCaseFlowDiagram(flowData) {
     });
 
     const filterLabel = (flowData && flowData.filterLabel) ? flowData.filterLabel : '';
-    const diagramTitle = isMergedSinglePath 
-        ? (filterLabel ? filterLabel + ' – Step-by-Step Flow' : 'Step-by-Step Flow (Sequential Steps)')
-        : 'Event-to-Event Counts (Merged Across Case IDs)';
-    const diagramDescription = isMergedSinglePath
-        ? 'Each arrow is one step in the sequence. Steps are numbered in order from start to end.'
-        : 'Each arrow shows how many Case IDs move from one event to the next. No per-case splitting – only merged counts.';
-    
+    const diagramTitle = 'Event-to-Event Counts (Merged Across Case IDs)';
+    const diagramDescription = 'Each arrow shows how many Case IDs move from one event to the next across all paths (no per-case splitting).';
+
     return `
         <section style="margin-bottom: 2.5rem;">
             <h2 style="font-size: 1.6rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center;">
@@ -1863,6 +2251,139 @@ function renderMergedCaseFlowDiagram(flowData) {
 }
 
 window.renderMergedCaseFlowDiagram = renderMergedCaseFlowDiagram;
+
+// ---------------------------------------------------------------------------
+// Step navigation helpers for merged single-path diagrams
+// ---------------------------------------------------------------------------
+
+if (typeof window !== 'undefined') {
+    window._mergedStepCurrent = 1;
+    window._mergedStepTotal = window._mergedStepTotal || 0;
+}
+
+window.updateMergedStepIndicator = function () {
+    try {
+        const indicator = document.getElementById('merged-step-indicator');
+        if (!indicator || !window._mergedStepTotal) return;
+        const cur = window._mergedStepCurrent || 1;
+        indicator.textContent = 'Step ' + cur + ' of ' + window._mergedStepTotal;
+    } catch (e) {
+        console.error('updateMergedStepIndicator error', e);
+    }
+};
+
+window.highlightMergedStep = function (stepNumber) {
+    try {
+        if (!stepNumber || stepNumber < 1) return;
+        window._mergedStepCurrent = stepNumber;
+
+        const groups = document.querySelectorAll('[data-merged-step-edge="1"]');
+        if (!groups || !groups.length) return;
+
+        groups.forEach(function (g) {
+            const sn = Number(g.getAttribute('data-step-number') || '0');
+            const isActive = sn === stepNumber;
+
+            const path = g.querySelector('path, line');
+            const rect = g.querySelector('rect');
+            const text = g.querySelector('text');
+
+            if (path) {
+                path.setAttribute('stroke-width', isActive ? '4.2' : '2.4');
+                path.setAttribute('stroke', isActive ? '#f97316' : '#475569');
+                path.setAttribute('opacity', isActive ? '1.0' : '0.85');
+            }
+            if (rect) {
+                rect.setAttribute('stroke', isActive ? '#f97316' : '#475569');
+                rect.setAttribute('stroke-width', isActive ? '1.2' : '0.8');
+                rect.setAttribute('fill', isActive ? '#fff7ed' : 'white');
+            }
+            if (text) {
+                text.setAttribute('fill', isActive ? '#7c2d12' : '#111827');
+                text.setAttribute('font-size', isActive ? '11' : '10');
+            }
+
+            if (isActive && g.parentNode) {
+                g.parentNode.appendChild(g); // bring active edge to front
+            }
+        });
+
+        const chips = document.querySelectorAll('.merged-step-chip');
+        chips.forEach(function (chip) {
+            const sn = Number(chip.getAttribute('data-step-chip') || '0');
+            const isActive = sn === stepNumber;
+            chip.style.background = isActive ? '#0f172a' : 'white';
+            chip.style.color = isActive ? '#f9fafb' : '#0f172a';
+            chip.style.borderColor = isActive ? '#0f172a' : '#cbd5e1';
+            chip.style.transform = isActive ? 'scale(1.05)' : 'scale(1.0)';
+        });
+
+        window.updateMergedStepIndicator();
+
+        // Auto-scroll selected edge into view (centered) if possible
+        const section = document.getElementById('merged-step-flow-section');
+        if (section) {
+            const active = document.querySelector('[data-merged-step-edge="1"][data-step-number="' + stepNumber + '"]');
+            if (active && active.getBoundingClientRect) {
+                const box = active.getBoundingClientRect();
+                const host = section.querySelector('div[style*="overflow: auto"]');
+                if (host && host.getBoundingClientRect) {
+                    const hBox = host.getBoundingClientRect();
+                    const offsetY = (box.top + box.bottom) / 2 - (hBox.top + hBox.bottom) / 2;
+                    host.scrollTop += offsetY;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('highlightMergedStep error', e);
+    }
+};
+
+window.initMergedStepDiagram = function () {
+    try {
+        if (!window._mergedStepTotal) {
+            const groups = document.querySelectorAll('[data-merged-step-edge="1"]');
+            window._mergedStepTotal = groups ? groups.length : 0;
+        }
+        if (!window._mergedStepTotal) return;
+        window._mergedStepCurrent = 1;
+        window.highlightMergedStep(1);
+    } catch (e) {
+        console.error('initMergedStepDiagram error', e);
+    }
+};
+
+window.nextMergedStep = function () {
+    try {
+        if (!window._mergedStepTotal) return;
+        const cur = window._mergedStepCurrent || 1;
+        const next = cur >= window._mergedStepTotal ? 1 : cur + 1;
+        window.highlightMergedStep(next);
+    } catch (e) {
+        console.error('nextMergedStep error', e);
+    }
+};
+
+window.prevMergedStep = function () {
+    try {
+        if (!window._mergedStepTotal) return;
+        const cur = window._mergedStepCurrent || 1;
+        const prev = cur <= 1 ? window._mergedStepTotal : cur - 1;
+        window.highlightMergedStep(prev);
+    } catch (e) {
+        console.error('prevMergedStep error', e);
+    }
+};
+
+window.jumpMergedStep = function (stepNumber) {
+    try {
+        const step = Number(stepNumber);
+        if (!step || step < 1) return;
+        window.highlightMergedStep(step);
+    } catch (e) {
+        console.error('jumpMergedStep error', e);
+    }
+};
 
 // DOM Elements
 const dropZone = document.getElementById('dropZone');

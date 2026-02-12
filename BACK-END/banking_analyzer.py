@@ -55,7 +55,75 @@ def _normalize_event(val: Any) -> Optional[str]:
     s = str(val).strip().lower()
     if not s:
         return None
-    return EVENT_MAP.get(s) or (s if s in SESSION_START | SESSION_END | MIDDLE_EVENTS else None)
+
+    # 1) Direct exact match first (keeps existing behavior for known values)
+    if s in EVENT_MAP:
+        return EVENT_MAP[s]
+
+    # 2) Normalize separators (dash/underscore) and try again
+    s_norm = re.sub(r'[\s\-_]+', ' ', s).strip()
+    if s_norm in EVENT_MAP:
+        return EVENT_MAP[s_norm]
+
+    # 3) Pattern-based detection so we can handle short forms and
+    #    descriptive phrases from real banking data (e.g. "Login Success",
+    #    "CR", "DR", "Balance Inquiry", "WDL ATM", etc.).
+    text = re.sub(r'[^a-z0-9]+', ' ', s_norm).strip()
+    if not text:
+        return None
+    tokens = text.split()
+    token_set = set(tokens)
+
+    def has_token(*candidates: str) -> bool:
+        return any(c in token_set for c in candidates)
+
+    def has_phrase(*phrases: str) -> bool:
+        return any(p in text for p in phrases)
+
+    # --- Session boundaries: login / logout ---
+    if has_phrase('login', 'log in', 'sign in', 'signin', 'logon'):
+        return 'login'
+    if has_phrase('logout', 'log out', 'sign out', 'signoff', 'sign off'):
+        return 'logout'
+
+    # --- Account creation / open ---
+    if has_phrase('account open', 'acct open', 'account opening', 'account opened'):
+        return 'open'
+    if has_phrase('created', 'creation', 'account creation'):
+        return 'created'
+
+    # --- Credit / deposit (money coming in) ---
+    if has_token('cr', 'crd', 'credit') or (has_phrase('credit') and not has_phrase('card')):
+        return 'credit'
+    if has_token('dep', 'deposit', 'cashdep', 'cashdeposit') or has_phrase('cash deposit', 'salary credit'):
+        return 'deposit'
+
+    # --- Debit / withdrawal (money going out) ---
+    if has_token('dr', 'db', 'debit'):
+        return 'debit'
+    if has_token('wd', 'wdl', 'withd', 'withdraw', 'withdrawal') or has_phrase('atm withdraw', 'atm withdrawal'):
+        return 'withdraw'
+
+    # --- Refunds / reversals ---
+    if has_phrase('refund', 'reversal', 'chargeback', 'cashback'):
+        return 'refund'
+
+    # --- Balance / inquiry / failed / invalid ---
+    if has_phrase(
+        'check balance', 'balance inquiry', 'balance check', 'bal inq', 'mini statement', 'balance enquiry'
+    ) or has_token('bal'):
+        return 'check_balance'
+    if has_phrase('declined', 'blocked', 'invalid', 'failed', 'failure', 'error'):
+        return 'invalid_balance'
+    if has_phrase('negative balance', 'overdrawn', 'overdraft'):
+        return 'negative_balance'
+
+    # 4) If already a canonical internal event name, keep it
+    if s in SESSION_START | SESSION_END | MIDDLE_EVENTS:
+        return s
+
+    # 5) Otherwise we don't confidently know this event
+    return None
 
 
 def _parse_datetime_cell(val: Any) -> Optional[pd.Timestamp]:
@@ -153,7 +221,10 @@ class BankingAnalyzer:
             return 'logout'
         if re.search(r'\blogin\b', c):
             return 'login'
-        if re.search(r'\bcreated\b', c):
+        # Account / profile created or joined
+        if re.search(r'\bcreated\b', c) or 'created_at' in c:
+            return 'created'
+        if 'join' in c or 'joined' in c or 'signup' in c or 'sign_up' in c or 'register' in c or 'registered' in c:
             return 'created'
         if re.search(r'\bopen\b', c) and re.search(r'date|time|stamp', c):
             return 'open'
@@ -462,9 +533,19 @@ class BankingAnalyzer:
                 elif raw in ('CHECK_BALANCE', 'BALANCE_INQUIRY', 'BALANCE_CHECK', 'CHECK BALANCE', 'BALANCE'):
                     event = 'check_balance'
             if not event:
-                event = ts_purpose if ts_purpose in ('login', 'logout', 'open', 'created', 'transaction') else 'credit'
-                if event == 'transaction':
+                # Fallback when there is no explicit event/transaction-type column.
+                # Only trust clear purposes; do NOT default everything to "credit"
+                # for generic timestamps like "DateJoined" or "StartDate".
+                if ts_purpose in ('login', 'logout', 'open', 'created'):
+                    event = ts_purpose
+                elif ts_purpose == 'transaction':
+                    # Generic transaction timestamp without type: treat as credit by default
+                    # so that pure transaction tables still produce sessions.
                     event = 'credit'
+                else:
+                    # Unknown / generic "event" timestamps are ignored to avoid
+                    # fabricating static "credit" steps from master/profile tables.
+                    event = None
 
             if event:
                 found_event_types.add(event)
@@ -605,13 +686,16 @@ class BankingAnalyzer:
                     continue
                 # For the first middle-event in a new or gap-separated session,
                 # create an implicit login event *before* the actual event.
-                if not current and not pending:
+                # Include any pending pre-login events (created/open) at the start
+                # of this new session so they are part of the same case.
+                if not current:
                     login_act = {
                         **act,
                         'event': 'login',
                         'raw_record': {**(act.get('raw_record', {})), 'inferred': 'implicit_session_start'}
                     }
-                    current = [login_act, act]
+                    current = pending + [login_act, act]
+                    pending = []
                     last_ts = ts
                     continue
                 if current:

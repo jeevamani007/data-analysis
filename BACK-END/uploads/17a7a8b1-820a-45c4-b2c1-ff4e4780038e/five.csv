@@ -1,0 +1,5 @@
+customer_id,first_name,last_name,gender,phone,city,registration_date
+R001,Arun,Kumar,Male,9876501111,Chennai,2020-01-10
+R002,Meena,Sharma,Female,9876502222,Bangalore,2019-05-15
+R003,John,Peter,Male,9876503333,Hyderabad,2021-07-20
+R004,Priya,Menon,Female,9876504444,Kochi,2022-09-05
