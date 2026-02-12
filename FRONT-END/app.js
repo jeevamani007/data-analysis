@@ -1071,6 +1071,12 @@ window.showSingleCaseFlow = function (caseIdStr) {
         if (!container) return;
         const body = document.getElementById('single-case-flow-body');
 
+        // When switching to a new Case ID, stop any existing step auto-play loop
+        // so we do not keep advancing steps for an old diagram.
+        if (window.stopMergedStepAutoPlay) {
+            window.stopMergedStepAutoPlay();
+        }
+
         const activeUnifiedData =
             window.currentBankingUnifiedFlowData ||
             window.currentRetailUnifiedFlowData ||
@@ -1119,7 +1125,14 @@ window.showSingleCaseFlow = function (caseIdStr) {
         const html = renderMergedCaseFlowDiagram(singleFlowData);
         container.innerHTML = html || '<div style="color: #6b7280;">No steps available for this Case ID.</div>';
         if (window.initMergedStepDiagram) {
-            setTimeout(function () { window.initMergedStepDiagram(); }, 0);
+            setTimeout(function () {
+                // Initialize step navigation state for this single-case diagram
+                window.initMergedStepDiagram();
+                // Automatically advance to the next step every 4 seconds
+                if (window.startMergedStepAutoPlay) {
+                    window.startMergedStepAutoPlay(4000);
+                }
+            }, 0);
         }
 
         // Reveal accordion body and scroll into view for better UX
@@ -1161,6 +1174,12 @@ window.showUserMergedFlow = function (userId) {
         const body = document.getElementById('single-case-flow-body');
         if (!body) {
             console.error('Body not found!');
+        }
+
+        // When switching to a new user-merged flow, stop any existing step auto-play loop
+        // so we do not keep advancing steps for an old diagram.
+        if (window.stopMergedStepAutoPlay) {
+            window.stopMergedStepAutoPlay();
         }
 
         const activeUnifiedData =
@@ -1457,7 +1476,14 @@ window.showUserMergedFlow = function (userId) {
             container.innerHTML = explanation + html;
             console.log('✅ Successfully rendered merged diagram');
             if (window.initMergedStepDiagram) {
-                setTimeout(function () { window.initMergedStepDiagram(); }, 0);
+                setTimeout(function () {
+                    // Initialize step navigation for this user-merged flow
+                    window.initMergedStepDiagram();
+                    // Automatically advance to the next step every 4 seconds
+                    if (window.startMergedStepAutoPlay) {
+                        window.startMergedStepAutoPlay(4000);
+                    }
+                }, 0);
             }
         }
 
@@ -2342,6 +2368,9 @@ window.renderMergedCaseFlowDiagram = renderMergedCaseFlowDiagram;
 if (typeof window !== 'undefined') {
     window._mergedStepCurrent = 1;
     window._mergedStepTotal = window._mergedStepTotal || 0;
+    // Timer bookkeeping for automatic step progression (auto-play)
+    window._mergedStepAutoTimer = window._mergedStepAutoTimer || null;
+    window._mergedStepAutoIntervalMs = window._mergedStepAutoIntervalMs || 4000;
 }
 
 window.updateMergedStepIndicator = function () {
@@ -2442,6 +2471,17 @@ window.nextMergedStep = function () {
         const cur = window._mergedStepCurrent || 1;
         const next = cur >= window._mergedStepTotal ? 1 : cur + 1;
         window.highlightMergedStep(next);
+
+        // If user manually clicks "Next ▶" and no auto-play timer is running yet,
+        // start automatic progression so steps continue every few seconds.
+        if (typeof window !== 'undefined' &&
+            window.startMergedStepAutoPlay &&
+            !window._mergedStepAutoTimer &&
+            (window._mergedStepTotal || 0) > 1) {
+            // Use existing interval if set, otherwise default to 4000ms
+            const ms = window._mergedStepAutoIntervalMs || 4000;
+            window.startMergedStepAutoPlay(ms);
+        }
     } catch (e) {
         console.error('nextMergedStep error', e);
     }
@@ -2465,6 +2505,64 @@ window.jumpMergedStep = function (stepNumber) {
         window.highlightMergedStep(step);
     } catch (e) {
         console.error('jumpMergedStep error', e);
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Auto-play helpers – automatically advance steps every N milliseconds
+// ---------------------------------------------------------------------------
+
+window.startMergedStepAutoPlay = function (intervalMs) {
+    try {
+        const total = window._mergedStepTotal || 0;
+        if (!total || total < 2) {
+            // Nothing to auto-play if there are fewer than 2 steps
+            return;
+        }
+
+        const ms = (typeof intervalMs === 'number' && intervalMs > 0)
+            ? intervalMs
+            : (window._mergedStepAutoIntervalMs || 4000);
+
+        // Clear any existing timer before starting a new one
+        if (window._mergedStepAutoTimer) {
+            clearInterval(window._mergedStepAutoTimer);
+            window._mergedStepAutoTimer = null;
+        }
+
+        window._mergedStepAutoIntervalMs = ms;
+        console.log('[AutoPlay] Starting merged-step auto-play. Total steps =', total, 'Interval (ms) =', ms);
+        window._mergedStepAutoTimer = setInterval(function () {
+            try {
+                if (!window._mergedStepTotal || window._mergedStepTotal < 2) {
+                    // If diagram changed and no longer has steps, stop auto-play
+                    if (window._mergedStepAutoTimer) {
+                        clearInterval(window._mergedStepAutoTimer);
+                        window._mergedStepAutoTimer = null;
+                    }
+                    return;
+                }
+                if (window.nextMergedStep) {
+                    window.nextMergedStep();
+                }
+            } catch (timerErr) {
+                console.error('startMergedStepAutoPlay timer error', timerErr);
+            }
+        }, ms);
+    } catch (e) {
+        console.error('startMergedStepAutoPlay error', e);
+    }
+};
+
+window.stopMergedStepAutoPlay = function () {
+    try {
+        if (window._mergedStepAutoTimer) {
+            clearInterval(window._mergedStepAutoTimer);
+            window._mergedStepAutoTimer = null;
+            console.log('[AutoPlay] Stopped merged-step auto-play timer.');
+        }
+    } catch (e) {
+        console.error('stopMergedStepAutoPlay error', e);
     }
 };
 
