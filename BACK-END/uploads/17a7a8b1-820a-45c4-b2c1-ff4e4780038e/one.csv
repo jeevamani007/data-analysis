@@ -1,0 +1,4 @@
+customer_id,first_name,last_name,gender,phone,email,city,signup_date,signup_time,signup_timestamp
+201,Arun,Kumar,Male,9876543210,arun@gmail.com,Chennai,2024-01-05,10:00:00,2024-01-05 10:00:00
+202,Priya,Sharma,Female,9123456780,priya@gmail.com,Bangalore,2024-01-10,11:30:00,2024-01-10 11:30:00
+203,Rahul,Verma,Male,9988776655,rahul@gmail.com,Hyderabad,2024-01-15,09:45:00,2024-01-15 09:45:00

@@ -1,0 +1,5 @@
+order_id,customer_id,order_date,order_status,store_location
+O1001,R001,2020-01-10,Placed,Chennai_Mall
+O1002,R002,2019-05-15,Placed,Bangalore_Mall
+O1003,R003,2021-07-20,Placed,Hyderabad_Mall
+O1004,R004,2022-09-05,Placed,Kochi_Mall

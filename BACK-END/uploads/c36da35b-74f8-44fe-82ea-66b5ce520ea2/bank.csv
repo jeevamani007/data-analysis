@@ -1,0 +1,11 @@
+customer_id,customer_name,phone,email,city
+CUST001,Ravi Kumar,9876543210,ravi@gmail.com,Chennai
+CUST002,Anitha Rao,9876543211,anitha@gmail.com,Bangalore
+CUST003,John Paul,9876543212,john@gmail.com,Coimbatore
+CUST004,Priya Sharma,9876543213,priya@gmail.com,Delhi
+CUST005,Arun Mehta,9876543214,arun@gmail.com,Mumbai
+CUST006,Kavya Iyer,9876543215,kavya@gmail.com,Chennai
+CUST007,Manoj Singh,9876543216,manoj@gmail.com,Patna
+CUST008,Divya Nair,9876543217,divya@gmail.com,Kochi
+CUST009,Suresh Babu,9876543218,suresh@gmail.com,Madurai
+CUST010,Neha Gupta,9876543219,neha@gmail.com,Jaipur
