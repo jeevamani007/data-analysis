@@ -1,0 +1,5 @@
+cust_id,first_name,last_name,gender,dob,email,mobile,city,state,kyc_status,created_ts
+I101,Ramesh,Kumar,M,1985-03-10,ramesh@gmail.com,9876543210,Chennai,TN,Verified,2024-01-01 09:15:22
+I102,Sneha,Sharma,F,1990-07-20,sneha@gmail.com,9123456780,Bangalore,KA,Verified,2024-01-02 10:40:11
+I103,Arun,Raj,M,1988-11-05,arun@gmail.com,9988776655,Coimbatore,TN,Verified,2024-01-03 12:20:45
+I104,Meena,Devi,F,1992-02-17,meena@gmail.com,9871122334,Madurai,TN,Verified,2024-01-04 15:10:30

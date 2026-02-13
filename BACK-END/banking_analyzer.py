@@ -980,11 +980,23 @@ class BankingAnalyzer:
         filtered_event_types = [e for e in all_event_types if e in used_events]
         same_time_groups = self._compute_same_time_groups(case_paths)
 
+        # Sankey pattern: count (from, to) transitions across all case paths (no hardcoding)
+        transition_counts = {}
+        for path in case_paths:
+            seq = path.get('path_sequence') or []
+            for i in range(len(seq) - 1):
+                f, t = seq[i], seq[i + 1]
+                if f and t:
+                    key = (f, t)
+                    transition_counts[key] = transition_counts.get(key, 0) + 1
+        transition_counts_list = [{'from': f, 'to': t, 'count': c} for (f, t), c in transition_counts.items()]
+
         return {
             'all_event_types': filtered_event_types,
             'case_paths': case_paths,
             'total_cases': len(case_paths),
             'same_time_groups': same_time_groups,
+            'transition_counts': transition_counts_list,
         }
 
     def analyze_cluster(

@@ -1,0 +1,6 @@
+DoctorID,Name,Specialization,Phone,Email,DateJoined
+DOC001,Dr. Sarah Connor,Cardiology,6789012345,sarah.connor@hospital.com,2024-11-15 08:30:00
+DOC002,Dr. James Wilson,Neurology,7890123456,james.wilson@hospital.com,2024-12-01 09:45:10
+DOC003,Dr. Emma Davis,Pediatrics,8901234567,emma.davis@hospital.com,2025-01-20 10:15:25
+DOC004,Dr. Robert Lee,Orthopedics,9012345678,robert.lee@hospital.com,2025-02-10 11:20:40
+DOC005,Dr. Linda Brown,Dermatology,0123456789,linda.brown@hospital.com,2025-03-05 13:35:50
