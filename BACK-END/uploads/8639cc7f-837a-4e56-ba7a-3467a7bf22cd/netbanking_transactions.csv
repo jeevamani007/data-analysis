@@ -1,0 +1,5 @@
+user_id,account_id,event_type,amount,status,timestamp
+U301,A7001,login,0,success,2026-02-12 08:30:00
+U301,A7001,transfer,2500,success,2026-02-12 08:40:00
+U301,A7001,logout,0,success,2026-02-12 08:50:00
+U302,A7002,login,0,success,2026-02-12 09:00:00

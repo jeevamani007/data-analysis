@@ -1,0 +1,4 @@
+admission_id,patient_id,appointment_id,admission_date,admission_timestamp,reason
+ADM001,P001,A001,2026-02-02,2026-02-02 10:30:00,Chest Pain
+ADM002,P002,A002,2026-02-02,2026-02-02 11:20:00,Migraine
+ADM003,P003,A003,2026-02-03,2026-02-03 09:45:00,Fracture

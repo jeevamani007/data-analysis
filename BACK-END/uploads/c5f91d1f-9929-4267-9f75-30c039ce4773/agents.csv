@@ -1,0 +1,21 @@
+agent_id,first_name,last_name,email,phone,license_number,agency_name,agent_type,commission_rate,city,state,status,joining_date,created_at,updated_at
+AGT0001,Kavitha,Patel,agent1@insure.com,9507833486,IRDA6651356,SecureLife Agency,Individual,18.31,Chennai,Tamil Nadu,Inactive,2025-01-27,2024-03-09 10:36:58,2025-08-16 10:36:58
+AGT0002,Vijay,Reddy,agent2@insure.com,9845539206,IRDA5956011,ShieldPlus Brokers,Corporate,19.47,Mumbai,Maharashtra,Active,2017-08-31,2024-03-09 10:36:58,2025-11-18 10:36:58
+AGT0003,Lakshmi,Iyer,agent3@insure.com,9947711144,IRDA5378570,TrustCover Associates,Bancassurance,14.86,Delhi,Delhi,Suspended,2016-09-06,2024-02-18 10:36:58,2025-10-18 10:36:58
+AGT0004,Karthik,Pillai,agent4@insure.com,9538350634,IRDA6797138,SafeNet Advisors,Direct,14.85,Bangalore,Karnataka,Active,2023-11-11,2024-06-02 10:36:58,2025-05-17 10:36:58
+AGT0005,Divya,Menon,agent5@insure.com,9317430468,IRDA1021683,PrimeCare Insurance,Online,12.83,Hyderabad,Telangana,Suspended,2016-09-27,2024-11-20 10:36:58,2025-05-28 10:36:58
+AGT0006,Rajesh,Das,agent6@insure.com,9942749427,IRDA8451043,AllRisk Consultants,Individual,19.0,Pune,Maharashtra,Inactive,2016-09-22,2024-07-15 10:36:58,2025-06-19 10:36:58
+AGT0007,Sunita,Gupta,agent7@insure.com,9701696140,IRDA9909222,BestPolicy Hub,Corporate,14.39,Kolkata,West Bengal,Suspended,2016-07-17,2024-04-09 10:36:58,2025-09-19 10:36:58
+AGT0008,Mohan,Singh,agent8@insure.com,9315053957,IRDA1345908,StarBrokers India,Bancassurance,19.99,Ahmedabad,Gujarat,Inactive,2024-04-10,2024-04-22 10:36:58,2026-01-28 10:36:58
+AGT0009,Anitha,Verma,agent9@insure.com,9162612324,IRDA7992289,GuardFirst Agency,Direct,9.5,Madurai,Tamil Nadu,Suspended,2018-02-05,2024-02-16 10:36:58,2025-04-18 10:36:58
+AGT0010,Ganesh,Rao,agent10@insure.com,9717307579,IRDA5952173,PolicyPoint India,Online,7.91,Coimbatore,Tamil Nadu,Active,2016-03-22,2024-07-26 10:36:58,2025-07-24 10:36:58
+AGT0011,Shalini,Devi,agent11@insure.com,9947448986,IRDA3889924,SmartCover Ltd,Individual,8.97,Kochi,Kerala,Inactive,2023-09-06,2024-12-09 10:36:58,2025-06-30 10:36:58
+AGT0012,Bala,Krishnan,agent12@insure.com,9845863639,IRDA7526710,DirectShield,Corporate,11.27,Jaipur,Rajasthan,Suspended,2023-02-12,2024-08-13 10:36:58,2025-10-08 10:36:58
+AGT0013,Rekha,Bose,agent13@insure.com,9322921164,IRDA5589876,InsureMax,Bancassurance,11.95,Lucknow,Uttar Pradesh,Suspended,2020-10-30,2024-11-11 10:36:58,2025-06-13 10:36:58
+AGT0014,Senthil,Shah,agent14@insure.com,9715036668,IRDA8991883,PoliciesFirst,Direct,14.98,Nagpur,Maharashtra,Active,2019-02-28,2024-10-14 10:36:58,2025-06-23 10:36:58
+AGT0015,Nithya,Joshi,agent15@insure.com,9661754794,IRDA1258586,SafeHaven Brokers,Online,6.72,Surat,Gujarat,Inactive,2024-04-24,2024-08-26 10:36:58,2025-03-15 10:36:58
+AGT0016,Arun,Mishra,agent16@insure.com,9887834018,IRDA1066111,TrustGuard,Individual,13.54,Indore,Madhya Pradesh,Suspended,2022-01-13,2024-03-26 10:36:58,2026-02-07 10:36:58
+AGT0017,Priya,Chatterjee,agent17@insure.com,9725931728,IRDA6353364,CoverAll India,Corporate,11.21,Bhopal,Madhya Pradesh,Active,2023-08-06,2024-04-18 10:36:58,2026-01-20 10:36:58
+AGT0018,Rahul,Kumar,agent18@insure.com,9526557720,IRDA1606356,PolicyPrime,Bancassurance,5.72,Patna,Bihar,Suspended,2022-07-18,2024-05-05 10:36:58,2025-09-17 10:36:58
+AGT0019,Meera,Sharma,agent19@insure.com,9270206043,IRDA8366557,InsureRight,Direct,5.86,Vadodara,Gujarat,Inactive,2022-07-19,2024-11-09 10:36:58,2025-12-16 10:36:58
+AGT0020,Suresh,Nair,agent20@insure.com,9620401399,IRDA3882944,SecurePath,Online,9.09,Visakhapatnam,Andhra Pradesh,Suspended,2021-01-10,2025-01-08 10:36:58,2025-05-03 10:36:58

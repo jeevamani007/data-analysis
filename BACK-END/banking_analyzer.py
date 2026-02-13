@@ -131,14 +131,35 @@ def _parse_datetime_cell(val: Any) -> Optional[pd.Timestamp]:
     if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == '':
         return None
     s = str(val).strip()
-    # pandas first
-    dt = pd.to_datetime(s, errors='coerce')
+    # pandas first - normalize timezone-aware values to UTC to keep ordering correct
+    try:
+        dt = pd.to_datetime(s, errors='coerce', utc=True)
+    except TypeError:
+        # Fallback for very old pandas versions
+        dt = pd.to_datetime(s, errors='coerce')
     if pd.notna(dt):
+        # If this is tz-aware, convert to UTC then drop tz info so all comparisons are consistent
+        try:
+            if getattr(dt, 'tzinfo', None) is not None:
+                dt = dt.tz_convert('UTC').tz_localize(None)
+        except Exception:
+            try:
+                dt = dt.tz_localize(None)
+            except Exception:
+                pass
         return dt
     for fmt in _DATETIME_FORMATS:
         try:
-            dt = pd.to_datetime(s, format=fmt, errors='coerce')
+            dt = pd.to_datetime(s, format=fmt, errors='coerce', utc=True)
             if pd.notna(dt):
+                try:
+                    if getattr(dt, 'tzinfo', None) is not None:
+                        dt = dt.tz_convert('UTC').tz_localize(None)
+                except Exception:
+                    try:
+                        dt = dt.tz_localize(None)
+                    except Exception:
+                        pass
                 return dt
         except Exception:
             continue
@@ -211,6 +232,19 @@ class BankingAnalyzer:
         for col in df.columns:
             cl = col.lower()
             if 'event' in cl or 'transaction_type' in cl or ('type' in cl and 'txn' in cl):
+                return col
+        return None
+
+    def _find_amount_col(self, df: pd.DataFrame) -> Optional[str]:
+        """Find transaction amount column (credit/debit value)."""
+        candidates = ['amount', 'transaction_amount', 'txn_amount', 'amt', 'value']
+        cols_lower = {str(c).lower(): c for c in df.columns}
+        for c in candidates:
+            if c in cols_lower:
+                return cols_lower[c]
+        for col in df.columns:
+            cl = str(col).lower()
+            if 'amount' in cl or re.search(r'\bamt\b', cl):
                 return col
         return None
 
@@ -437,6 +471,7 @@ class BankingAnalyzer:
         user_col = self._find_user_col(df)
         account_col = self._find_account_col(df)
         event_col = self._find_event_col(df)
+        amount_col = self._find_amount_col(df)
         date_col, time_col, ts_purpose, alt_logout_col = self._find_timestamp_cols(df)
 
         if not date_col:
@@ -461,12 +496,23 @@ class BankingAnalyzer:
                 acc = str(row[account_col]).strip()
             if acc and not uid and acc in account_to_user:
                 uid = account_to_user[acc]
+            amt_raw = None
+            amt_val: Optional[float] = None
+            if amount_col and amount_col in row.index:
+                amt_raw = row[amount_col]
+                if pd.notna(amt_raw) and str(amt_raw).strip() != '':
+                    try:
+                        amt_val = float(str(amt_raw).replace(',', ''))
+                    except Exception:
+                        amt_val = None
             return {
                 'user_id': uid or f"user_{acc or idx}",
                 'account_id': acc or '',
                 'event': ev,
                 'timestamp': ts,
                 'timestamp_str': ts.strftime('%Y-%m-%d %H:%M:%S'),
+                'amount': amt_val,
+                'amount_raw': str(amt_raw).strip() if amt_raw is not None and not (isinstance(amt_raw, float) and pd.isna(amt_raw)) else '',
                 'table_name': table_name,
                 'file_name': file_name,
                 'source_row': int(idx) + 1 if isinstance(idx, (int, float)) else None,
@@ -626,7 +672,8 @@ class BankingAnalyzer:
     def _identify_sessions(
         self,
         user_activities: List[Dict],
-        session_gap_hours: float = 4.0
+        session_gap_hours: float = 4.0,
+        has_explicit_session_events: bool = False
     ) -> List[List[Dict]]:
         """
         Split user activities into sessions. Only login starts a new case.
@@ -637,6 +684,32 @@ class BankingAnalyzer:
             return []
 
         sorted_acts = sorted(user_activities, key=lambda x: x['timestamp'])
+
+        # If this stream has no explicit login/logout events at all (typical for ATM / UPI
+        # transaction logs), treat each contiguous block of activity (by time gap) as one
+        # transaction session. Do NOT fabricate synthetic login/logout events.
+        if not has_explicit_session_events:
+            sessions: List[List[Dict]] = []
+            current: List[Dict] = []
+            last_ts = None
+            for act in sorted_acts:
+                ts = act['timestamp']
+                if last_ts is None:
+                    current = [act]
+                    last_ts = ts
+                    continue
+                gap_hours = (ts - last_ts).total_seconds() / 3600.0
+                if gap_hours >= session_gap_hours:
+                    if current:
+                        sessions.append(current)
+                    current = [act]
+                else:
+                    current.append(act)
+                last_ts = ts
+            if current:
+                sessions.append(current)
+            return sessions
+
         sessions = []
         current = []
         pending = []
@@ -672,18 +745,6 @@ class BankingAnalyzer:
 
             if ev in MIDDLE_EVENTS or ev in ('credit', 'debit', 'refund', 'deposit', 'withdraw',
                                              'invalid_balance', 'negative_balance'):
-                # Same activity meaning already in this case → new Case ID (one clean process flow per case).
-                events_in_current = {a.get('event') for a in current}
-                if current and ev in events_in_current:
-                    sessions.append(current)
-                    login_act = {
-                        **act,
-                        'event': 'login',
-                        'raw_record': {**(act.get('raw_record', {})), 'inferred': 'implicit_session_start'}
-                    }
-                    current = [login_act, act]
-                    last_ts = ts
-                    continue
                 # For the first middle-event in a new or gap-separated session,
                 # create an implicit login event *before* the actual event.
                 # Include any pending pre-login events (created/open) at the start
@@ -735,7 +796,7 @@ class BankingAnalyzer:
 
     def _assign_case_ids(
         self,
-        all_sessions_by_user: Dict[str, List[List[Dict]]]
+        all_sessions: Dict[Any, List[List[Dict]]]
     ) -> List[Dict[str, Any]]:
         """
         Assign ascending Case IDs to all sessions.
@@ -743,13 +804,18 @@ class BankingAnalyzer:
         Same sequence repeating = new Case ID (each session gets unique ID).
         """
         flat = []
-        for user_id, sessions in all_sessions_by_user.items():
+        for key, sessions in all_sessions.items():
             for session in sessions:
                 if not session:
                     continue
+                # Use the first activity to recover user/account context
+                first_act = session[0]
+                user_id = first_act.get('user_id')
+                account_id = first_act.get('account_id')
                 first_ts = min(a['timestamp'] for a in session)
                 flat.append({
                     'user_id': user_id,
+                    'account_id': account_id,
                     'session': session,
                     'first_timestamp': first_ts
                 })
@@ -759,6 +825,43 @@ class BankingAnalyzer:
         for i, item in enumerate(flat):
             case_id = i + 1
             activities = sorted(item['session'], key=lambda a: a['timestamp'])
+
+            # Basic anomaly / fraud-style flags (purely analytical, do not change sessions)
+            flags: List[str] = []
+            if activities:
+                start_ts = activities[0]['timestamp']
+                end_ts = activities[-1]['timestamp']
+                try:
+                    duration_seconds = int((end_ts - start_ts).total_seconds())
+                except Exception:
+                    duration_seconds = 0
+
+                if duration_seconds < 5:
+                    flags.append('very_short_session')
+                if duration_seconds > 8 * 3600:
+                    flags.append('very_long_session')
+
+                event_seq = [a.get('event') for a in activities]
+
+                # Logout without any login in the same session
+                if 'logout' in event_seq and 'login' not in event_seq:
+                    flags.append('logout_without_login')
+
+                # Login without any transaction in between
+                if event_seq == ['login']:
+                    flags.append('login_without_activity')
+
+                # Abnormal flow: login → withdraw/debit → withdraw/debit
+                if len(event_seq) >= 3 and event_seq[0] == 'login':
+                    if event_seq[1] in ('withdraw', 'debit') and event_seq[2] in ('withdraw', 'debit'):
+                        flags.append('login_with_multiple_immediate_withdrawals')
+
+                # Any back-to-back withdrawals/debits in the session
+                for j in range(len(event_seq) - 1):
+                    if event_seq[j] in ('withdraw', 'debit') and event_seq[j + 1] in ('withdraw', 'debit'):
+                        flags.append('multiple_withdrawals_same_session')
+                        break
+
             # Ensure JSON-serializable: use timestamp_str, sanitize raw_record
             activities_serializable = []
             for a in activities:
@@ -770,18 +873,22 @@ class BankingAnalyzer:
                     'table_name': a.get('table_name'),
                     'file_name': a.get('file_name'),
                     'source_row': a.get('source_row'),
+                    'amount': a.get('amount'),
+                    'amount_raw': a.get('amount_raw'),
                     'raw_record': {k: str(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else '' for k, v in (a.get('raw_record') or {}).items()}
                 }
                 activities_serializable.append(ac)
             case_ids.append({
                 'case_id': case_id,
                 'user_id': item['user_id'],
+                'account_id': item.get('account_id'),
                 'first_activity_timestamp': item['first_timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
                 'last_activity_timestamp': activities[-1]['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
                 'activity_count': len(activities),
                 'activities': activities_serializable,
                 'event_sequence': [a['event'] for a in activities],
-                'explanation': self._build_case_explanation(case_id, item['user_id'], activities)
+                'explanation': self._build_case_explanation(case_id, item['user_id'], activities),
+                'flags': flags
             })
         return case_ids
 
@@ -871,8 +978,8 @@ class BankingAnalyzer:
             'debit': 'Withdrawal Transaction',
             'withdraw': 'Withdrawal Transaction',
             'refund': 'Refund',
-            'invalid_balance': 'Check Balance',
-            'negative_balance': 'Check Balance',
+            'invalid_balance': 'Failed Transaction',
+            'negative_balance': 'Failed Transaction',
         }
         
         # Build case paths with timing information
@@ -1055,33 +1162,35 @@ class BankingAnalyzer:
                 'event_columns': event_columns
             }
 
-        # Group by user
-        by_user: Dict[str, List[Dict]] = {}
-
+        # Group by (user, account) so multiple accounts for the same user are not mixed
+        by_key: Dict[Tuple[str, str], List[Dict]] = {}
         for act in all_activities:
             uid = act.get('user_id') or 'unknown'
-            if uid not in by_user:
-                by_user[uid] = []
-            by_user[uid].append(act)
+            acc = act.get('account_id') or ''
+            key = (uid, acc)
+            if key not in by_key:
+                by_key[key] = []
+            by_key[key].append(act)
 
-        # Identify sessions per user
-        sessions_by_user: Dict[str, List[List[Dict]]] = {}
-        for uid, acts in by_user.items():
-            sessions = self._identify_sessions(acts)
+        # Identify sessions per (user, account)
+        sessions_by_key: Dict[Tuple[str, str], List[List[Dict]]] = {}
+        for (uid, acc), acts in by_key.items():
+            has_session_markers = any(a.get('event') in (SESSION_START | SESSION_END) for a in acts)
+            sessions = self._identify_sessions(acts, has_explicit_session_events=has_session_markers)
             if sessions:
-                sessions_by_user[uid] = sessions
+                sessions_by_key[(uid, acc)] = sessions
 
-        if not sessions_by_user:
+        if not sessions_by_key:
             return {
                 'success': False,
                 'error': 'No sessions found. Sessions need a start (e.g. login or open time) and steps (e.g. credit, debit).',
                 'total_activities': len(all_activities)
             }
 
-        case_details = self._assign_case_ids(sessions_by_user)
+        case_details = self._assign_case_ids(sessions_by_key)
 
         case_ids_asc = [c['case_id'] for c in case_details]
-        users_with_cases = list(sessions_by_user.keys())
+        users_with_cases = sorted({c['user_id'] for c in case_details if c.get('user_id')})
         total_users = len(users_with_cases)
         total_cases = len(case_details)
 
