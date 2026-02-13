@@ -1,0 +1,5 @@
+claim_id,policy_id,claim_amount,claim_date,claim_status,adjusted_amount
+C9001,P1001,200000,2025-05-10,Approved,200000
+C9002,P1002,150000,2024-08-15,Pending,0
+C9003,P1003,50000,2024-11-20,Rejected,0
+C9004,P1004,100000,2026-02-01,Approved,100000

@@ -1,0 +1,5 @@
+order_id,customer_id,customer_name,city,order_status,total_amount,order_date
+O1001,C001,Ravi Kumar,Chennai,Delivered,2470,2025-01-10 10:15:30
+O1002,C001,Ravi Kumar,Chennai,Delivered,530,2025-01-12 09:20:10
+O1003,C002,Anitha Devi,Madurai,Delivered,210,2025-01-10 11:05:20
+O1004,C003,Manoj Kumar,Coimbatore,Cancelled,312,2025-01-11 09:30:45

@@ -1,0 +1,5 @@
+premium_id,policy_id,payment_date,payment_mode,amount,status
+PR5001,P1001,2024-02-01,UPI,10000,Success
+PR5002,P1002,2024-02-02,NEFT,8000,Success
+PR5003,P1003,2024-02-03,CreditCard,5000,Success
+PR5004,P1004,2024-02-04,UPI,9000,Success
