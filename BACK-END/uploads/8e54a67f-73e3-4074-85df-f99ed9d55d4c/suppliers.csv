@@ -1,0 +1,21 @@
+supplier_id,supplier_name,contact_person,email,phone,gstin,city,state,payment_terms_days,lead_time_days,rating,contract_start_date,contract_end_date,status,created_at,updated_at
+SUP00001,FreshMart Distributors,Lakshmi Verma,supplier1@supply.com,9800114179,QB5IDLH1AJO8J7Q,Chennai,Tamil Nadu,45,6,3.5,2023-07-27,2024-07-26,Active,2024-02-20 12:08:37,2025-09-12 12:08:37
+SUP00002,TechSource India,Karthik Rao,supplier2@supply.com,9266131473,8M4E7OGWVMR1AKL,Mumbai,Maharashtra,45,17,4.5,2021-12-11,2022-12-11,Active,2022-05-19 12:08:37,2026-01-16 12:08:37
+SUP00003,FabricWave Suppliers,Divya Devi,supplier3@supply.com,9571282220,33C6YSY0TRP1YZM,Delhi,Delhi,30,3,4.7,2023-10-24,2024-10-23,Active,2022-04-25 12:08:37,2025-09-10 12:08:37
+SUP00004,HomeEssentials Co,Rajesh Krishnan,supplier4@supply.com,9436791521,ZCXHBTFHEGP3RJA,Bangalore,Karnataka,90,17,4.6,2021-09-30,2022-09-30,Active,2023-08-28 12:08:37,2025-10-25 12:08:37
+SUP00005,GreenLeaf Agro,Sunita Bose,supplier5@supply.com,9506383825,C2Y0HCS7FPUDPA3,Hyderabad,Telangana,60,6,3.8,2024-07-18,2027-07-18,Active,2023-08-29 12:08:37,2025-11-15 12:08:37
+SUP00006,SportsPro Wholesalers,Mohan Shah,supplier6@supply.com,9867874901,WM5FBBK5I2G1KCT,Pune,Maharashtra,45,18,4.1,2022-01-11,2025-01-10,Inactive,2024-01-12 12:08:37,2025-12-13 12:08:37
+SUP00007,BookWorld Distributors,Anitha Joshi,supplier7@supply.com,9502077527,KUXGWJDVREPG138,Kolkata,West Bengal,45,3,4.5,2023-05-02,2024-05-01,Inactive,2022-04-04 12:08:37,2025-12-24 12:08:37
+SUP00008,ToyLand Imports,Ganesh Mishra,supplier8@supply.com,9690020992,FQR3UBSSKJ0PT5N,Ahmedabad,Gujarat,30,17,4.7,2021-10-25,2023-10-25,Blacklisted,2022-10-09 12:08:37,2025-12-09 12:08:37
+SUP00009,FurniturePlus Mfg,Shalini Chatterjee,supplier9@supply.com,9712926344,VVXUNI5NLLOG0LV,Madurai,Tamil Nadu,30,6,4.3,2023-12-09,2026-12-08,Inactive,2024-07-10 12:08:37,2026-01-13 12:08:37
+SUP00010,Footstep Exports,Bala Kumar,supplier10@supply.com,9392381809,6UFW0CON69FL3PW,Coimbatore,Tamil Nadu,90,11,4.6,2022-02-16,2023-02-16,Blacklisted,2023-04-19 12:08:37,2025-09-23 12:08:37
+SUP00011,DigiSupply Chain,Rekha Sharma,supplier11@supply.com,9764464486,TKP7W9WW1DE3LKS,Kochi,Kerala,30,3,3.2,2022-05-22,2025-05-21,Inactive,2023-02-28 12:08:37,2025-10-16 12:08:37
+SUP00012,DenimKing Traders,Senthil Nair,supplier12@supply.com,9191572425,H97XVE7S889XDQ0,Jaipur,Rajasthan,45,8,5.0,2021-08-20,2024-08-19,Blacklisted,2022-01-20 12:08:37,2025-12-14 12:08:37
+SUP00013,GrainMaster India,Nithya Patel,supplier13@supply.com,9919970845,LYEMKIR8E6J8MW9,Lucknow,Uttar Pradesh,15,21,4.9,2023-12-29,2025-12-28,Active,2024-02-11 12:08:37,2025-08-29 12:08:37
+SUP00014,KitchenCraft Ltd,Arun Reddy,supplier14@supply.com,9823580982,H48F7SYU7ST52UY,Nagpur,Maharashtra,60,18,4.8,2022-10-27,2025-10-26,Inactive,2024-02-07 12:08:37,2025-09-02 12:08:37
+SUP00015,GlowUp Beauty Supply,Priya Iyer,supplier15@supply.com,9958669688,O2YSZ8B55MK9OD2,Surat,Gujarat,90,21,4.5,2024-06-06,2025-06-06,Inactive,2024-02-08 12:08:37,2025-10-16 12:08:37
+SUP00016,FieldSports Traders,Rahul Pillai,supplier16@supply.com,9535056512,KSPXISAJICUJ82F,Indore,Madhya Pradesh,15,13,4.5,2024-07-29,2027-07-29,Active,2021-06-22 12:08:37,2025-10-10 12:08:37
+SUP00017,PageTurner Books,Meera Menon,supplier17@supply.com,9308032658,1H6IGJ21DUG6IQA,Bhopal,Madhya Pradesh,90,18,4.8,2021-05-28,2024-05-27,Active,2023-09-15 12:08:37,2025-08-17 12:08:37
+SUP00018,KidsZone Toys,Suresh Das,supplier18@supply.com,9590210117,1S7361HUW7S1N3T,Patna,Bihar,60,20,5.0,2024-06-26,2027-06-26,Inactive,2021-10-11 12:08:37,2025-10-28 12:08:37
+SUP00019,ComfortLiving Furniture,Kavitha Gupta,supplier19@supply.com,9866246230,WSOQQ5Y9IBKAGGK,Vadodara,Gujarat,30,3,3.4,2024-09-23,2026-09-23,Active,2023-02-24 12:08:37,2025-12-28 12:08:37
+SUP00020,StepRight Footwear,Vijay Singh,supplier20@supply.com,9804696522,8ODHKKGL144FQUS,Visakhapatnam,Andhra Pradesh,30,2,4.3,2025-02-10,2027-02-10,Active,2023-03-10 12:08:37,2026-01-09 12:08:37

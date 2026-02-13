@@ -1,0 +1,21 @@
+store_id,store_name,store_type,city,state,pincode,manager_name,phone,email,area_sqft,operating_hours,store_status,opened_at,created_at,updated_at
+STR0001,RetailHub Chennai Flagship,Flagship,Chennai,Tamil Nadu,679260,Meera Pillai,044-49767279,store1@retailhub.com,49088,8AM-11PM,Closed,2019-09-22 12:08:37,2017-07-14 12:08:37,2025-09-24 12:08:37
+STR0002,RetailHub Mumbai Express,Express,Mumbai,Maharashtra,727776,Suresh Menon,044-74539604,store2@retailhub.com,25284,8AM-11PM,Under Renovation,2022-10-22 12:08:37,2016-06-24 12:08:37,2025-10-13 12:08:37
+STR0003,RetailHub Delhi Warehouse,Warehouse,Delhi,Delhi,715795,Kavitha Das,044-22850755,store3@retailhub.com,20700,24x7,Open,2022-12-09 12:08:37,2020-11-17 12:08:37,2025-12-12 12:08:37
+STR0004,RetailHub Bangalore Pop-Up,Pop-Up,Bangalore,Karnataka,765080,Vijay Gupta,044-85616190,store4@retailhub.com,42569,9AM-6PM,Open,2016-03-03 12:08:37,2016-10-23 12:08:37,2025-11-20 12:08:37
+STR0005,RetailHub Hyderabad Online Hub,Online Hub,Hyderabad,Telangana,601731,Lakshmi Singh,044-74060507,store5@retailhub.com,20953,8AM-11PM,Temporarily Closed,2020-07-31 12:08:37,2018-07-30 12:08:37,2025-08-30 12:08:37
+STR0006,RetailHub Pune Dark Store,Dark Store,Pune,Maharashtra,699414,Karthik Verma,044-15489428,store6@retailhub.com,16291,9AM-9PM,Open,2022-09-10 12:08:37,2020-05-02 12:08:37,2025-12-05 12:08:37
+STR0007,RetailHub Kolkata Kiosk,Kiosk,Kolkata,West Bengal,690242,Divya Rao,044-38370810,store7@retailhub.com,43486,24x7,Open,2021-08-08 12:08:37,2019-04-05 12:08:37,2026-01-30 12:08:37
+STR0008,RetailHub Ahmedabad SuperStore,SuperStore,Ahmedabad,Gujarat,632975,Rajesh Devi,044-28422478,store8@retailhub.com,49816,10AM-10PM,Closed,2022-02-05 12:08:37,2017-03-15 12:08:37,2025-12-21 12:08:37
+STR0009,RetailHub Madurai Mini Mart,Mini Mart,Madurai,Tamil Nadu,667647,Sunita Krishnan,044-93097203,store9@retailhub.com,15823,8AM-11PM,Open,2025-01-20 12:08:37,2020-11-21 12:08:37,2025-08-21 12:08:37
+STR0010,RetailHub Coimbatore Outlet,Outlet,Coimbatore,Tamil Nadu,782815,Mohan Bose,044-43398362,store10@retailhub.com,19231,9AM-6PM,Temporarily Closed,2019-08-18 12:08:37,2024-01-31 12:08:37,2025-09-02 12:08:37
+STR0011,RetailHub Kochi Flagship,Flagship,Kochi,Kerala,730743,Anitha Shah,044-82523345,store11@retailhub.com,33165,24x7,Closed,2023-01-29 12:08:37,2024-09-21 12:08:37,2025-09-07 12:08:37
+STR0012,RetailHub Jaipur Express,Express,Jaipur,Rajasthan,729683,Ganesh Joshi,044-20187618,store12@retailhub.com,12989,9AM-6PM,Temporarily Closed,2022-05-20 12:08:37,2022-01-01 12:08:37,2025-08-31 12:08:37
+STR0013,RetailHub Lucknow Warehouse,Warehouse,Lucknow,Uttar Pradesh,712636,Shalini Mishra,044-61597467,store13@retailhub.com,43774,24x7,Temporarily Closed,2017-09-07 12:08:37,2016-12-17 12:08:37,2025-12-24 12:08:37
+STR0014,RetailHub Nagpur Pop-Up,Pop-Up,Nagpur,Maharashtra,720068,Bala Chatterjee,044-87247762,store14@retailhub.com,35294,9AM-6PM,Closed,2024-01-11 12:08:37,2023-05-02 12:08:37,2026-02-11 12:08:37
+STR0015,RetailHub Surat Online Hub,Online Hub,Surat,Gujarat,719296,Rekha Kumar,044-45579281,store15@retailhub.com,19688,24x7,Temporarily Closed,2021-01-23 12:08:37,2022-01-26 12:08:37,2026-02-11 12:08:37
+STR0016,RetailHub Indore Dark Store,Dark Store,Indore,Madhya Pradesh,654917,Senthil Sharma,044-54854875,store16@retailhub.com,37962,8AM-11PM,Under Renovation,2023-10-16 12:08:37,2018-11-04 12:08:37,2025-09-09 12:08:37
+STR0017,RetailHub Bhopal Kiosk,Kiosk,Bhopal,Madhya Pradesh,629254,Nithya Nair,044-69693842,store17@retailhub.com,20677,10AM-10PM,Open,2021-08-06 12:08:37,2022-02-19 12:08:37,2025-11-05 12:08:37
+STR0018,RetailHub Patna SuperStore,SuperStore,Patna,Bihar,619752,Arun Patel,044-74246660,store18@retailhub.com,18762,9AM-9PM,Under Renovation,2024-12-04 12:08:37,2021-11-21 12:08:37,2025-12-27 12:08:37
+STR0019,RetailHub Vadodara Mini Mart,Mini Mart,Vadodara,Gujarat,638764,Priya Reddy,044-59295566,store19@retailhub.com,20469,9AM-6PM,Under Renovation,2019-09-18 12:08:37,2018-03-19 12:08:37,2025-12-05 12:08:37
+STR0020,RetailHub Visakhapatnam Outlet,Outlet,Visakhapatnam,Andhra Pradesh,614714,Rahul Iyer,044-42196231,store20@retailhub.com,35667,8AM-11PM,Closed,2020-06-28 12:08:37,2016-09-14 12:08:37,2025-12-05 12:08:37

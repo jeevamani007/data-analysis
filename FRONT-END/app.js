@@ -795,18 +795,17 @@ function renderSankeyDiagramSVG(flowData) {
     // HORIZONTAL FLOW STRUCTURE: Process (left) → Events (middle columns) → End (right)
     // Nodes are VERTICAL bars arranged in COLUMNS, pipelines flow HORIZONTALLY
     
-    const availableHeight = Math.floor(viewportHeight * 0.95);
-    const availableWidth = Math.floor(viewportWidth * 0.98);
-    // Make main Sankey nodes visually larger and easier to read
-    const nodeBarWidth = 120; // Width of vertical node bars (wider for bigger Process/End/events)
-    // Slightly tighter vertical padding so there is less empty space
-    const padding = { top: 120, left: 160, right: 160, bottom: 120 };
+    const availableHeight = Math.floor(viewportHeight * 0.9);
+    const availableWidth = Math.floor(viewportWidth * 0.95);
+    // Node bar width tuned so diagram comfortably fits common laptop widths
+    const nodeBarWidth = 100; // vertical node width
+    // Tighter padding so the diagram uses more of the screen area
+    const padding = { top: 80, left: 96, right: 96, bottom: 80 };
     
     // Calculate scale so total flow height fits available vertical space
     const maxFlowHeight = availableHeight - padding.top - padding.bottom;
-    // Allow a larger visual scale so bars and pipelines look bigger on screen,
-    // but cap it so nodes do not become too tall with huge gaps between events.
-    const flowScale = Math.min(maxFlowHeight / Math.max(totalFlow, maxNodeVal), 24);
+    // Scale chosen so bars are legible but fit within the viewport
+    const flowScale = Math.min(maxFlowHeight / Math.max(totalFlow, maxNodeVal), 20);
     
     const nodeIndex = {};
     nodeOrder.forEach(function (n, i) { nodeIndex[n] = i; });
@@ -848,30 +847,55 @@ function renderSankeyDiagramSVG(flowData) {
         middleCols = 3;
     }
 
-    // Distribute middle events across columns in order, balancing counts per column.
+    // Distribute middle events into columns based on sequence distance from Process
+    // so layers visually follow the true flow order instead of random stacking.
     const colSlots = [];
     for (let c = 0; c < middleCols; c++) {
         colSlots.push([]);
     }
-    middleNodes.forEach(function (n, idx) {
-        const colIndex = idx % middleCols; // round‑robin assignment
-        colSlots[colIndex].push(n.name);
-        eventCol[n.name] = colIndex + 1; // columns 1..middleCols
+
+    // Compute graph distance from Process using BFS over links (Process → events → ...)
+    const distance = {};
+    distance['Process'] = 0;
+    const queue = ['Process'];
+    while (queue.length) {
+        const current = queue.shift();
+        const currentDist = distance[current];
+        const outgoing = linksByFrom[current] || [];
+        outgoing.forEach(function (l) {
+            const target = l.to;
+            if (target === 'End') return;
+            const nextDist = (currentDist || 0) + 1;
+            if (distance[target] == null || distance[target] > nextDist) {
+                distance[target] = nextDist;
+                queue.push(target);
+            }
+        });
+    }
+
+    // Map distance (steps from Process) into our limited number of middle columns.
+    middleNodes.forEach(function (n) {
+        const name = n.name;
+        const d = distance[name] || 1; // default to first layer if unreachable
+        // Distance 1 → column 1, 2 → column 2, etc., capped at middleCols
+        let colIndex = Math.min(d, middleCols) - 1;
+        if (colIndex < 0) colIndex = 0;
+        colSlots[colIndex].push(name);
+        eventCol[name] = colIndex + 1; // columns 1..middleCols
     });
 
     eventCol['End'] = middleCols + 1;
     const totalCols = middleCols + 2;
     
-    // Calculate horizontal spacing between columns.
-    // Use a fixed, moderate gap so the SVG width stays compact and nodes render larger on screen.
-    const colGap = 260;
+    // Calculate horizontal spacing between columns so the whole layout fits a laptop screen.
+    const colGap = Math.max(140, Math.min(220, Math.floor((availableWidth - padding.left - padding.right) / Math.max(totalCols, 4)) - nodeBarWidth));
     const centerY = padding.top + maxFlowHeight / 2;
     
     // Process node: left column, vertical bar
         const processNode = nodes.find(function (n) { return n.name === 'Process'; });
     if (processNode) {
         // Slightly smaller minimum height to reduce big empty gaps
-        const h = Math.max(110, (processNode.value || 0) * flowScale);
+        const h = Math.max(90, (processNode.value || 0) * flowScale);
         const x = padding.left;
         const y = centerY - h / 2;
         nodePositions['Process'] = { x: x, y: y, width: nodeBarWidth, height: h };
@@ -899,12 +923,12 @@ function renderSankeyDiagramSVG(flowData) {
         const heights = names.map(function (name) {
             const node = nodes.find(function (n) { return n.name === name; }) || {};
             const approxH = (node.value || 0) * flowScale;
-            // Reduce the minimum so stacked events are closer together vertically
-            return Math.max(100, approxH); // base minimum height
+            // Base minimum height; slightly smaller so more boxes fit vertically
+            return Math.max(80, approxH);
         });
 
-        // Slightly smaller vertical gap so event-to-event spacing is tighter
-        const gap = 28; // vertical gap between event boxes in the same column
+        // Vertical gap between event boxes in the same column
+        const gap = 24;
         const totalH = heights.reduce(function (sum, h) { return sum + h; }, 0) + gap * (names.length - 1);
         let currentY = centerY - totalH / 2;
 
@@ -957,17 +981,21 @@ function renderSankeyDiagramSVG(flowData) {
                 maxEndY = Math.max(maxEndY, pos.endY);
             }
         });
-        
+
+        // If there are no explicit incoming flows, fall back to a symmetric bar
         if (minEndY === Infinity) {
             minEndY = centerY - (endNode.value || 0) * flowScale / 2;
             maxEndY = centerY + (endNode.value || 0) * flowScale / 2;
         }
-        
-        const endCenterY = (minEndY + maxEndY) / 2;
-        // Match Process minimum height to keep both bars aligned without huge vertical size
-        const endH = Math.max(110, (endNode.value || 0) * flowScale);
+
+        // Make sure the End bar vertically spans the full range of incoming
+        // pipelines so every event→End flow visually meets the box.
+        const flowSpan = Math.max(0, maxEndY - minEndY);
+        const endH = Math.max(90, flowSpan);
         const endX = padding.left + (totalCols - 1) * (colGap + nodeBarWidth);
-        nodePositions['End'] = { x: endX, y: endCenterY - endH / 2, width: nodeBarWidth, height: endH };
+        const endY = minEndY - (endH - flowSpan) / 2;
+
+        nodePositions['End'] = { x: endX, y: endY, width: nodeBarWidth, height: endH };
         nodeSizes['End'] = { width: nodeBarWidth, height: endH };
     }
     
@@ -1080,23 +1108,29 @@ function renderSankeyDiagramSVG(flowData) {
         const flowPos = linkFlowPos[flowKey];
         if (!flowPos) return;
         
-        // HORIZONTAL FLOW: Pipelines flow straight left to right between vertical node bars.
-        // Use the center of the allocated band inside the source node, without extra zig-zag offset,
-        // so connectors align cleanly from Process → events → End.
+        // HORIZONTAL FLOW: Pipelines flow left to right between vertical node bars.
+        // Use the center of the allocated band inside the source node, then guide
+        // the pipeline so it finishes inside the target event box (no stray lines).
         const flowCenterY = (flowPos.startY + flowPos.endY) / 2;
         const flowThickness = flowPos.endY - flowPos.startY;
+        // Band thickness follows actual flow size, with an upper cap so large flows
+        // do not visually hide nearby smaller ones.
+        const halfThick = Math.min(flowThickness / 2, 28);
         
         // Connection points: right edge of source node, left edge of target node
         const x1 = fromPos.x + nodeSizes[l.from].width;
         const y1 = flowCenterY;
         const x2 = toPos.x;
-        const y2 = flowCenterY;
+        // Clamp the target Y so the band always lands fully inside the event box.
+        let y2 = flowCenterY;
+        const targetTop = toPos.y + halfThick;
+        const targetBottom = toPos.y + toPos.height - halfThick;
+        if (y2 < targetTop) y2 = targetTop;
+        if (y2 > targetBottom) y2 = targetBottom;
         
         // Horizontal curved path (left to right)
         const dx = x2 - x1;
         const controlOffset = Math.min(dx * 0.4, 120); // Horizontal curve control
-        // Ensure a thicker minimum band so pipelines are clearly visible
-        const halfThick = Math.max(flowThickness / 2, 14);
         
         // Draw filled horizontal band (Sankey pipeline flowing rightward)
         const pathBand = 'M ' + x1 + ' ' + (y1 - halfThick) + 
@@ -1129,25 +1163,28 @@ function renderSankeyDiagramSVG(flowData) {
     nodes.forEach(function (n) {
         const pos = nodePositions[n.name];
         if (!pos) return;
-        
-        // Use assigned color for each event (based on path color)
-        const nodeColor = nodeColors[n.name] || '#64748b';
-        
-        // Vertical bar: nodes are vertical rectangles (thicker stroke for visibility)
-        nodeHTML += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + pos.width + '" height="' + pos.height + '" rx="10" fill="' + nodeColor + '" stroke="#fff" stroke-width="5" opacity="0.96" />';
-        
-        // Label: name above node, value below node (vertical bar layout)
-        nodeHTML += '<text x="' + (pos.x + pos.width / 2) + '" y="' + (pos.y - 18) + '" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">' + n.name + '</text>';
-        nodeHTML += '<text x="' + (pos.x + pos.width / 2) + '" y="' + (pos.y + pos.height + 32) + '" text-anchor="middle" font-size="17" font-weight="800" fill="#0f172a">' + n.value + '</text>';
+
+        // Unified node styling: white boxes with dark border and text.
+        const nodeStroke = '#111827';
+        const nodeFill = '#ffffff';
+
+        // Vertical bar: nodes are vertical rectangles (consistent visual style)
+        nodeHTML += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + pos.width + '" height="' + pos.height + '" rx="10" fill="' + nodeFill + '" stroke="' + nodeStroke + '" stroke-width="3" opacity="1" />';
+
+        // Label: name above node, value below node (black text)
+        nodeHTML += '<text x="' + (pos.x + pos.width / 2) + '" y="' + (pos.y - 18) + '" text-anchor="middle" font-size="18" font-weight="700" fill="' + nodeStroke + '">' + n.name + '</text>';
+        nodeHTML += '<text x="' + (pos.x + pos.width / 2) + '" y="' + (pos.y + pos.height + 32) + '" text-anchor="middle" font-size="17" font-weight="800" fill="' + nodeStroke + '">' + n.value + '</text>';
     });
     
-    // Full-screen responsive SVG - fills viewport, with full screen toggle
-    return '<div id="sankey-diagram-container" style="position:relative;width:100%;height:92vh;min-height:750px;max-height:96vh;overflow:auto;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.15);margin:0;">' +
+    // Full-screen responsive SVG container – uses most of the laptop viewport
+    // Draw nodes first, then pipelines on top so the horizontal flows visually
+    // meet the vertical bars without looking cut off at the edges.
+    return '<div id="sankey-diagram-container" style="position:relative;width:100%;height:88vh;min-height:0;max-height:100vh;overflow:auto;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.15);margin:0;">' +
            '<button type="button" onclick="toggleSankeyFullscreen()" title="Toggle full screen" style="position:absolute;top:12px;right:12px;z-index:10;padding:8px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:#334155;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.1);display:flex;align-items:center;gap:6px;">' +
            '<span style="font-size:18px;">⛶</span> Full Screen</button>' +
            '<svg width="100%" height="100%" viewBox="0 0 ' + svgWidth + ' ' + svgHeight + '" preserveAspectRatio="xMidYMid meet" style="display:block;" xmlns="http://www.w3.org/2000/svg">' +
-           '<g>' + pathsHTML + '</g>' +
            '<g>' + nodeHTML + '</g>' +
+           '<g>' + pathsHTML + '</g>' +
            '</svg></div>';
 }
 
