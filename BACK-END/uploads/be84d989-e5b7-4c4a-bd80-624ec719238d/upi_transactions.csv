@@ -1,0 +1,5 @@
+user_id,account_id,event_type,amount,status,timestamp
+U201,A6001,upi_pay,350,success,2026-02-12 12:00:00
+U201,A6001,upi_pay,1200,failed,2026-02-12 12:05:00
+U202,A6002,upi_collect,500,success,2026-02-12 13:00:00
+U203,A6003,upi_pay,800,success,2026-02-12 14:10:00

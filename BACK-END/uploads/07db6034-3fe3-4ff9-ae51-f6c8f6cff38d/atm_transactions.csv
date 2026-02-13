@@ -1,0 +1,5 @@
+user_id,account_id,event_type,amount,status,timestamp
+U101,A5001,withdraw,2000,success,2026-02-12 09:10:00
+U101,A5001,balance_check,0,success,2026-02-12 09:15:00
+U102,A5002,withdraw,1500,failed,2026-02-12 10:20:00
+U103,A5003,deposit,5000,success,2026-02-12 11:45:00

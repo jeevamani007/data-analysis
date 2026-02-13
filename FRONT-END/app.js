@@ -797,12 +797,16 @@ function renderSankeyDiagramSVG(flowData) {
     
     const availableHeight = Math.floor(viewportHeight * 0.95);
     const availableWidth = Math.floor(viewportWidth * 0.98);
-    const nodeBarWidth = 80; // Width of vertical node bars (increased for better visibility)
-    const padding = { top: 120, left: 140, right: 140, bottom: 120 };
+    // Make main Sankey nodes visually larger and easier to read
+    const nodeBarWidth = 120; // Width of vertical node bars (wider for bigger Process/End/events)
+    // Slightly tighter vertical padding so there is less empty space
+    const padding = { top: 120, left: 160, right: 160, bottom: 120 };
     
     // Calculate scale so total flow height fits available vertical space
     const maxFlowHeight = availableHeight - padding.top - padding.bottom;
-    const flowScale = Math.min(maxFlowHeight / Math.max(totalFlow, maxNodeVal), 18);
+    // Allow a larger visual scale so bars and pipelines look bigger on screen,
+    // but cap it so nodes do not become too tall with huge gaps between events.
+    const flowScale = Math.min(maxFlowHeight / Math.max(totalFlow, maxNodeVal), 24);
     
     const nodeIndex = {};
     nodeOrder.forEach(function (n, i) { nodeIndex[n] = i; });
@@ -822,24 +826,52 @@ function renderSankeyDiagramSVG(flowData) {
         linksByTo[l.to].push(l);
     });
     
-    // Determine column for each event (Process=col 0, End=last col, middle events by order)
+    // Determine column for each event:
+    // - Process = column 0 (left)
+    // - End     = last column (right)
+    // - Middle events distributed into a small number of vertical stacks
     const eventCol = {};
     eventCol['Process'] = 0;
+
     const middleNodes = nodes.filter(function (n) { return n.name !== 'Process' && n.name !== 'End'; });
+    const middleCount = middleNodes.length;
+
+    // Decide how many middle columns we want so boxes appear in vertical stacks.
+    // Examples:
+    //   1–3 events  -> 1 column
+    //   4–6 events  -> 2 columns (e.g. 3 + 3)
+    //   7+  events  -> 3 columns (balanced)
+    let middleCols = 1;
+    if (middleCount > 3 && middleCount <= 6) {
+        middleCols = 2;
+    } else if (middleCount > 6) {
+        middleCols = 3;
+    }
+
+    // Distribute middle events across columns in order, balancing counts per column.
+    const colSlots = [];
+    for (let c = 0; c < middleCols; c++) {
+        colSlots.push([]);
+    }
     middleNodes.forEach(function (n, idx) {
-        eventCol[n.name] = idx + 1; // Column 1, 2, 3, ...
+        const colIndex = idx % middleCols; // round‑robin assignment
+        colSlots[colIndex].push(n.name);
+        eventCol[n.name] = colIndex + 1; // columns 1..middleCols
     });
-    eventCol['End'] = middleNodes.length + 1;
-    const totalCols = middleNodes.length + 2;
+
+    eventCol['End'] = middleCols + 1;
+    const totalCols = middleCols + 2;
     
-    // Calculate horizontal spacing between columns
-    const colGap = Math.max(320, (availableWidth - padding.left - padding.right - nodeBarWidth * totalCols) / Math.max(totalCols - 1, 1));
+    // Calculate horizontal spacing between columns.
+    // Use a fixed, moderate gap so the SVG width stays compact and nodes render larger on screen.
+    const colGap = 260;
     const centerY = padding.top + maxFlowHeight / 2;
     
     // Process node: left column, vertical bar
-    const processNode = nodes.find(function (n) { return n.name === 'Process'; });
+        const processNode = nodes.find(function (n) { return n.name === 'Process'; });
     if (processNode) {
-        const h = Math.max(90, (processNode.value || 0) * flowScale);
+        // Slightly smaller minimum height to reduce big empty gaps
+        const h = Math.max(110, (processNode.value || 0) * flowScale);
         const x = padding.left;
         const y = centerY - h / 2;
         nodePositions['Process'] = { x: x, y: y, width: nodeBarWidth, height: h };
@@ -859,37 +891,43 @@ function renderSankeyDiagramSVG(flowData) {
         });
     }
     
-    // Middle nodes: position in their column, vertically based on incoming flows
-    middleNodes.forEach(function (n) {
-        const incoming = linksByTo[n.name] || [];
-        if (incoming.length === 0) return;
-        
-        // Calculate vertical position from incoming flows
-        let minInY = Infinity;
-        let maxInY = -Infinity;
-        incoming.forEach(function (l) {
-            const key = l.from + '->' + l.to;
-            const pos = linkFlowPos[key];
-            if (pos) {
-                minInY = Math.min(minInY, pos.startY);
-                maxInY = Math.max(maxInY, pos.endY);
-            }
+    // Middle nodes: position in their column, stacked vertically with even spacing
+    colSlots.forEach(function (names, colIndex) {
+        if (!names || !names.length) return;
+
+        // Precompute heights for each node (based on value, with a minimum so they look like bars)
+        const heights = names.map(function (name) {
+            const node = nodes.find(function (n) { return n.name === name; }) || {};
+            const approxH = (node.value || 0) * flowScale;
+            // Reduce the minimum so stacked events are closer together vertically
+            return Math.max(100, approxH); // base minimum height
         });
-        
-        if (minInY === Infinity) {
-            minInY = centerY - (n.value || 0) * flowScale / 2;
-            maxInY = centerY + (n.value || 0) * flowScale / 2;
-        }
-        
-        const nodeCenterY = (minInY + maxInY) / 2;
-        const nodeH = Math.max(90, maxInY - minInY, (n.value || 0) * flowScale);
-        const col = eventCol[n.name];
-        const x = padding.left + col * (colGap + nodeBarWidth);
-        
-        nodePositions[n.name] = { x: x, y: nodeCenterY - nodeH / 2, width: nodeBarWidth, height: nodeH };
-        nodeSizes[n.name] = { width: nodeBarWidth, height: nodeH };
-        
-        // Calculate outgoing flows from this node (vertical stacking)
+
+        // Slightly smaller vertical gap so event-to-event spacing is tighter
+        const gap = 28; // vertical gap between event boxes in the same column
+        const totalH = heights.reduce(function (sum, h) { return sum + h; }, 0) + gap * (names.length - 1);
+        let currentY = centerY - totalH / 2;
+
+        names.forEach(function (name, idx) {
+            const h = heights[idx];
+            const col = eventCol[name]; // 1..middleCols
+            const x = padding.left + col * (colGap + nodeBarWidth);
+            const y = currentY;
+
+            nodePositions[name] = { x: x, y: y, width: nodeBarWidth, height: h };
+            nodeSizes[name] = { width: nodeBarWidth, height: h };
+
+            currentY += h + gap;
+        });
+    });
+
+    // After nodes are positioned, calculate outgoing flows from each middle node
+    // so pipelines stack correctly inside each vertical bar.
+    middleNodes.forEach(function (n) {
+        const nodePos = nodePositions[n.name];
+        if (!nodePos) return;
+
+        const nodeCenterY = nodePos.y + nodePos.height / 2;
         const outgoing = linksByFrom[n.name] || [];
         if (outgoing.length > 0) {
             outgoing.sort(function (a, b) {
@@ -926,7 +964,8 @@ function renderSankeyDiagramSVG(flowData) {
         }
         
         const endCenterY = (minEndY + maxEndY) / 2;
-        const endH = Math.max(90, (endNode.value || 0) * flowScale);
+        // Match Process minimum height to keep both bars aligned without huge vertical size
+        const endH = Math.max(110, (endNode.value || 0) * flowScale);
         const endX = padding.left + (totalCols - 1) * (colGap + nodeBarWidth);
         nodePositions['End'] = { x: endX, y: endCenterY - endH / 2, width: nodeBarWidth, height: endH };
         nodeSizes['End'] = { width: nodeBarWidth, height: endH };
@@ -1041,7 +1080,9 @@ function renderSankeyDiagramSVG(flowData) {
         const flowPos = linkFlowPos[flowKey];
         if (!flowPos) return;
         
-        // HORIZONTAL FLOW: Pipelines flow left to right between vertical node bars
+        // HORIZONTAL FLOW: Pipelines flow straight left to right between vertical node bars.
+        // Use the center of the allocated band inside the source node, without extra zig-zag offset,
+        // so connectors align cleanly from Process → events → End.
         const flowCenterY = (flowPos.startY + flowPos.endY) / 2;
         const flowThickness = flowPos.endY - flowPos.startY;
         
@@ -1053,8 +1094,9 @@ function renderSankeyDiagramSVG(flowData) {
         
         // Horizontal curved path (left to right)
         const dx = x2 - x1;
-        const controlOffset = Math.min(dx * 0.4, 100); // Horizontal curve control
-        const halfThick = Math.max(flowThickness / 2, 8); // Ensure minimum thickness for visibility
+        const controlOffset = Math.min(dx * 0.4, 120); // Horizontal curve control
+        // Ensure a thicker minimum band so pipelines are clearly visible
+        const halfThick = Math.max(flowThickness / 2, 14);
         
         // Draw filled horizontal band (Sankey pipeline flowing rightward)
         const pathBand = 'M ' + x1 + ' ' + (y1 - halfThick) + 
@@ -1092,11 +1134,11 @@ function renderSankeyDiagramSVG(flowData) {
         const nodeColor = nodeColors[n.name] || '#64748b';
         
         // Vertical bar: nodes are vertical rectangles (thicker stroke for visibility)
-        nodeHTML += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + pos.width + '" height="' + pos.height + '" rx="8" fill="' + nodeColor + '" stroke="#fff" stroke-width="4" opacity="0.95" />';
+        nodeHTML += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + pos.width + '" height="' + pos.height + '" rx="10" fill="' + nodeColor + '" stroke="#fff" stroke-width="5" opacity="0.96" />';
         
         // Label: name above node, value below node (vertical bar layout)
-        nodeHTML += '<text x="' + (pos.x + pos.width / 2) + '" y="' + (pos.y - 14) + '" text-anchor="middle" font-size="17" font-weight="600" fill="#0f172a">' + n.name + '</text>';
-        nodeHTML += '<text x="' + (pos.x + pos.width / 2) + '" y="' + (pos.y + pos.height + 28) + '" text-anchor="middle" font-size="16" font-weight="700" fill="#0f172a">' + n.value + '</text>';
+        nodeHTML += '<text x="' + (pos.x + pos.width / 2) + '" y="' + (pos.y - 18) + '" text-anchor="middle" font-size="18" font-weight="700" fill="#0f172a">' + n.name + '</text>';
+        nodeHTML += '<text x="' + (pos.x + pos.width / 2) + '" y="' + (pos.y + pos.height + 32) + '" text-anchor="middle" font-size="17" font-weight="800" fill="#0f172a">' + n.value + '</text>';
     });
     
     // Full-screen responsive SVG - fills viewport, with full screen toggle
@@ -1109,7 +1151,437 @@ function renderSankeyDiagramSVG(flowData) {
            '</svg></div>';
 }
 
-// Render Unified Case Flow Diagram - TRUE Sankey (flow counts from patterns, no hardcoded structure)
+// Tree-style unified Sankey using the same box layout as the filtered single-case diagram,
+// but aggregating counts across ALL cases for each event→event transition.
+function renderUnifiedTreeSankey(flowData) {
+    if (!flowData || !flowData.case_paths || !flowData.case_paths.length) {
+        return '';
+    }
+
+    const casePaths = flowData.case_paths || [];
+
+    // Build unified event list similar to the filtered/tree diagram
+    let eventTypesSingle = flowData.all_event_types || [];
+    if (!eventTypesSingle || eventTypesSingle.length === 0) {
+        const seen = {};
+        eventTypesSingle = ['Process'];
+        casePaths.forEach(function (p) {
+            (p.path_sequence || []).forEach(function (ev) {
+                if (!ev || ev === 'Process' || ev === 'End') return;
+                if (!seen[ev]) {
+                    seen[ev] = true;
+                    eventTypesSingle.push(ev);
+                }
+            });
+        });
+        eventTypesSingle.push('End');
+    }
+
+    // Fixed positions copied from the filtered/tree diagram so the box structure is identical.
+    const fixedPositionsSingle = {
+        'Process': { x: 50, y: 250 },
+        'Created Account': { x: 400, y: 150 },
+        'Account Open': { x: 400, y: 150 },
+        'Login': { x: 750, y: 150 },
+        'Login / Logout': { x: 750, y: 150 },
+        'Check Balance': { x: 1100, y: 150 },
+        'Balance Inquiry': { x: 1100, y: 150 },
+        'Withdrawal Transaction': { x: 1450, y: 150 },
+        'Credit': { x: 400, y: 450 },
+        'Deposit': { x: 400, y: 450 },
+        'Logout': { x: 750, y: 450 },
+        'End': { x: 1250, y: 250 },
+        // Healthcare events
+        'Register': { x: 100, y: 250 },
+        'Visit': { x: 400, y: 250 },
+        'Appointment': { x: 400, y: 250 },
+        'Procedure': { x: 550, y: 250 },
+        'Treatment': { x: 550, y: 250 },
+        'Pharmacy': { x: 700, y: 250 },
+        'LabTest': { x: 850, y: 250 },
+        'Lab Test': { x: 850, y: 250 },
+        'Billing': { x: 1000, y: 250 },
+        'Admission': { x: 450, y: 400 },
+        'Discharge': { x: 700, y: 400 },
+        'Doctor': { x: 950, y: 400 },
+        // Retail events
+        'Customer Visit': { x: 80, y: 250 }, 'Product View': { x: 200, y: 250 }, 'Product Search': { x: 320, y: 250 },
+        'Add To Cart': { x: 440, y: 250 }, 'Remove From Cart': { x: 560, y: 250 }, 'Apply Coupon': { x: 680, y: 250 },
+        'Checkout Started': { x: 800, y: 250 }, 'Address Entered': { x: 920, y: 250 }, 'Payment Selected': { x: 1040, y: 250 },
+        'Payment Success': { x: 1160, y: 250 }, 'Payment Failed': { x: 1280, y: 250 }, 'Order Placed': { x: 200, y: 400 },
+        'Order Confirmed': { x: 320, y: 400 }, 'Invoice Generated': { x: 440, y: 400 }, 'Order Packed': { x: 560, y: 400 },
+        'Order Shipped': { x: 680, y: 400 }, 'Out For Delivery': { x: 800, y: 400 }, 'Order Delivered': { x: 920, y: 400 },
+        'Order Cancelled': { x: 1040, y: 400 }, 'Return Initiated': { x: 200, y: 550 }, 'Return Received': { x: 320, y: 550 },
+        'Refund Processed': { x: 440, y: 550 }, 'User Signed Up': { x: 80, y: 400 }, 'User Logged In': { x: 80, y: 550 },
+        'User Logged Out': { x: 200, y: 150 },
+        // Insurance events
+        'Customer Registered': { x: 80, y: 250 }, 'KYC Completed': { x: 200, y: 250 }, 'Policy Quoted': { x: 320, y: 250 },
+        'Policy Purchased': { x: 440, y: 250 }, 'Policy Activated': { x: 560, y: 250 }, 'Premium Due': { x: 680, y: 250 },
+        'Premium Paid': { x: 800, y: 250 }, 'Policy Renewed': { x: 80, y: 400 },
+        'Policy Expired': { x: 200, y: 400 }, 'Claim Requested': { x: 320, y: 400 }, 'Claim Registered': { x: 440, y: 400 },
+        'Claim Verified': { x: 560, y: 400 }, 'Claim Assessed': { x: 680, y: 400 }, 'Claim Approved': { x: 800, y: 400 },
+        'Claim Rejected': { x: 920, y: 400 }, 'Claim Paid': { x: 80, y: 550 }, 'Nominee Updated': { x: 200, y: 550 },
+        'Policy Cancelled': { x: 320, y: 550 }, 'Policy Closed': { x: 440, y: 550 },
+        // Finance events
+        'Account Opened': { x: 320, y: 250 }, 'Account Closed': { x: 440, y: 250 },
+        'Invest': { x: 560, y: 250 }, 'Value Update': { x: 680, y: 250 }, 'Redeem': { x: 800, y: 250 },
+        'Switch': { x: 920, y: 250 }, 'Dividend': { x: 80, y: 400 },
+        'Transfer Initiated': { x: 560, y: 400 }, 'Transfer Completed': { x: 680, y: 400 },
+        'Payment Initiated': { x: 1040, y: 250 }, 'Loan Applied': { x: 80, y: 550 },
+        'Loan Approved': { x: 200, y: 550 }, 'Loan Disbursed': { x: 320, y: 550 },
+        'Application Submitted': { x: 80, y: 700 }, 'Application Reviewed': { x: 200, y: 700 },
+        'Proposal Generated': { x: 320, y: 700 }, 'Proposal Accepted': { x: 440, y: 700 },
+        'Identity Verified': { x: 560, y: 700 }, 'Address Verified': { x: 680, y: 700 },
+        'Income Verified': { x: 800, y: 700 }, 'Beneficiary Added': { x: 920, y: 700 },
+        'Beneficiary Updated': { x: 80, y: 850 }, 'Coverage Activated': { x: 200, y: 850 },
+        'Coverage Changed': { x: 320, y: 850 }, 'Installment Generated': { x: 440, y: 850 },
+        'Installment Paid': { x: 560, y: 850 }, 'Penalty Applied': { x: 680, y: 850 },
+        'Discount Applied': { x: 800, y: 850 }, 'Case Escalated': { x: 920, y: 850 },
+        'Case Resolved': { x: 80, y: 1000 }, 'Support Ticket Created': { x: 200, y: 1000 },
+        'Support Ticket Closed': { x: 320, y: 1000 }, 'Account Frozen': { x: 440, y: 1000 }
+    };
+
+    // Larger event boxes so structure feels closer to classic Sankey screenshots
+    const boxWidth = 260;
+    const boxHeight = 100;
+
+    const eventPositionsSingle = {};
+    let dynamicX = 50;
+    const takenPositionsSingle = Object.values(fixedPositionsSingle).map(function (p) { return p.x + ',' + p.y; });
+    function resolveEventPos(ev, posMap) {
+        if (posMap[ev]) return posMap[ev];
+        if (posMap[ev.replace(/\s+/g, '')]) return posMap[ev.replace(/\s+/g, '')];
+        if (posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')]) return posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')];
+        return null;
+    }
+    eventTypesSingle.forEach(function (event) {
+        const pos = fixedPositionsSingle[event] || fixedPositionsSingle[event.replace('Transaction', '').trim()] || resolveEventPos(event, fixedPositionsSingle);
+        if (pos) {
+            eventPositionsSingle[event] = pos;
+        } else {
+            let placed = false;
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 5; c++) {
+                    const tx = 50 + c * 350;
+                    const ty = 150 + r * 300;
+                    const key = tx + ',' + ty;
+                    if (takenPositionsSingle.indexOf(key) === -1 && !placed) {
+                        eventPositionsSingle[event] = { x: tx, y: ty };
+                        takenPositionsSingle.push(key);
+                        placed = true;
+                    }
+                }
+            }
+            if (!placed) {
+                eventPositionsSingle[event] = { x: dynamicX, y: 750 };
+                dynamicX += 350;
+            }
+        }
+    });
+
+    const maxX = Math.max.apply(null, Object.values(eventPositionsSingle).map(function (p) { return p.x; })) + 250;
+    const maxY = Math.max.apply(null, Object.values(eventPositionsSingle).map(function (p) { return p.y; })) + 150;
+    const svgWidth = Math.max(900, maxX);
+    const svgHeight = Math.max(400, maxY);
+
+    // Auto-scale diagram so it fits nicely on screen
+    let viewportWidth = 1200;
+    let viewportHeight = 800;
+    try {
+        if (typeof window !== 'undefined') {
+            if (window.innerWidth) viewportWidth = window.innerWidth;
+            if (window.innerHeight) viewportHeight = window.innerHeight;
+        }
+    } catch (e) {}
+
+    const availableWidth = Math.max(viewportWidth - 80, 600);
+    const availableHeight = Math.max(viewportHeight - 180, 400);
+
+    const scaleX = availableWidth / svgWidth;
+    const scaleY = availableHeight / svgHeight;
+    const autoScale = Math.min(scaleX, scaleY, 1.6);
+
+    const scaledWidth = svgWidth * autoScale;
+    const scaledHeight = svgHeight * autoScale;
+    const scaleStyle = autoScale !== 1 ? `transform: scale(${autoScale}); transform-origin: 0 0;` : '';
+    const diagramMinHeight = Math.max(availableHeight, 420);
+
+    // Aggregate counts for each event→event transition across ALL cases
+    const pairCounts = {}; // key: from→to
+    casePaths.forEach(function (p) {
+        const seq = p.path_sequence || [];
+        if (!seq || seq.length < 2) return;
+        for (let i = 0; i < seq.length - 1; i++) {
+            const fromEv = seq[i];
+            const toEv = seq[i + 1];
+            if (!fromEv || !toEv) continue;
+            const key = fromEv + '→' + toEv;
+            if (!pairCounts[key]) {
+                pairCounts[key] = { from: fromEv, to: toEv, count: 0 };
+            }
+            pairCounts[key].count += 1;
+        }
+    });
+
+    const edges = Object.values(pairCounts).filter(function (e) { return e.count > 0; });
+    if (!edges.length) {
+        return '';
+    }
+
+    const maxEdgeCount = edges.reduce(function (m, e) { return Math.max(m, e.count || 0); }, 1);
+
+    // Color system similar to the main Sankey: color flows by first event after Process
+    const pathColorPalette = [
+        '#ec4899', // Pink
+        '#3b82f6', // Blue
+        '#10b981', // Green
+        '#f59e0b', // Orange
+        '#8b5cf6', // Purple
+        '#ef4444', // Red
+        '#06b6d4', // Cyan
+        '#84cc16', // Lime
+        '#f97316', // Orange-red
+        '#6366f1', // Indigo
+        '#14b8a6', // Teal
+        '#f43f5e', // Rose
+        '#a855f7', // Violet
+        '#22c55e', // Emerald
+        '#0ea5e9'  // Sky blue
+    ];
+
+    const linksForColor = edges.map(function (e) {
+        return { from: e.from, to: e.to, count: e.count };
+    });
+
+    const firstEvents = new Set();
+    linksForColor.forEach(function (l) {
+        if (l.from === 'Process') {
+            firstEvents.add(l.to);
+        }
+    });
+
+    const pathColors = {};
+    Array.from(firstEvents).sort().forEach(function (eventName, idx) {
+        pathColors[eventName] = pathColorPalette[idx % pathColorPalette.length];
+    });
+
+    const linkPathColor = {};
+    const processedLinks = new Set();
+
+    // Start with Process → first event links
+    linksForColor.forEach(function (l) {
+        if (l.from === 'Process') {
+            const key = l.from + '->' + l.to;
+            linkPathColor[key] = pathColors[l.to] || '#64748b';
+            processedLinks.add(key);
+        }
+    });
+
+    // Propagate colors along the paths: if A→B has color, then all B→C links get same color
+    let changed = true;
+    while (changed) {
+        changed = false;
+        linksForColor.forEach(function (l) {
+            const key = l.from + '->' + l.to;
+            if (processedLinks.has(key)) return;
+
+            linksForColor.forEach(function (incoming) {
+                if (incoming.to === l.from && processedLinks.has(incoming.from + '->' + incoming.to)) {
+                    const incomingKey = incoming.from + '->' + incoming.to;
+                    linkPathColor[key] = linkPathColor[incomingKey];
+                    processedLinks.add(key);
+                    changed = true;
+                }
+            });
+        });
+    }
+
+    // Any remaining links get a default slate color
+    linksForColor.forEach(function (l) {
+        const key = l.from + '->' + l.to;
+        if (!linkPathColor[key]) {
+            linkPathColor[key] = '#64748b';
+        }
+    });
+
+    let svgHTML = `<svg width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 3; transform-origin: 0 0;">
+        <defs>
+            <marker id="unified-tree-arrow" markerWidth="9" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 9 3, 0 6" fill="#475569" />
+            </marker>
+        </defs>
+    `;
+
+    // Draw aggregated arrows between unique event boxes with thickness ∝ count
+    edges.forEach(function (e) {
+        const fromPos = eventPositionsSingle[e.from];
+        const toPos = eventPositionsSingle[e.to];
+        if (!fromPos || !toPos) return;
+
+        const x1 = fromPos.x + boxWidth / 2;
+        const y1 = fromPos.y + boxHeight / 2;
+        const rawX2 = toPos.x + boxWidth / 2;
+        const rawY2 = toPos.y + boxHeight / 2;
+
+        let labelX;
+        let labelY;
+        let pathElement = '';
+
+        const dxFull = rawX2 - x1;
+        const dyFull = rawY2 - y1;
+
+        // Stroke width scaled by count (thick = many cases, thin = few)
+        // Use a wider dynamic range so visual difference between rare vs. common paths is stronger.
+        const ratio = Math.max(0.02, (e.count || 0) / maxEdgeCount); // 0.02..1
+        const minW = 2.0;    // thin but still visible for rare paths
+        const maxW = 18.0;   // very thick for dominant paths
+        const boosted = Math.pow(ratio, 0.5); // non-linear boost (square-root style)
+        const strokeW = minW + (maxW - minW) * boosted;
+        // Flow color: follow the same color as the linked Sankey diagram for the same from→to pair
+        const color = linkPathColor[e.from + '->' + e.to] || '#475569';
+
+        if (e.from === e.to) {
+            // Self-loop
+            const radius = 60;
+            const startAngle = -Math.PI / 3;
+            const endAngle = -2 * Math.PI / 3;
+
+            const sx = x1 + radius * Math.cos(startAngle);
+            const sy = y1 + radius * Math.sin(startAngle);
+            const ex = x1 + radius * Math.cos(endAngle);
+            const ey = y1 + radius * Math.sin(endAngle);
+            const cx = x1 + radius * 1.2;
+            const cy = y1 - radius * 1.4;
+
+            labelX = x1 + radius * 1.1;
+            labelY = y1 - radius * 1.8;
+
+            pathElement = `<path d="M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}"
+                  stroke="${color}"
+                  stroke-width="${strokeW.toFixed(1)}"
+                  fill="none"
+                  marker-end="url(#unified-tree-arrow)"
+                  opacity="0.98" />`;
+        } else {
+            const lenFull = Math.sqrt(dxFull * dxFull + dyFull * dyFull) || 1;
+            const nx = -dyFull / lenFull;
+            const ny = dxFull / lenFull;
+
+            // Shorten arrow so head is just before the target box edge,
+            // with a slightly larger margin so flows do not touch the box borders.
+            const margin = 40;
+            const ux = dxFull / lenFull;
+            const uy = dyFull / lenFull;
+            const x2 = rawX2 - ux * margin;
+            const y2 = rawY2 - uy * margin;
+
+            const mx = (x1 + x2) / 2;
+            const my = (y1 + y2) / 2;
+
+            // Move label slightly off the connector so arrow is fully visible
+            labelX = mx + nx * 26;
+            labelY = my + ny * 26;
+
+            pathElement = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+                  stroke="${color}"
+                  stroke-width="${strokeW.toFixed(1)}"
+                  marker-end="url(#unified-tree-arrow)"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  opacity="0.96" />`;
+        }
+
+        const labelWidth = 80;
+        const labelOffset = labelWidth / 2;
+        const countLabel = e.count + ' case' + (e.count === 1 ? '' : 's');
+
+        svgHTML += `
+        <g>
+            ${pathElement}
+            <rect x="${labelX - labelOffset}" y="${labelY - 16}" width="${labelWidth}" height="22" rx="11"
+                  fill="white" stroke="#475569" stroke-width="0.9" opacity="0.96" />
+            <text x="${labelX}" y="${labelY - 1}" text-anchor="middle"
+                  font-size="10" font-weight="600" fill="#111827">
+                ${countLabel}
+            </text>
+        </g>
+        `;
+    });
+
+    svgHTML += '</svg>';
+
+    // Draw one box per unique event (tree layout – no duplicates)
+    let boxesHTML = '';
+    eventTypesSingle.forEach(function (event, idx) {
+        const pos = eventPositionsSingle[event];
+        if (!pos) return;
+
+        const ev = event;
+        const isFirst = idx === 0;
+        const isLast = idx === eventTypesSingle.length - 1;
+        const isEnd = ev === 'End' || isLast;
+
+        let boxBg = '#64748b';
+        if (ev === 'Process' || isFirst) boxBg = '#1e40af';
+        else if (isEnd) boxBg = '#ffffff';
+
+        const borderStyle = isEnd
+            ? 'border: 3px solid #1e40af; background: white; color: #1e40af;'
+            : `background: ${boxBg}; color: white; box-shadow: 0 3px 6px rgba(15,23,42,0.25);`;
+
+        boxesHTML += `
+        <div style="
+            position: absolute;
+            left: ${pos.x}px;
+            top: ${pos.y}px;
+            width: ${boxWidth}px;
+            height: ${boxHeight}px;
+            ${borderStyle}
+            border-radius: ${isEnd ? '50px' : '12px'};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-weight: 700;
+            font-size: 0.95rem;
+            z-index: 1;
+            padding: 0.5rem;
+            line-height: 1.2;
+        ">
+            ${ev}
+        </div>
+        `;
+    });
+
+    const filterLabel = (flowData && flowData.filterLabel) ? flowData.filterLabel : '';
+    const diagramTitle = filterLabel
+        ? filterLabel + ' – Unified Tree Sankey (Event-to-Event Counts)'
+        : 'Unified Tree Sankey – Event-to-Event Counts';
+    const diagramDescription = 'Box layout matches the filtered tree diagram. Arrow thickness shows how many cases move from one event to the next across all paths.';
+
+    return `
+        <section id="unified-tree-sankey-section" style="margin-bottom: 1.5rem;">
+            <h2 style="font-size: 1.6rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center;">
+                ${diagramTitle}
+            </h2>
+            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem; text-align: center;">
+                ${diagramDescription}
+            </p>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
+                <div style="position: relative; min-height: ${diagramMinHeight}px; height: ${diagramMinHeight}px; overflow: auto;">
+                    <div style="position: relative; width: ${scaledWidth}px; height: ${scaledHeight}px; margin: 0 auto;">
+                        <div style="position: absolute; left: 0; top: 0; width: ${svgWidth}px; height: ${svgHeight}px; ${scaleStyle}">
+                            ${svgHTML}
+                            ${boxesHTML}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+// Render Unified Case Flow Diagram – use the TRUE horizontal Sankey layout
 // (Global so both Banking and Healthcare screens can use it)
 function renderUnifiedCaseFlowDiagram(flowData) {
     if (!flowData || !flowData.case_paths || flowData.case_paths.length === 0) {
@@ -1161,6 +1633,7 @@ function renderUnifiedCaseFlowDiagram(flowData) {
     legendHTML += '<div style="font-size: 0.8rem; color: #6b7280;">Click any Case ID chip to see the step-by-step flow for that case. Main diagram shows flow counts (e.g. Process [4] Register).</div>';
     legendHTML += '</div>';
 
+    // Use the core Sankey renderer so Process → events → End are aligned horizontally
     const diagramHTML = renderSankeyDiagramSVG(flowData);
 
     return `
@@ -1709,7 +2182,8 @@ function renderMergedCaseFlowDiagram(flowData) {
     const firstPath = casePaths[0];
     const isMergedSinglePath = casePaths.length === 1 && firstPath && Array.isArray(firstPath.path_sequence) && firstPath.path_sequence.length > 1;
 
-    // When showing all cases (main diagram on domain pages), use the Sankey flow-count diagram
+    // When showing all cases (main diagram on domain pages), use the TRUE Sankey flow-count diagram
+    // where Process and End are vertical bars on the left/right and middle events are vertical bars in between.
     if (casePaths.length > 1 && !flowData.isSingleCaseFilter) {
         const diagramContent = typeof renderSankeyDiagramSVG === 'function' ? renderSankeyDiagramSVG(flowData) : '';
         const totalCases = flowData.total_cases || casePaths.length;
@@ -1719,7 +2193,7 @@ function renderMergedCaseFlowDiagram(flowData) {
                 Unified Case Flow Diagram (Sankey)
             </h2>
             <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem; text-align: center;">
-                Flow counts from your data: how many cases go from one event to the next (e.g. Process [4] Register). Node numbers = flow through that step.
+                Flow counts from your data in a horizontal Sankey layout: Process on the left, End on the right, events in the middle. Arrow thickness shows how many cases move between each pair of events.
             </p>
             <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
                 ${diagramContent}
@@ -1826,41 +2300,66 @@ function renderMergedCaseFlowDiagram(flowData) {
             'Support Ticket Closed': { x: 320, y: 1000 }, 'Account Frozen': { x: 440, y: 1000 }
         };
 
-        const boxWidth = 160;
-        const boxHeight = 70;
+        const boxWidth = 210;
+        const boxHeight = 90;
 
         const eventPositionsSingle = {};
-        let dynamicX = 50;
-        const takenPositionsSingle = Object.values(fixedPositionsSingle).map(function (p) { return p.x + ',' + p.y; });
-        function resolveEventPos(ev, posMap) {
-            if (posMap[ev]) return posMap[ev];
-            if (posMap[ev.replace(/\s+/g, '')]) return posMap[ev.replace(/\s+/g, '')];
-            if (posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')]) return posMap[ev.replace(/([a-z])([A-Z])/g, '$1 $2')];
-            return null;
-        }
-        eventTypesSingle.forEach(function (event) {
-            const pos = fixedPositionsSingle[event] || fixedPositionsSingle[event.replace('Transaction', '').trim()] || resolveEventPos(event, fixedPositionsSingle);
-            if (pos) {
-                eventPositionsSingle[event] = pos;
-            } else {
-                let placed = false;
-                for (let r = 0; r < 3; r++) {
-                    for (let c = 0; c < 5; c++) {
-                        const tx = 50 + c * 350;
-                        const ty = 150 + r * 300;
-                        const key = tx + ',' + ty;
-                        if (takenPositionsSingle.indexOf(key) === -1 && !placed) {
-                            eventPositionsSingle[event] = { x: tx, y: ty };
-                            takenPositionsSingle.push(key);
-                            placed = true;
-                        }
-                    }
-                }
-                if (!placed) {
-                    eventPositionsSingle[event] = { x: dynamicX, y: 750 };
-                    dynamicX += 350;
-                }
+
+        // Generic linear layout for a single merged path:
+        // - "Process" at the first column
+        // - "End" at the last column
+        // - Each event appears once, in the column of its first occurrence index
+        const stepIndexByEventSingle = {};
+        seq.forEach(function (ev, idx) {
+            if (!ev) return;
+            if (stepIndexByEventSingle[ev] == null) {
+                stepIndexByEventSingle[ev] = idx;
             }
+        });
+
+        let maxStepIndexSingle = 0;
+        Object.keys(stepIndexByEventSingle).forEach(function (ev) {
+            if (stepIndexByEventSingle[ev] > maxStepIndexSingle) {
+                maxStepIndexSingle = stepIndexByEventSingle[ev];
+            }
+        });
+
+        const levelByEventSingle = {};
+        eventTypesSingle.forEach(function (ev) {
+            if (ev === 'Process') {
+                levelByEventSingle[ev] = 0;
+            } else if (ev === 'End') {
+                levelByEventSingle[ev] = maxStepIndexSingle + 1;
+            } else if (stepIndexByEventSingle[ev] != null) {
+                levelByEventSingle[ev] = stepIndexByEventSingle[ev] + 1;
+            } else {
+                levelByEventSingle[ev] = 1;
+            }
+        });
+
+        const eventsByLevelSingle = {};
+        Object.keys(levelByEventSingle).forEach(function (ev) {
+            const lvl = levelByEventSingle[ev];
+            if (!eventsByLevelSingle[lvl]) eventsByLevelSingle[lvl] = [];
+            eventsByLevelSingle[lvl].push(ev);
+        });
+
+        const colGapSingle = 260;
+        const rowGapSingle = 130;
+        const baseXSingle = 60;
+        const baseYSingle = 260;
+
+        Object.keys(eventsByLevelSingle).map(Number).sort(function (a, b) { return a - b; }).forEach(function (lvl) {
+            const nodes = eventsByLevelSingle[lvl];
+            if (!nodes || !nodes.length) return;
+            nodes.sort();
+            const colX = baseXSingle + lvl * colGapSingle;
+            const totalHeight = (nodes.length - 1) * rowGapSingle;
+            const colTop = baseYSingle - totalHeight / 2;
+            nodes.forEach(function (ev, idx) {
+                const y = colTop + idx * rowGapSingle;
+                eventPositionsSingle[ev] = { x: colX, y: y };
+            });
         });
 
         const maxX = Math.max.apply(null, Object.values(eventPositionsSingle).map(function (p) { return p.x; })) + 250;
@@ -1885,7 +2384,7 @@ function renderMergedCaseFlowDiagram(flowData) {
 
         const scaleX = availableWidth / svgWidth;
         const scaleY = availableHeight / svgHeight;
-        const autoScale = Math.min(scaleX, scaleY, 1.4);
+        const autoScale = Math.min(scaleX, scaleY, 1.8);
 
         const scaledWidth = svgWidth * autoScale;
         const scaledHeight = svgHeight * autoScale;
@@ -1995,7 +2494,7 @@ function renderMergedCaseFlowDiagram(flowData) {
 
                 if (e.totalPairCount > 1) {
                     // Fan multiple arrows for same from→to pair
-                    const baseOffset = 40;
+                    const baseOffset = 55;
                     const groupIndex = e.occurrenceIndex - (e.totalPairCount + 1) / 2;
                     const offset = groupIndex * baseOffset;
 
@@ -2005,29 +2504,29 @@ function renderMergedCaseFlowDiagram(flowData) {
                     const cy = my + ny * offset;
 
                     // Move label slightly off the connector so arrow is fully visible
-                    labelX = cx + nx * 22;
-                    labelY = cy + ny * 22;
+                    labelX = cx + nx * 26;
+                    labelY = cy + ny * 26;
 
                     pathElement = `<path d="M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}"
                       stroke="#475569"
-                      stroke-width="2.6"
+                      stroke-width="3.0"
                       fill="none"
                       marker-end="url(#merged-arrow)"
-                      opacity="0.95" />`;
+                      opacity="0.98" />`;
                 } else {
                     // Single straight arrow
                     const mx = (x1 + x2) / 2;
                     const my = (y1 + y2) / 2;
 
                     // Move label slightly off the connector so arrow is fully visible
-                    labelX = mx + nx * 22;
-                    labelY = my + ny * 22;
+                    labelX = mx + nx * 26;
+                    labelY = my + ny * 26;
 
                     pathElement = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
                       stroke="#475569"
-                      stroke-width="2.6"
+                      stroke-width="3.0"
                       marker-end="url(#merged-arrow)"
-                      opacity="0.95" />`;
+                      opacity="0.98" />`;
                 }
             }
 
@@ -2082,7 +2581,7 @@ function renderMergedCaseFlowDiagram(flowData) {
                 justify-content: center;
                 text-align: center;
                 font-weight: 700;
-                font-size: 0.95rem;
+                font-size: 1.05rem;
                 z-index: 1;
                 padding: 0.5rem;
                 line-height: 1.2;
@@ -2232,8 +2731,8 @@ function renderMergedCaseFlowDiagram(flowData) {
     }
 
     // Sankey-style layout: columns by earliest step index, rows for events in that step.
-    const boxWidth = 160;
-    const boxHeight = 70;
+    const boxWidth = 210;
+    const boxHeight = 90;
 
     // Determine earliest index (from Process) where each event appears in any pattern.
     const stepIndexByEvent = {};
@@ -2315,7 +2814,7 @@ function renderMergedCaseFlowDiagram(flowData) {
 
     const scaleX = availableWidth / svgWidth;
     const scaleY = availableHeight / svgHeight;
-    const autoScale = Math.min(scaleX, scaleY, 1.4);
+    const autoScale = Math.min(scaleX, scaleY, 1.8);
 
     const scaledWidth = svgWidth * autoScale;
     const scaledHeight = svgHeight * autoScale;
@@ -2324,14 +2823,14 @@ function renderMergedCaseFlowDiagram(flowData) {
 
     // Stroke width scale based on case count (CRT). We exaggerate differences
     // so patterns followed by many users are clearly thicker than rare ones.
-    const maxCaseCount = edges.reduce(function (m, e) { return Math.max(m, e.caseCount || 1); }, 0) || 1;
+        const maxCaseCount = edges.reduce(function (m, e) { return Math.max(m, e.caseCount || 1); }, 0) || 1;
     function edgeStrokeWidth(e) {
         const c = Math.max(1, e.caseCount || 1);
         const ratio = c / maxCaseCount;          // 0..1
         const boost = Math.sqrt(ratio);          // non-linear, emphasizes big flows
-        const minW = 2.0;
-        const maxW = 10.0;
-        return minW + (maxW - minW) * boost;     // between 2 and 10 px
+            const minW = 3.0;
+            const maxW = 14.0;
+            return minW + (maxW - minW) * boost;     // between 3 and 14 px
     }
 
     let svgHTML = `<svg width="${svgWidth}" height="${svgHeight}" style="position: absolute; top: 0; left: 0; z-index: 3; transform-origin: 0 0;">
@@ -2383,6 +2882,23 @@ function renderMergedCaseFlowDiagram(flowData) {
     });
     console.log('==========================================');
 
+    // Group edges by from→to so multiple patterns between the same two events
+    // can be fanned out and do not hide each other.
+    const edgesByPair = {};
+    edges.forEach(function (e) {
+        const k = e.from + '→' + e.to;
+        if (!edgesByPair[k]) edgesByPair[k] = [];
+        edgesByPair[k].push(e);
+    });
+    Object.keys(edgesByPair).forEach(function (k) {
+        const group = edgesByPair[k];
+        const total = group.length;
+        group.forEach(function (e, idx) {
+            e.pairIndex = idx + 1;
+            e.pairSize = total;
+        });
+    });
+
     edges.forEach(function (e) {
         const fromPos = eventPositions[e.from];
         const toPos = eventPositions[e.to];
@@ -2407,21 +2923,41 @@ function renderMergedCaseFlowDiagram(flowData) {
         const lenFull = Math.sqrt(dxFull * dxFull + dyFull * dyFull) || 1;
         const ux = dxFull / lenFull;
         const uy = dyFull / lenFull;
+        const nx = -dyFull / lenFull;
+        const ny = dxFull / lenFull;
         const margin = 26;
         const x2 = rawX2 - ux * margin;
         const y2 = rawY2 - uy * margin;
 
+        // Fan multiple edges for the same from→to pair so they appear as
+        // separate polylines instead of sitting directly on top of each other.
+        let offsetX = 0;
+        let offsetY = 0;
+        const pairSize = e.pairSize || 1;
+        if (pairSize > 1) {
+            const pairIndex = e.pairIndex || 1;
+            const groupIndex = pairIndex - (pairSize + 1) / 2; // ..., -1, 0, 1, ...
+            const baseOffset = Math.max(18, sw * 1.2);
+            offsetX = nx * baseOffset * groupIndex;
+            offsetY = ny * baseOffset * groupIndex;
+        }
+
+        const sx = x1 + offsetX;
+        const sy = y1 + offsetY;
+        const tx = x2 + offsetX;
+        const ty = y2 + offsetY;
+
         if (isBidirectional) {
-            const isReturnPath = x2 < x1 || (e.from !== 'Process' && e.to !== 'End' && Math.abs(x2 - x1) < 100);
+            const isReturnPath = tx < sx || (e.from !== 'Process' && e.to !== 'End' && Math.abs(tx - sx) < 100);
             const curveDirection = isReturnPath ? -1 : 1;
-            const curveOffset = Math.max(80, Math.abs(x2 - x1) * 0.3) * curveDirection;
-            const controlX1 = x1 + (x2 - x1) * 0.25;
-            const controlY1 = y1 + curveOffset;
-            const controlX2 = x1 + (x2 - x1) * 0.75;
-            const controlY2 = y2 + curveOffset;
+            const curveOffset = Math.max(80, Math.abs(tx - sx) * 0.3) * curveDirection;
+            const controlX1 = sx + (tx - sx) * 0.25;
+            const controlY1 = sy + curveOffset;
+            const controlX2 = sx + (tx - sx) * 0.75;
+            const controlY2 = ty + curveOffset;
             labelX = (controlX1 + controlX2) / 2;
             labelY = (controlY1 + controlY2) / 2 - 6;
-            pathElement = `<path d="M ${x1} ${y1} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${x2} ${y2}"
+            pathElement = `<path d="M ${sx} ${sy} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${tx} ${ty}"
                       stroke="${strokeColor}"
                       stroke-width="${sw.toFixed(1)}"
                       fill="none"
@@ -2429,15 +2965,13 @@ function renderMergedCaseFlowDiagram(flowData) {
                       opacity="0.9"
                       style="stroke-dasharray: ${isReturnPath ? '5,3' : 'none'};" />`;
         } else {
-            const mx = (x1 + x2) / 2;
-            const my = (y1 + y2) / 2;
+            const mx = (sx + tx) / 2;
+            const my = (sy + ty) / 2;
             // Move label slightly off the connector so arrows are not covered
-            const nx = -dyFull / lenFull;
-            const ny = dxFull / lenFull;
             labelX = mx + nx * 20;
             labelY = my + ny * 20;
 
-            pathElement = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+            pathElement = `<line x1="${sx}" y1="${sy}" x2="${tx}" y2="${ty}"
                       stroke="${strokeColor}"
                       stroke-width="${sw.toFixed(1)}"
                       marker-end="url(#merged-arrow)"
@@ -2488,7 +3022,7 @@ function renderMergedCaseFlowDiagram(flowData) {
                 justify-content: center;
                 text-align: center;
                 font-weight: 700;
-                font-size: 0.95rem;
+                font-size: 1.05rem;
                 z-index: 2;
                 padding: 0.5rem;
                 line-height: 1.2;
@@ -3725,23 +4259,33 @@ function showBankingAnalysisResults(profile) {
         let diagramHTML = '';
 
         // Standard Banking Flow Layout (Fixed positions for "Neat" look)
-        // Coordinates: x, y
+        // Coordinates: x, y (tree-style layout: left-to-right, stacked vertically)
         const fixedPositions = {
-            'Process': { x: 50, y: 150 },
-            'Created Account': { x: 400, y: 150 },
-            'Account Open': { x: 400, y: 150 },
-            'Login': { x: 750, y: 150 },
-            'Check Balance': { x: 1100, y: 150 },          // New event
-            'Balance Inquiry': { x: 1100, y: 150 },        // Alias
-            'Withdrawal Transaction': { x: 1450, y: 150 }, // Shifted right
-            'Credit': { x: 400, y: 450 },                  // Bottom row start
-            'Deposit': { x: 400, y: 450 },
-            'Logout': { x: 750, y: 450 },
-            'End': { x: 1450, y: 450 }                     // Shifted right
+            // Column 1: Start
+            'Process': { x: 80, y: 460 },
+
+            // Column 2: Account creation/opening
+            'Created Account': { x: 440, y: 260 },
+            'Account Open': { x: 440, y: 460 },
+
+            // Column 3: Login + mid interactions
+            'Login': { x: 800, y: 260 },
+            'Check Balance': { x: 800, y: 460 },
+            'Balance Inquiry': { x: 800, y: 460 }, // Alias
+            'Logout': { x: 800, y: 660 },
+
+            // Column 4: Money movements
+            'Credit': { x: 1160, y: 260 },
+            'Deposit': { x: 1160, y: 460 },
+            'Withdrawal Transaction': { x: 1160, y: 660 },
+
+            // Column 5: End
+            'End': { x: 1520, y: 460 }
         };
 
-        const boxWidth = 160;
-        const boxHeight = 70; // Slightly shorter boxes
+        // Bigger boxes for main Unified Case Flow Diagram (Sankey)
+        const boxWidth = 220;
+        const boxHeight = 90;
 
         // Calculate positions
         const eventPositions = {};
@@ -3784,12 +4328,12 @@ function showBankingAnalysisResults(profile) {
         // SVG for paths
         // Calculate bounding box
         const maxX = Math.max(...Object.values(eventPositions).map(p => p.x)) + 250;
-        const maxY = Math.max(...Object.values(eventPositions).map(p => p.y)) + 150;
-        const svgWidth = Math.max(900, maxX);
-        const svgHeight = Math.max(500, maxY);
+        const maxY = Math.max(...Object.values(eventPositions).map(p => p.y)) + 200;
+        const svgWidth = Math.max(1200, maxX);
+        const svgHeight = Math.max(600, maxY);
 
         // Outer container (scroll) + pan wrapper (hit area) + pan content (SVG + boxes move together)
-        diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: 500px; max-height: 75vh; padding: 1rem; overflow: auto;">';
+        diagramHTML += '<div id="diagram-outer-container" style="position: relative; min-height: 70vh; max-height: 90vh; padding: 1rem; overflow: auto;">';
         diagramHTML += '<div id="diagram-pan-wrapper" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; cursor: grab; z-index: 0; user-select: none;" onmousedown="startDiagramPan(event)">';
         diagramHTML += '<div id="diagram-pan-content" style="position: absolute; left: 0; top: 0; width: ' + svgWidth + 'px; height: ' + svgHeight + 'px; will-change: transform;">';
 
@@ -3842,7 +4386,7 @@ function showBankingAnalysisResults(profile) {
 
         // Legacy loop disabled
         if (false) {
-            // Draw paths for each case
+        
             casePaths.forEach((path, pathIdx) => {
                 const sequence = path.path_sequence;
                 const timings = path.timings;
@@ -5005,10 +5549,12 @@ window.showBankingCaseDetails = function (caseIndex) {
 
     const activities = c.activities || [];
     const seq = (c.event_sequence || []).join(' â†’ ');
+    const accountId = c.account_id || (activities[0] && activities[0].account_id) || '';
+    const flags = Array.isArray(c.flags) ? c.flags : [];
     let html = `
         <div style="background: var(--bg-card); border: 2px solid #0F766E; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(15,118,110,0.15);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.15rem; color: #0F766E; margin: 0;">Case ID ${c.case_id} Â· User ${c.user_id}</h3>
+                <h3 style="font-size: 1.15rem; color: #0F766E; margin: 0;">Case ID ${c.case_id} Â· User ${c.user_id}${accountId ? ' Â· Account ' + accountId : ''}</h3>
                 <button class="btn-secondary" onclick="showBankingCaseDetails(${caseIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">âœ• Close</button>
             </div>
             <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem;">
@@ -5017,7 +5563,13 @@ window.showBankingCaseDetails = function (caseIndex) {
             <p style="color: var(--text-primary); font-size: 0.95rem; margin-bottom: 1rem; font-weight: 600;">
                 Steps: ${seq}
             </p>
-            <p style="color: #475569; font-size: 0.88rem; margin-bottom: 1rem;">${c.explanation || ''}</p>
+            <p style="color: #475569; font-size: 0.88rem; margin-bottom: 0.75rem;">${c.explanation || ''}</p>
+            ${flags.length ? `
+            <div style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.35rem;">
+                ${flags.map(function(f) {
+                    return '<span style="font-size:0.78rem; padding:0.15rem 0.5rem; border-radius:999px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.4); color:#b91c1c; text-transform:capitalize;">' + String(f).replace(/_/g,' ') + '</span>';
+                }).join('')}
+            </div>` : ''}
             <div style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
     `;
 
@@ -5025,6 +5577,7 @@ window.showBankingCaseDetails = function (caseIndex) {
         const ev = a.event || '';
         const ts = a.timestamp_str || '';
         const acc = a.account_id || 'â€”';
+        const amt = (typeof a.amount === 'number' ? a.amount : null);
         const tbl = a.table_name || '';
         const rec = a.raw_record || {};
         const recStr = Object.entries(rec).filter(([k, v]) => v).map(([k, v]) => k + ': ' + v).join(' Â· ');
@@ -5039,6 +5592,7 @@ window.showBankingCaseDetails = function (caseIndex) {
                 <span style="font-weight: 700; color: ${evColor};">${ev}</span>
                 <span style="color: var(--text-muted); margin-left: 0.5rem;">${ts}</span>
                 ${acc ? '<span style="margin-left: 0.5rem;">Â· Account ' + acc + '</span>' : ''}
+            ${amt !== null ? '<span style="margin-left: 0.5rem; font-weight:600; color:#0f766e;">Â· Amount ' + amt + '</span>' : ''}
                 ${tbl ? '<span style="margin-left: 0.5rem; font-size: 0.8rem; color: #94a3b8;">(' + tbl + ')</span>' : ''}
                 ${recStr ? '<div style="font-size: 0.8rem; color: #64748b; margin-top: 0.35rem;">' + recStr + '</div>' : ''}
             </div>

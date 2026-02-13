@@ -1,0 +1,5 @@
+customer_id,loan_account,event_type,amount,status,timestamp
+C401,L9001,emi_due,8000,pending,2026-02-01 00:00:00
+C401,L9001,emi_pay,8000,success,2026-02-05 10:30:00
+C402,L9002,emi_pay,10000,success,2026-02-06 11:00:00
+C403,L9003,emi_due,6000,pending,2026-02-07 00:00:00

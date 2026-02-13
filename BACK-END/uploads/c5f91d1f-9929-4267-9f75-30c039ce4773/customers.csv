@@ -1,0 +1,21 @@
+customer_id,first_name,last_name,email,phone,date_of_birth,gender,marital_status,occupation,annual_income,city,state,kyc_status,created_at,updated_at
+CUST0001,Arun,Kumar,arun.kumar@email.com,9533768154,1971-12-23,Male,Married,Salaried,614472.91,Chennai,Tamil Nadu,Verified,2025-05-21 10:36:58,2025-12-11 10:36:58
+CUST0002,Priya,Sharma,priya.sharma@email.com,9882791100,1971-10-08,Male,Widowed,Self-Employed,559042.62,Mumbai,Maharashtra,Rejected,2025-01-08 10:36:58,2025-11-10 10:36:58
+CUST0003,Rahul,Nair,rahul.nair@email.com,9982965198,1971-04-26,Male,Married,Business Owner,1030669.92,Delhi,Delhi,Verified,2024-09-05 10:36:58,2026-01-23 10:36:58
+CUST0004,Meera,Patel,meera.patel@email.com,9869529290,1958-09-14,Male,Widowed,Retired,769481.74,Bangalore,Karnataka,Verified,2024-11-15 10:36:58,2025-09-24 10:36:58
+CUST0005,Suresh,Reddy,suresh.reddy@email.com,9108181695,1967-12-27,Male,Divorced,Farmer,1981225.94,Hyderabad,Telangana,Rejected,2025-05-27 10:36:58,2025-10-18 10:36:58
+CUST0006,Kavitha,Iyer,kavitha.iyer@email.com,9656901540,1988-05-13,Female,Single,Doctor,843544.86,Pune,Maharashtra,Verified,2025-03-06 10:36:58,2025-10-23 10:36:58
+CUST0007,Vijay,Pillai,vijay.pillai@email.com,9739324688,1990-03-14,Male,Single,Engineer,397626.35,Kolkata,West Bengal,Verified,2024-04-19 10:36:58,2025-08-22 10:36:58
+CUST0008,Lakshmi,Menon,lakshmi.menon@email.com,9980111883,1968-07-17,Male,Widowed,Teacher,1337626.46,Ahmedabad,Gujarat,Verified,2024-10-04 10:36:58,2025-09-08 10:36:58
+CUST0009,Karthik,Das,karthik.das@email.com,9106085911,1971-12-13,Female,Married,Lawyer,1142123.75,Madurai,Tamil Nadu,Verified,2025-06-22 10:36:58,2025-09-03 10:36:58
+CUST0010,Divya,Gupta,divya.gupta@email.com,9327026799,1966-05-24,Female,Widowed,Government Employee,1685240.86,Coimbatore,Tamil Nadu,Verified,2024-08-20 10:36:58,2025-08-20 10:36:58
+CUST0011,Rajesh,Singh,rajesh.singh@email.com,9611255049,2001-02-15,Male,Married,Salaried,1294462.22,Kochi,Kerala,Pending,2025-04-12 10:36:58,2026-01-20 10:36:58
+CUST0012,Sunita,Verma,sunita.verma@email.com,9227469017,1993-03-31,Female,Married,Self-Employed,1984018.84,Jaipur,Rajasthan,Pending,2025-03-21 10:36:58,2025-12-22 10:36:58
+CUST0013,Mohan,Rao,mohan.rao@email.com,9702332368,1977-07-04,Female,Married,Business Owner,1723025.75,Lucknow,Uttar Pradesh,Verified,2024-08-12 10:36:58,2025-12-28 10:36:58
+CUST0014,Anitha,Devi,anitha.devi@email.com,9828345556,1999-08-22,Female,Single,Retired,1254246.57,Nagpur,Maharashtra,Verified,2024-09-06 10:36:58,2025-12-20 10:36:58
+CUST0015,Ganesh,Krishnan,ganesh.krishnan@email.com,9504773040,1970-05-01,Female,Widowed,Farmer,894691.97,Surat,Gujarat,Pending,2024-02-17 10:36:58,2026-01-21 10:36:58
+CUST0016,Shalini,Bose,shalini.bose@email.com,9294589339,2002-10-06,Female,Widowed,Doctor,1587478.91,Indore,Madhya Pradesh,Verified,2024-10-03 10:36:58,2025-08-30 10:36:58
+CUST0017,Bala,Shah,bala.shah@email.com,9342714866,1978-04-07,Male,Divorced,Engineer,593487.13,Bhopal,Madhya Pradesh,Rejected,2024-12-05 10:36:58,2025-11-07 10:36:58
+CUST0018,Rekha,Joshi,rekha.joshi@email.com,9418232102,1966-10-30,Male,Widowed,Teacher,957996.49,Patna,Bihar,Pending,2025-06-07 10:36:58,2025-10-08 10:36:58
+CUST0019,Senthil,Mishra,senthil.mishra@email.com,9414638337,1977-05-16,Female,Married,Lawyer,1873695.35,Vadodara,Gujarat,Pending,2024-06-02 10:36:58,2025-12-01 10:36:58
+CUST0020,Nithya,Chatterjee,nithya.chatterjee@email.com,9539517380,1991-11-01,Female,Widowed,Government Employee,1420836.4,Visakhapatnam,Andhra Pradesh,Rejected,2024-05-24 10:36:58,2025-12-26 10:36:58

@@ -4,7 +4,7 @@ domain_classifier.py
 Classifies database schemas into one of six domains:
   Banking | Finance | Insurance | Healthcare | Retail | Other
 
-Fixes applied (v3)
+Fixes applied (v4)
 ------------------
 FIX-A  HR column tokens (employee, department, designation, jobtitle, etc.)
        added to _GENERIC_TOKENS so pure-HR schemas no longer score Finance.
@@ -17,9 +17,15 @@ FIX-C  _kw_match() replaces raw `kw in col` substring matching.
 FIX-D  MIN_SCORE_FLOOR raised 4.0 → 8.0.  A single exclusive column (score=4)
        no longer wins alone; government schemas with one ifsc_code → Other.
        Real banking schemas score via combos (≥ 6 bonus) and pass the floor.
+FIX-E  Short schemas (≤3 columns) rely more on row values and ML fallback,
+       not only column names, to reduce noisy finance/banking confusion.
+FIX-F  Value scoring ignores purely numeric values and focuses on
+       meaningful text phrases (e.g. "premium emi offer").
+FIX-G  Strong HR patterns (employee_id + salary + pf/esi) down-rank Finance
+       and prefer Other unless clear payroll combos are present.
 
 Previous fixes retained (v2)
------------------------------
+----------------------------
 FIX-1  Alias expansion uses list-union (no set dedup).
 FIX-2  _build_column_map guards against IndexError.
 FIX-3  txndt/trndt → "transactiondate" (not "transactionid").
@@ -80,6 +86,14 @@ _GENERIC_TOKENS: frozenset[str] = frozenset({
     "scheme", "beneficiary", "district", "state", "taluk", "village",
     "ward", "block", "constituency", "panchayat",
     "subsidy", "entitlement", "welfare",
+})
+
+# Strong HR indicators used for negative rules (see FIX-G)
+_HR_STRONG_TOKENS: frozenset[str] = frozenset({
+    "employeeid", "employee", "empid", "empcode",
+    "hrdept", "hrdepartment",
+    "pfnumber", "pfaccount", "pf", "esi",
+    "salary", "grosssalary", "netsalary",
 })
 
 
@@ -275,11 +289,17 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             {"accountid", "overdraft"}, {"routing", "accountnumber"},
             {"kyc", "accountid"}, {"emi", "accountid"}, {"loanid", "accountid"},
             {"loanamount", "accountid"}, {"loanamount", "emi"},
+            # Strong banking context combos to separate from generic Finance
+            {"accountid", "ifsc", "loanamount"},
+            {"accountnumber", "ifsc", "loanamount"},
+            {"accountid", "ifsc", "transactiondate"},
         ],
         value_keywords=[
-            "ifsc", "swift", "iban", "emi", "overdraft",
+            "ifsc", "swift", "iban", "emi", "emi due", "emi pay", "overdraft",
             "neft", "rtgs", "imps", "cheque", "standing instruction",
             "loan disbursed", "emi deducted",
+            "upi", "netbanking", "atm", "atm withdrawal",
+            "fund transfer", "balance check", "balance inquiry",
         ],
         ml_samples=[
             "ifsc_code swift_code branch_id account_number routing_number iban bic",
@@ -295,6 +315,9 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "acbal actype depamt wdlamt ifsccd swftcd",
             "lnamt lnno txndt txntyp brnid brncd",
         ],
+        exclusive_weight=4.5,
+        shared_weight=1.2,
+        combo_bonus=7.0,
     ),
 
     DomainConfig(
@@ -352,6 +375,9 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "grssal netsal grpay invamt invdt invcno",
             "payroll_id employee_id payroll_month gross_salary net_salary tds pf esi",
         ],
+        exclusive_weight=3.8,
+        shared_weight=1.0,
+        combo_bonus=5.8,
     ),
 
     DomainConfig(
@@ -477,11 +503,14 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             {"productname", "unitprice"},
             {"prodid", "ordid"}, {"prodid", "quantity"},
             {"ordid", "quantity", "unitprice"}, {"sku", "quantity"},
+            # POS-style retail: UPI / card / terminal together with product or order
+            {"orderid", "upi"},
+            {"productid", "upi"},
+            {"orderid", "paymentmethod", "pos terminal"},
         ],
         value_keywords=[
             "order placed", "order shipped", "delivered", "cancelled",
             "returned", "refund", "sku", "checkout", "out of stock",
-            "upi", "pos terminal",
         ],
         ml_samples=[
             "product_id product_name sku unit_price stock_quantity brand",
@@ -494,6 +523,9 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "catnm brndn stkqty rtnflg paymth strid csrid",
             "netamt totamt ordsts paysts taxamt billno invtyp",
         ],
+        exclusive_weight=3.8,
+        shared_weight=1.0,
+        combo_bonus=5.8,
     ),
 
     DomainConfig(
@@ -573,10 +605,23 @@ def _score_domain(
 
 
 def _score_values(sample_values: list[str], config: DomainConfig) -> int:
-    return sum(
-        1 for val in sample_values[:200]
-        if any(kw in str(val).lower().strip() for kw in config.value_keywords)
-    )
+    """
+    Value-based scoring.
+    - Ignores purely numeric values (dates/IDs already captured via columns).
+    - Focuses on text phrases containing domain value keywords.
+    - Normalises case and trims whitespace.
+    """
+    score = 0
+    for val in sample_values[:200]:
+        s = str(val).strip().lower()
+        if not s:
+            continue
+        # Pure numbers (or numbers with punctuation) add almost no domain signal
+        if re.fullmatch(r"[0-9,.\-\/]+", s):
+            continue
+        if any(kw in s for kw in config.value_keywords):
+            score += 1
+    return score
 
 
 def _to_probs(scores: dict[str, float], min_floor: float = 0.005) -> dict[str, float]:
@@ -666,14 +711,52 @@ class DomainClassifier:
             for cfg in DOMAIN_CONFIGS:
                 col_scores[cfg.name] += _score_values(values[:200], cfg) * 0.5
 
+        # For very short schemas (few columns), fall back more strongly to ML /
+        # value-based signals so we do not overfit on a single ambiguous column.
         used_ml = False
+        n_cols = len(norm_cols)
+        if n_cols <= 3:
+            text = " ".join(table_names + all_columns + values[:50])
+            ml_scores = self._ml.predict(text, all_generic=all(_is_generic(c) for c in norm_cols))
+            # Blend: keep relative ordering from column scores, but let ML dominate
+            for name in col_scores:
+                col_scores[name] = col_scores[name] * 0.4 + ml_scores.get(name, 0.0) * 10.0
+            used_ml = True
+
         if sum(col_scores.values()) == 0:
             all_generic = all(_is_generic(c) for c in norm_cols)
             text = " ".join(table_names + all_columns + values[:50])
             col_scores = self._ml.predict(text, all_generic)
             used_ml = True
 
-        # FIX-D: minimum score floor
+        # HR negative rule (FIX-G): if strong HR pattern and Finance is only
+        # weakly indicated, down-rank Finance in favour of Other.
+        hr_hits = sum(
+            1 for nc in norm_cols
+            if any(tok in nc for tok in _HR_STRONG_TOKENS)
+        )
+        if hr_hits >= 3 and col_scores.get("Finance", 0.0) < MIN_SCORE_FLOOR + 2:
+            # Remove weak Finance bias, prefer Other for HR schemas
+            col_scores["Other"] = col_scores.get("Other", 0.0) + 5.0
+            col_scores["Finance"] *= 0.3
+
+        # Banking priority hint: if table looks transaction-like (account/loan +
+        # timestamp + amount + event) or ML/value hints have strong UPI/ATM/EMI
+        # wording, gently boost Banking so that pure banking uploads are not
+        # overshadowed by generic Finance/Retail scores.
+        banking_hint = False
+        joined_cols = " ".join(all_columns).lower()
+        joined_vals = " ".join(values[:50]).lower()
+        if any(k in joined_cols for k in ("account_id", "accountid", "loan_account", "loanaccount")) and \
+           any(k in joined_cols for k in ("timestamp", "time", "txndt", "transactiondate")) and \
+           any(k in joined_cols for k in ("event_type", "eventtype", "status", "amount")):
+            banking_hint = True
+        if any(k in joined_vals for k in ("upi", "netbanking", "atm", "emi pay", "emi_due", "emi due", "atm withdrawal")):
+            banking_hint = True
+        if banking_hint:
+            col_scores["Banking"] = col_scores.get("Banking", 0.0) * 1.3 + 1.0
+
+        # FIX-D: minimum score floor (only when we did not already decide via ML)
         if not used_ml and max(col_scores.values()) < MIN_SCORE_FLOOR:
             col_scores = {k: 0.0 for k in col_scores}
             col_scores["Other"] = 1.0
