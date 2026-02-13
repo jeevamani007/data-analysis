@@ -17,7 +17,9 @@ PRE_LOGIN_EVENTS = {'open', 'created'}
 MIDDLE_EVENTS = {
     'credit', 'deposit', 'withdraw', 'debit', 'refund',
     'invalid_balance', 'negative_balance', 'invalid', 'negative',
-    'check_balance', 'balance_check', 'balance_inquiry', 'inquiry'
+    'check_balance', 'balance_check', 'balance_inquiry', 'inquiry',
+    # Generic banking middle events we normalise from user data
+    'transfer', 'upi_debit', 'upi_credit', 'emi_payment', 'emi_due',
 }
 
 EVENT_MAP = {
@@ -30,6 +32,13 @@ EVENT_MAP = {
     'declined': 'invalid_balance', 'blocked': 'invalid_balance',
     'check_balance': 'check_balance', 'balance_check': 'check_balance',
     'balance_inquiry': 'check_balance', 'inquiry': 'check_balance',
+    # Common netbanking / UPI / loan terms from real files
+    'transfer': 'transfer',
+    'fund_transfer': 'transfer',
+    'upi_pay': 'upi_debit',
+    'upi_collect': 'upi_credit',
+    'emi_pay': 'emi_payment',
+    'emi_due': 'emi_due',
 }
 
 # Time formats to try (with and without AM/PM)
@@ -98,15 +107,31 @@ def _normalize_event(val: Any) -> Optional[str]:
     if has_token('dep', 'deposit', 'cashdep', 'cashdeposit') or has_phrase('cash deposit', 'salary credit'):
         return 'deposit'
 
-    # --- Debit / withdrawal (money going out) ---
+    # --- Debit / withdrawal / transfers (money going out) ---
     if has_token('dr', 'db', 'debit'):
         return 'debit'
     if has_token('wd', 'wdl', 'withd', 'withdraw', 'withdrawal') or has_phrase('atm withdraw', 'atm withdrawal'):
         return 'withdraw'
+    if has_phrase('transfer', 'fund transfer'):
+        return 'transfer'
+
+    # --- UPI specific (debit vs collect) ---
+    if has_phrase('upi'):
+        if has_phrase('collect', 'incoming'):
+            return 'upi_credit'
+        # default UPI = money going out
+        return 'upi_debit'
 
     # --- Refunds / reversals ---
     if has_phrase('refund', 'reversal', 'chargeback', 'cashback'):
         return 'refund'
+
+    # --- Loan EMI patterns ---
+    if has_phrase('emi') or has_phrase('installment', 'instalment'):
+        if has_phrase('due', 'pending'):
+            return 'emi_due'
+        if has_phrase('paid', 'pay'):
+            return 'emi_payment'
 
     # --- Balance / inquiry / failed / invalid ---
     if has_phrase(
@@ -1197,9 +1222,9 @@ class BankingAnalyzer:
         explanations = [
             f"We found {total_cases} session(s). Each session has one Case ID.",
             f"Case IDs are numbered 1 to {total_cases} in order of start time.",
-            "Events are grouped by user and sorted by timestamp. Same activity meaning again (duplicate or different source) starts a new Case ID so each case is one clean process flow.",
-            "Each case lists steps in time order (login, then credit or debit, then logout).",
-            "Times use the columns we detected (login time, logout time, created time, or open time) from your files."
+            "Events are grouped by user and sorted by timestamp for each (user, account) pair.",
+            "Each case lists steps in time order (login or first transaction, followed by credits/debits, then logout if present).",
+            "Times use the columns we detected (login time, logout time, created time, open time, or transaction time) from your files."
         ]
 
         # Generate unified flow data for visualization
