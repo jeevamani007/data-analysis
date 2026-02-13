@@ -3967,6 +3967,8 @@ window.startDatabaseAnalysis = async function (profileIndex) {
 
 // Banking Analysis Results - Case ID per User (Sessions)
 function showBankingAnalysisResults(profile) {
+    window.currentProfile = profile;
+    window.currentDomain = 'Banking';
     const mainContent = document.getElementById('mainContent');
     const bkData = profile.banking_analysis;
 
@@ -4703,9 +4705,17 @@ function showBankingAnalysisResults(profile) {
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">â† Back</button>
             
             <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${BANK_COLOR};"> Banking Case IDs</h1>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1.1rem;">
                 ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} user(s) â€¢ ${totalActivities} activities
             </p>
+
+            <div style="margin-bottom: 2rem;">
+                <button type="button" onclick="showSankeyDiagramFromWindow('Banking', '${BANK_COLOR}')" 
+                        style="cursor: pointer; border-radius: 10px; border: 2px solid ${BANK_COLOR}; padding: 0.75rem 1.5rem; font-size: 1rem; background: linear-gradient(135deg, ${BANK_COLOR}, #0D5C54); color: white; font-weight: 700; box-shadow: 0 2px 8px rgba(15,118,110,0.3); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.2rem;">📊</span>
+                    <span>View Sankey Diagram</span>
+                </button>
+            </div>
 
             <section style="margin-bottom: 1.75rem;">
                 <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
@@ -4820,10 +4830,16 @@ function showBankingAnalysisResults(profile) {
 
     mainContent.innerHTML = html;
     window.bankingCaseDetails = caseDetails;
+    // Store for Sankey diagram access
+    window.currentCaseDetails = caseDetails;
+    window.currentDomain = 'Banking';
+    window.currentDomainColor = BANK_COLOR;
 }
 
 // Retail Analysis Results - Case ID per Customer (Order Journeys)
 function showRetailAnalysisResults(profile) {
+    window.currentProfile = profile;
+    window.currentDomain = 'Retail';
     const mainContent = document.getElementById('mainContent');
     const rtData = profile.retail_analysis;
 
@@ -4858,9 +4874,17 @@ function showRetailAnalysisResults(profile) {
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
             <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${RETAIL_COLOR};"> Retail Case IDs</h1>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1.1rem;">
                 ${profile.database_name} • ${totalCases} Case ID(s) • ${totalCustomers} customer(s) • ${totalActivities} events
             </p>
+
+            <div style="margin-bottom: 2rem;">
+                <button type="button" onclick="showSankeyDiagramFromWindow('Retail', '${RETAIL_COLOR}')" 
+                        style="cursor: pointer; border-radius: 10px; border: 2px solid ${RETAIL_COLOR}; padding: 0.75rem 1.5rem; font-size: 1rem; background: linear-gradient(135deg, ${RETAIL_COLOR}, #D97706); color: white; font-weight: 700; box-shadow: 0 2px 8px rgba(245,158,11,0.3); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.2rem;">📊</span>
+                    <span>View Sankey Diagram</span>
+                </button>
+            </div>
 
             <section style="margin-bottom: 1.75rem;">
                 <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
@@ -5038,6 +5062,9 @@ function showRetailAnalysisResults(profile) {
         `;
         mainContent.innerHTML = html;
         window.retailCaseDetails = caseDetails;
+        window.currentCaseDetails = caseDetails;
+        window.currentDomain = 'Retail';
+        window.currentDomainColor = RETAIL_COLOR;
         return;
     }
 
@@ -5055,6 +5082,8 @@ function showRetailAnalysisResults(profile) {
 
 // Insurance Analysis Results - Case ID per Customer (Policy/Claim Journeys)
 function showInsuranceAnalysisResults(profile) {
+    window.currentProfile = profile;
+    window.currentDomain = 'Insurance';
     const mainContent = document.getElementById('mainContent');
     const insData = profile.insurance_analysis;
 
@@ -5089,9 +5118,17 @@ function showInsuranceAnalysisResults(profile) {
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
             <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${INS_COLOR};"> Insurance Case IDs</h1>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1.1rem;">
                 ${profile.database_name} • ${totalCases} Case ID(s) • ${totalCustomers} customer(s) • ${totalActivities} events
             </p>
+
+            <div style="margin-bottom: 2rem;">
+                <button type="button" onclick="showSankeyDiagramFromWindow('Insurance', '${INS_COLOR}')" 
+                        style="cursor: pointer; border-radius: 10px; border: 2px solid ${INS_COLOR}; padding: 0.75rem 1.5rem; font-size: 1rem; background: linear-gradient(135deg, ${INS_COLOR}, #6D28D9); color: white; font-weight: 700; box-shadow: 0 2px 8px rgba(124,58,237,0.3); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.2rem;">📊</span>
+                    <span>View Sankey Diagram</span>
+                </button>
+            </div>
 
             <section style="margin-bottom: 1.75rem;">
                 <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
@@ -5199,6 +5236,8 @@ function showInsuranceAnalysisResults(profile) {
         `;
         mainContent.innerHTML = html;
         window.insuranceCaseDetails = caseDetails;
+        window.currentCaseDetails = caseDetails;
+        window.currentDomain = 'Insurance';
         return;
     }
 
@@ -5215,6 +5254,8 @@ function showInsuranceAnalysisResults(profile) {
 
 // Finance Analysis Results – events across DB, Case IDs sorted by time (20 events)
 function showFinanceAnalysisResults(profile) {
+    window.currentProfile = profile;
+    window.currentDomain = 'Finance';
     const mainContent = document.getElementById('mainContent');
     const finData = profile.finance_analysis;
 
@@ -5249,9 +5290,17 @@ function showFinanceAnalysisResults(profile) {
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
             <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${FIN_COLOR};"> Finance Case IDs</h1>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1.1rem;">
                 ${profile.database_name} • ${totalCases} Case(s) • ${totalCustomers} customer(s) • ${totalActivities} events
             </p>
+
+            <div style="margin-bottom: 2rem;">
+                <button type="button" onclick="showSankeyDiagramFromWindow('Finance', '${FIN_COLOR}')" 
+                        style="cursor: pointer; border-radius: 10px; border: 2px solid ${FIN_COLOR}; padding: 0.75rem 1.5rem; font-size: 1rem; background: linear-gradient(135deg, ${FIN_COLOR}, #4338CA); color: white; font-weight: 700; box-shadow: 0 2px 8px rgba(79,70,229,0.3); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.2rem;">📊</span>
+                    <span>View Sankey Diagram</span>
+                </button>
+            </div>
 
             <section style="margin-bottom: 1.75rem;">
                 <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
@@ -5359,6 +5408,8 @@ function showFinanceAnalysisResults(profile) {
         `;
         mainContent.innerHTML = html;
         window.financeCaseDetails = caseDetails;
+        window.currentCaseDetails = caseDetails;
+        window.currentDomain = 'Finance';
         return;
     }
 
@@ -5643,6 +5694,8 @@ window.showBankingCaseDetails = function (caseIndex) {
 
 // Healthcare Analysis Results - Case IDs + full sequence (same logic as banking), or legacy timeline
 function showHealthcareAnalysisResults(profile) {
+    window.currentProfile = profile;
+    window.currentDomain = 'Healthcare';
     const mainContent = document.getElementById('mainContent');
     const hcData = profile.healthcare_analysis;
 
@@ -5678,9 +5731,17 @@ function showHealthcareAnalysisResults(profile) {
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">â† Back</button>
             <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${HC_COLOR};"> Healthcare Case IDs</h1>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem; font-size: 1.1rem;">
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1.1rem;">
                 ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} patient(s) â€¢ ${totalActivities} activities
             </p>
+
+            <div style="margin-bottom: 2rem;">
+                <button type="button" onclick="showSankeyDiagramFromWindow('Healthcare', '${HC_COLOR}')" 
+                        style="cursor: pointer; border-radius: 10px; border: 2px solid ${HC_COLOR}; padding: 0.75rem 1.5rem; font-size: 1rem; background: linear-gradient(135deg, ${HC_COLOR}, #0D9488); color: white; font-weight: 700; box-shadow: 0 2px 8px rgba(20,184,166,0.3); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.2rem;">📊</span>
+                    <span>View Sankey Diagram</span>
+                </button>
+            </div>
 
             <section style="margin-bottom: 1.75rem;">
                 <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
@@ -5814,6 +5875,8 @@ function showHealthcareAnalysisResults(profile) {
         `;
         mainContent.innerHTML = html;
         window.healthcareCaseDetails = caseDetails;
+        window.currentCaseDetails = caseDetails;
+        window.currentDomain = 'Healthcare';
         return;
     }
 

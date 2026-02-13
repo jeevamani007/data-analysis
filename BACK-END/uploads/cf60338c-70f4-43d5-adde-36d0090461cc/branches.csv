@@ -1,0 +1,21 @@
+branch_id,branch_name,branch_code,city,state,ifsc_code,manager_name,phone,email,established_date,created_at,updated_at
+BR001,Anna Nagar,BC0001,Chennai,Tamil Nadu,BANK0000001,Meera Iyer,044-82070937,branch.anna_nagar@bank.com,2007-09-16,2024-09-30 10:29:41,2025-03-22 10:29:41
+BR002,Bandra West,BC0002,Mumbai,Maharashtra,BANK0000002,Suresh Pillai,044-55657579,branch.bandra_west@bank.com,2014-11-17,2024-09-16 10:29:41,2025-07-06 10:29:41
+BR003,Connaught Place,BC0003,Delhi,Delhi,BANK0000003,Kavitha Menon,044-31227574,branch.connaught_place@bank.com,2011-01-15,2025-02-12 10:29:41,2025-10-02 10:29:41
+BR004,Koramangala,BC0004,Bangalore,Karnataka,BANK0000004,Vijay Das,044-77187530,branch.koramangala@bank.com,2007-08-02,2024-11-14 10:29:41,2025-05-30 10:29:41
+BR005,Jubilee Hills,BC0005,Hyderabad,Telangana,BANK0000005,Lakshmi Gupta,044-24282218,branch.jubilee_hills@bank.com,2006-05-14,2024-03-30 10:29:41,2025-09-14 10:29:41
+BR006,Kothrud,BC0006,Pune,Maharashtra,BANK0000006,Karthik Singh,044-95758349,branch.kothrud@bank.com,2010-06-08,2024-04-08 10:29:41,2025-11-04 10:29:41
+BR007,Park Street,BC0007,Kolkata,West Bengal,BANK0000007,Divya Verma,044-30513739,branch.park_street@bank.com,2011-12-08,2024-11-23 10:29:41,2025-05-13 10:29:41
+BR008,Navrangpura,BC0008,Ahmedabad,Gujarat,BANK0000008,Rajesh Rao,044-81182864,branch.navrangpura@bank.com,2016-02-14,2024-04-13 10:29:41,2025-09-01 10:29:41
+BR009,Madurai Main,BC0009,Madurai,Tamil Nadu,BANK0000009,Sunita Devi,044-75579548,branch.madurai_main@bank.com,2015-11-29,2024-12-18 10:29:41,2025-08-12 10:29:41
+BR010,RS Puram,BC0010,Coimbatore,Tamil Nadu,BANK0000010,Mohan Krishnan,044-51273847,branch.rs_puram@bank.com,2013-06-11,2025-01-15 10:29:41,2025-10-13 10:29:41
+BR011,Velachery,BC0011,Chennai,Tamil Nadu,BANK0000011,Anitha Bose,044-86149359,branch.velachery@bank.com,2015-03-31,2025-01-01 10:29:41,2025-06-10 10:29:41
+BR012,Andheri East,BC0012,Mumbai,Maharashtra,BANK0000012,Ganesh Shah,044-19289546,branch.andheri_east@bank.com,2007-08-07,2024-05-17 10:29:41,2025-12-11 10:29:41
+BR013,Lajpat Nagar,BC0013,Delhi,Delhi,BANK0000013,Shalini Joshi,044-27232410,branch.lajpat_nagar@bank.com,2008-09-23,2024-06-15 10:29:41,2025-05-08 10:29:41
+BR014,Whitefield,BC0014,Bangalore,Karnataka,BANK0000014,Bala Mishra,044-32162965,branch.whitefield@bank.com,2013-02-26,2024-05-19 10:29:41,2025-04-09 10:29:41
+BR015,Secunderabad,BC0015,Hyderabad,Telangana,BANK0000015,Rekha Chatterjee,044-66792612,branch.secunderabad@bank.com,2013-10-02,2024-05-13 10:29:41,2025-02-25 10:29:41
+BR016,Wakad,BC0016,Pune,Maharashtra,BANK0000016,Senthil Kumar,044-36998038,branch.wakad@bank.com,2008-02-18,2024-09-07 10:29:41,2025-07-24 10:29:41
+BR017,Salt Lake,BC0017,Kolkata,West Bengal,BANK0000017,Nithya Sharma,044-97225156,branch.salt_lake@bank.com,2011-12-10,2024-07-04 10:29:41,2025-05-25 10:29:41
+BR018,Satellite,BC0018,Ahmedabad,Gujarat,BANK0000018,Arun Nair,044-70597444,branch.satellite@bank.com,2014-10-09,2024-10-10 10:29:41,2025-10-21 10:29:41
+BR019,Adyar,BC0019,Madurai,Tamil Nadu,BANK0000019,Priya Patel,044-18593410,branch.adyar@bank.com,2012-05-03,2025-02-03 10:29:41,2025-04-18 10:29:41
+BR020,Gandhipuram,BC0020,Coimbatore,Tamil Nadu,BANK0000020,Rahul Reddy,044-84346088,branch.gandhipuram@bank.com,2013-07-19,2024-04-18 10:29:41,2025-10-24 10:29:41

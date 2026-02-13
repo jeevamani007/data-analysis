@@ -1,0 +1,21 @@
+client_id,first_name,last_name,email,phone,date_of_birth,client_type,risk_profile,pan_number,annual_income,city,state,kyc_status,onboarded_at,created_at,updated_at
+CLI00001,Arun,Kumar,arun.kumar@finance.com,9958043599,1983-06-18,Individual,Conservative,IGVCM4896D,3264057.75,Chennai,Tamil Nadu,Rejected,2025-02-11 11:54:43,2024-05-03 11:54:43,2026-02-06 11:54:43
+CLI00002,Priya,Sharma,priya.sharma@finance.com,9997031076,1961-07-14,Corporate,Moderate,EVNVE6267D,2889641.86,Mumbai,Maharashtra,Pending,2023-08-17 11:54:43,2023-10-22 11:54:43,2025-12-23 11:54:43
+CLI00003,Rahul,Nair,rahul.nair@finance.com,9342234380,1988-12-08,HNI,Aggressive,BVSXP9826B,4245588.27,Delhi,Delhi,Rejected,2024-07-11 11:54:43,2024-03-14 11:54:43,2026-01-22 11:54:43
+CLI00004,Meera,Patel,meera.patel@finance.com,9201924006,1964-10-03,Institutional,Very Aggressive,VXUZH2990J,2789696.89,Bangalore,Karnataka,Pending,2023-06-28 11:54:43,2023-06-04 11:54:43,2025-10-01 11:54:43
+CLI00005,Suresh,Reddy,suresh.reddy@finance.com,9366078879,1986-06-22,NRI,Balanced,OKDUA1575B,3272613.64,Hyderabad,Telangana,Rejected,2024-02-13 11:54:43,2023-11-28 11:54:43,2026-01-14 11:54:43
+CLI00006,Kavitha,Iyer,kavitha.iyer@finance.com,9374920235,1960-12-01,Partnership,Conservative,XRBMR2559D,2796523.74,Pune,Maharashtra,Verified,2023-10-05 11:54:43,2024-02-18 11:54:43,2025-10-30 11:54:43
+CLI00007,Vijay,Pillai,vijay.pillai@finance.com,9718027945,2006-01-26,Trust,Moderate,BMTTA1134G,3432818.73,Kolkata,West Bengal,Pending,2024-10-20 11:54:43,2024-01-11 11:54:43,2025-10-15 11:54:43
+CLI00008,Lakshmi,Menon,lakshmi.menon@finance.com,9210715404,1993-12-19,Government,Aggressive,GFVED1827Y,1396733.47,Ahmedabad,Gujarat,Rejected,2024-01-22 11:54:43,2023-07-04 11:54:43,2025-09-13 11:54:43
+CLI00009,Karthik,Das,karthik.das@finance.com,9548090553,1962-03-21,SME,Very Aggressive,NPXMK9862H,2432567.04,Madurai,Tamil Nadu,Verified,2025-01-26 11:54:43,2023-06-18 11:54:43,2025-10-12 11:54:43
+CLI00010,Divya,Gupta,divya.gupta@finance.com,9175967390,2002-12-08,Startup,Balanced,ADCWN2361U,1077137.11,Coimbatore,Tamil Nadu,Rejected,2024-01-17 11:54:43,2024-04-29 11:54:43,2025-10-19 11:54:43
+CLI00011,Rajesh,Singh,rajesh.singh@finance.com,9624329305,1958-05-12,Individual,Conservative,STFVL5112H,4526755.67,Kochi,Kerala,Verified,2023-08-27 11:54:43,2024-03-19 11:54:43,2025-11-25 11:54:43
+CLI00012,Sunita,Verma,sunita.verma@finance.com,9308120446,1980-12-02,Corporate,Moderate,ZTZMT9592K,2812089.66,Jaipur,Rajasthan,Pending,2024-01-23 11:54:43,2023-07-19 11:54:43,2025-08-17 11:54:43
+CLI00013,Mohan,Rao,mohan.rao@finance.com,9807301708,1978-05-25,HNI,Aggressive,YHCDY1802F,4173934.18,Lucknow,Uttar Pradesh,Rejected,2023-07-20 11:54:43,2023-06-05 11:54:43,2025-08-24 11:54:43
+CLI00014,Anitha,Devi,anitha.devi@finance.com,9722509728,2001-01-09,Institutional,Very Aggressive,NWYDR3094H,1056449.85,Nagpur,Maharashtra,Pending,2024-12-14 11:54:43,2023-03-22 11:54:43,2025-10-04 11:54:43
+CLI00015,Ganesh,Krishnan,ganesh.krishnan@finance.com,9886396563,1972-04-27,NRI,Balanced,CSCLQ1083B,3817897.31,Surat,Gujarat,Verified,2023-09-25 11:54:43,2023-12-27 11:54:43,2025-09-30 11:54:43
+CLI00016,Shalini,Bose,shalini.bose@finance.com,9980600412,1999-04-04,Partnership,Conservative,LCJDX5287V,4702358.52,Indore,Madhya Pradesh,Rejected,2024-08-19 11:54:43,2023-08-08 11:54:43,2025-08-26 11:54:43
+CLI00017,Bala,Shah,bala.shah@finance.com,9194270345,1999-11-18,Trust,Moderate,BZSNB8891F,2968685.87,Bhopal,Madhya Pradesh,Rejected,2024-03-20 11:54:43,2024-03-18 11:54:43,2025-10-16 11:54:43
+CLI00018,Rekha,Joshi,rekha.joshi@finance.com,9346580301,1989-02-05,Government,Aggressive,MLOTW4205K,753176.1,Patna,Bihar,Rejected,2023-04-14 11:54:43,2023-04-23 11:54:43,2025-11-27 11:54:43
+CLI00019,Senthil,Mishra,senthil.mishra@finance.com,9790896664,1976-06-19,SME,Very Aggressive,IQENU4492G,4043223.56,Vadodara,Gujarat,Verified,2024-02-26 11:54:43,2023-03-30 11:54:43,2026-01-07 11:54:43
+CLI00020,Nithya,Chatterjee,nithya.chatterjee@finance.com,9992605540,1982-05-15,Startup,Balanced,NLHGY8861P,619454.56,Visakhapatnam,Andhra Pradesh,Pending,2024-08-20 11:54:43,2025-02-04 11:54:43,2025-11-30 11:54:43
