@@ -57,10 +57,50 @@ class HealthcareAnalyzer:
         Identify what this table represents in hospital workflow.
         Returns: { role, role_explanation } e.g. register, appointment, treatment, lab, billing, login_logout.
         Order matters: check specific patterns (login, lab, treatment, etc.) BEFORE generic patient.
+        Also scans sample row data values to detect event patterns (not just column names).
         """
         tbl_lower = table_name.lower().replace('-', '_')
         cols_lower = " ".join(c.lower() for c in df.columns)
         cols_list = [c.lower() for c in df.columns]
+        
+        # FIRST: Scan sample rows for event patterns in actual data values
+        # This helps detect events even when column names don't indicate the event type
+        if not df.empty:
+            sample_rows = df.head(5)  # Check first 5 rows
+            for _, row in sample_rows.iterrows():
+                scanned_event = self._scan_row_for_event_pattern(row, list(df.columns))
+                if scanned_event:
+                    # Map scanned event to role
+                    event_to_role = {
+                        'PATIENT_REGISTERED': 'register',
+                        'APPOINTMENT_BOOKED': 'appointment_booked',
+                        'DOCTOR_ASSIGNED': 'doctor_assignment',
+                        'LAB_TEST_ORDERED': 'lab_order',
+                        'LAB_RESULT_GENERATED': 'lab_result',
+                        'MEDICINE_PRESCRIBED': 'prescription',
+                        'PHARMACY_DISPENSED': 'pharmacy',
+                        'INSURANCE_VERIFIED': 'insurance',
+                        'BILL_PAID': 'billing_paid',
+                        'FOLLOWUP_VISIT_SCHEDULED': 'followup',
+                    }
+                    if scanned_event in event_to_role:
+                        role = event_to_role[scanned_event]
+                        role_explanations = {
+                            'register': "Patient registration. When the patient was registered in the hospital.",
+                            'appointment_booked': "Appointment booking. When the patient appointment was booked.",
+                            'doctor_assignment': "Doctor assignment. When a doctor was assigned to treat the patient.",
+                            'lab_order': "Lab test order. When a doctor ordered a lab test for the patient.",
+                            'lab_result': "Lab test result. Investigation reports for the patient.",
+                            'prescription': "Medicine prescription. When doctor prescribed medicine to the patient.",
+                            'pharmacy': "Pharmacy dispensing record. When medicine was dispensed to the patient.",
+                            'insurance': "Insurance verification. When patient insurance was verified.",
+                            'billing_paid': "Bill payment record. When the patient paid the bill.",
+                            'followup': "Followup visit scheduled. When a followup appointment was scheduled for the patient.",
+                        }
+                        return {
+                            "role": role,
+                            "role_explanation": role_explanations.get(role, "Healthcare record detected from data patterns.")
+                        }
 
         # Login/Logout - has login_time and logout_time (check early, before generic patient)
         if 'login_time' in cols_list and 'logout_time' in cols_list:
@@ -70,48 +110,111 @@ class HealthcareAnalyzer:
 
         # Appointment - has appointment_id and appointment_time/date
         if 'appt' in tbl_lower or 'appointment' in tbl_lower:
+            # Check if this is booking (has booking/booked) vs just appointment record
+            if 'book' in cols_lower or 'booked' in cols_lower or 'booking' in cols_lower:
+                return {"role": "appointment_booked", "role_explanation": "Appointment booking. When the patient appointment was booked."}
             return {"role": "appointment", "role_explanation": "Appointment booking. When the patient was scheduled to come to the hospital."}
         if 'appointment_id' in cols_list and ('appointment_time' in cols_list or 'appt_date' in cols_lower):
+            if 'book' in cols_lower or 'booked' in cols_lower:
+                return {"role": "appointment_booked", "role_explanation": "Appointment booking. When the patient appointment was booked."}
             return {"role": "appointment", "role_explanation": "Appointment booking. When the patient was scheduled to come."}
 
         # Treatment - has treatment_id, treatment_type, or treatment_time
         if 'treatment' in tbl_lower or ('treatment' in cols_lower and ('treatment_type' in cols_list or 'treatment_time' in cols_list or 'treatment_id' in cols_list)):
             return {"role": "treatment", "role_explanation": "Treatment or procedure record. What was done to the patient (e.g. ECG, X-Ray)."}
 
-        # Lab - test_name + result, or lab_id, or test_time
+        # Lab Order - test ordered (before result is generated)
+        if ('lab' in tbl_lower or 'test' in tbl_lower) and ('order' in tbl_lower or 'ordered' in cols_lower or 'order_date' in cols_lower or 'order_time' in cols_lower):
+            return {"role": "lab_order", "role_explanation": "Lab test order. When a doctor ordered a lab test for the patient."}
+        if 'test_order' in cols_lower or 'lab_order' in cols_lower:
+            return {"role": "lab_order", "role_explanation": "Lab test order. When a doctor ordered a lab test for the patient."}
+        
+        # Lab Result - test_name + result, or lab_id, or test_time (result generated)
         if 'lab' in tbl_lower or 'test' in tbl_lower or 'report' in tbl_lower:
-            return {"role": "lab", "role_explanation": "Lab or test result. Investigation reports for the patient."}
+            # Check if this is a result (has result value) vs order (has order status)
+            if 'result' in cols_lower and ('result_value' in cols_list or 'test_result' in cols_list or 'lab_result' in cols_list):
+                return {"role": "lab_result", "role_explanation": "Lab test result. Investigation reports for the patient."}
+            # If no result column but has report/test, assume it's a result table
+            if 'report' in tbl_lower or 'result' in cols_lower:
+                return {"role": "lab_result", "role_explanation": "Lab test result. Investigation reports for the patient."}
         if ('test_name' in cols_list or 'test_result' in cols_list) and ('result' in cols_list or 'test_time' in cols_list):
-            return {"role": "lab", "role_explanation": "Lab or test result. Investigation reports for the patient."}
+            return {"role": "lab_result", "role_explanation": "Lab test result. Investigation reports for the patient."}
         if 'result' in cols_list and ('test' in cols_lower or 'lab' in cols_lower):
-            return {"role": "lab", "role_explanation": "Lab or test result. Investigation reports for the patient."}
+            return {"role": "lab_result", "role_explanation": "Lab test result. Investigation reports for the patient."}
 
+        # Pharmacy - dispense, pharmacy, medicine dispensed
+        if 'pharmacy' in tbl_lower or 'dispense' in tbl_lower or 'dispensing' in tbl_lower:
+            return {"role": "pharmacy", "role_explanation": "Pharmacy dispensing record. When medicine was dispensed to the patient."}
+        if 'dispense' in cols_lower or ('pharmacy' in cols_lower and ('dispense' in cols_lower or 'dispensed' in cols_lower)):
+            return {"role": "pharmacy", "role_explanation": "Pharmacy dispensing record. When medicine was dispensed to the patient."}
+        
+        # Prescription/Medicine - prescription, medicine prescribed
+        if 'prescription' in tbl_lower or 'medicine' in tbl_lower or 'medication' in tbl_lower:
+            if 'prescribe' in cols_lower or 'prescribed' in cols_lower or 'prescription_date' in cols_lower:
+                return {"role": "prescription", "role_explanation": "Medicine prescription. When doctor prescribed medicine to the patient."}
+            return {"role": "prescription", "role_explanation": "Medicine prescription. When doctor prescribed medicine to the patient."}
+        if 'prescribe' in cols_lower or ('medicine' in cols_lower and ('prescribe' in cols_lower or 'prescribed' in cols_lower)):
+            return {"role": "prescription", "role_explanation": "Medicine prescription. When doctor prescribed medicine to the patient."}
+        
+        # Insurance - insurance verification
+        if 'insurance' in tbl_lower:
+            if 'verify' in cols_lower or 'verified' in cols_lower or 'verification' in cols_lower:
+                return {"role": "insurance", "role_explanation": "Insurance verification. When patient insurance was verified."}
+            return {"role": "insurance", "role_explanation": "Insurance record. Insurance verification or claim information."}
+        if 'insurance' in cols_lower and ('verify' in cols_lower or 'verified' in cols_lower or 'verification' in cols_lower):
+            return {"role": "insurance", "role_explanation": "Insurance verification. When patient insurance was verified."}
+        
         # Billing - bill_id, bill_amount, bill_time
         if 'bill' in tbl_lower or 'billing' in tbl_lower:
+            # Check if this is payment (paid) vs just bill generation
+            if 'paid' in cols_lower or 'payment' in cols_lower or 'payment_date' in cols_lower:
+                return {"role": "billing_paid", "role_explanation": "Bill payment record. When the patient paid the bill."}
             return {"role": "billing", "role_explanation": "Billing record. Amount to be paid for the stay or service."}
         if 'bill' in cols_lower and 'amount' in cols_lower:
+            if 'paid' in cols_lower or 'payment' in cols_lower:
+                return {"role": "billing_paid", "role_explanation": "Bill payment record. When the patient paid the bill."}
             return {"role": "billing", "role_explanation": "Billing record. Amount to be paid for the stay or service."}
 
-        # Admission, Discharge, Doctor - specific patterns
+        # Admission, Discharge, Doctor Assignment - specific patterns
         if 'admission' in tbl_lower or 'admit' in tbl_lower or ('admission' in cols_lower and ('admission_date' in cols_lower or 'admission_timestamp' in cols_lower)):
             return {"role": "admission", "role_explanation": "Patient admission. When the patient was admitted to the ward or unit."}
         if 'discharge' in tbl_lower or ('discharge' in cols_lower and ('discharge_date' in cols_lower or 'discharge_time' in cols_lower)):
             return {"role": "discharge", "role_explanation": "Discharge record. When the patient left the hospital."}
-        if 'doctor' in tbl_lower and 'appointment' not in cols_lower:
+        
+        # Doctor Assignment - when doctor is assigned to patient (different from doctor master table)
+        if 'doctor' in tbl_lower and ('assign' in tbl_lower or 'assignment' in tbl_lower or 'assigned' in cols_lower):
+            return {"role": "doctor_assignment", "role_explanation": "Doctor assignment. When a doctor was assigned to treat the patient."}
+        if 'doctor' in cols_lower and ('assign' in cols_lower or 'assigned' in cols_lower or 'assignment' in cols_lower):
+            return {"role": "doctor_assignment", "role_explanation": "Doctor assignment. When a doctor was assigned to treat the patient."}
+        
+        # Doctor master table (not assignment)
+        if 'doctor' in tbl_lower and 'appointment' not in cols_lower and 'assign' not in cols_lower:
             return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
-        if 'doctor' in cols_lower and 'doctor_id' in cols_list and 'appointment' not in cols_lower:
+        if 'doctor' in cols_lower and 'doctor_id' in cols_list and 'appointment' not in cols_lower and 'assign' not in cols_lower:
             return {"role": "doctor", "role_explanation": "Doctor or staff record. Links which doctor attended the patient."}
+        
+        # Followup Visit - scheduled followup
+        if 'followup' in tbl_lower or 'follow_up' in tbl_lower or 'follow-up' in tbl_lower:
+            return {"role": "followup", "role_explanation": "Followup visit scheduled. When a followup appointment was scheduled for the patient."}
+        if 'followup' in cols_lower or 'follow_up' in cols_lower or ('follow' in cols_lower and 'up' in cols_lower):
+            if 'schedule' in cols_lower or 'scheduled' in cols_lower or 'date' in cols_lower:
+                return {"role": "followup", "role_explanation": "Followup visit scheduled. When a followup appointment was scheduled for the patient."}
 
         # Patient/Register - patient master: has patient_id + (first_name/last_name/dob) - NOT test_name/result
         has_patient_id = 'patient_id' in cols_list
         has_patient_master_cols = any(k in cols_lower for k in ['first_name', 'last_name', 'dob', 'date_of_birth', 'gender', 'city'])
         if 'patient' in tbl_lower:
+            # Check if this is registration (has registration date/time) vs just patient master
+            if 'register' in cols_lower or 'registration' in cols_lower or 'reg_date' in cols_lower or 'reg_time' in cols_lower:
+                return {"role": "register", "role_explanation": "Patient registration. When the patient was registered in the hospital."}
             return {"role": "register", "role_explanation": "Patient registration. Master record of each patient registered in the hospital."}
         if has_patient_id and has_patient_master_cols and 'appointment' not in cols_lower and 'bill' not in cols_lower and 'treatment' not in cols_lower and 'test' not in cols_lower:
+            if 'register' in cols_lower or 'registration' in cols_lower:
+                return {"role": "register", "role_explanation": "Patient registration. When the patient was registered."}
             return {"role": "register", "role_explanation": "Patient registration. Master record of each patient."}
 
         if 'registration' in tbl_lower or ('visit' in tbl_lower and 'admission' not in cols_lower):
-            return {"role": "registration", "role_explanation": "Registration or visit log. When the patient first came or was registered."}
+            return {"role": "register", "role_explanation": "Registration or visit log. When the patient first came or was registered."}
         if 'donation' in tbl_lower:
             return {"role": "donation", "role_explanation": "Blood or organ donation record."}
         return {"role": "other", "role_explanation": "Healthcare-related table. Part of hospital workflow."}
@@ -127,10 +230,15 @@ class HealthcareAnalyzer:
         # Dynamic detection - column name determines event type (no hardcoded table names)
         event_time_patterns = [
             'register_time', 'reg_time', 'registration_time', 'registration_timestamp',
-            'visit_time', 'visit_date', 'appointment_time', 'appt_time',
+            'visit_time', 'visit_date', 'appointment_time', 'appt_time', 'appointment_booked_time', 'booked_time',
             'procedure_time', 'treatment_time', 'treatment_timestamp',
-            'dispense_time', 'pharmacy_time',
-            'test_time', 'lab_time', 'bill_time', 'bill_timestamp', 'billing_time',
+            'dispense_time', 'pharmacy_time', 'pharmacy_dispense_time',
+            'prescribe_time', 'prescription_time', 'medicine_prescribed_time',
+            'test_time', 'lab_time', 'lab_order_time', 'test_order_time', 'lab_result_time', 'test_result_time',
+            'bill_time', 'bill_timestamp', 'billing_time', 'payment_time', 'bill_paid_time',
+            'insurance_verify_time', 'insurance_verification_time', 'verify_time',
+            'doctor_assigned_time', 'assignment_time', 'doctor_assignment_time',
+            'followup_time', 'follow_up_time', 'followup_scheduled_time',
             'login_time', 'logout_time',
             'event_time', 'event_timestamp', 'created_timestamp', 'created_at',
             'recorded_at', 'discharge_timestamp', 'admission_time',
@@ -383,6 +491,12 @@ class HealthcareAnalyzer:
         is_discharge = 'discharge' in tbl_lower or 'discharge' in cols_lower
         is_donation = 'donation' in tbl_lower or 'donation' in cols_lower
         is_lab = 'lab' in tbl_lower or 'test' in tbl_lower or 'report' in tbl_lower or 'lab' in cols_lower or 'test' in cols_lower or 'report' in cols_lower
+        is_pharmacy = 'pharmacy' in tbl_lower or 'dispense' in tbl_lower or 'dispense' in cols_lower
+        is_prescription = 'prescription' in tbl_lower or 'prescribe' in tbl_lower or 'medicine' in tbl_lower or 'prescribe' in cols_lower
+        is_insurance = 'insurance' in tbl_lower or ('insurance' in cols_lower and 'verify' in cols_lower)
+        is_billing_paid = ('bill' in tbl_lower or 'billing' in tbl_lower) and ('paid' in cols_lower or 'payment' in cols_lower)
+        is_doctor_assignment = 'doctor' in tbl_lower and ('assign' in tbl_lower or 'assign' in cols_lower)
+        is_followup = 'followup' in tbl_lower or 'follow_up' in tbl_lower or 'followup' in cols_lower
 
         if is_reg:
             if patient_id:
@@ -414,6 +528,36 @@ class HealthcareAnalyzer:
                 parts.append(f"Lab/test report for patient {patient_id}")
             else:
                 parts.append("Lab or test record")
+        elif is_pharmacy:
+            if patient_id:
+                parts.append(f"Pharmacy dispensed medicine for patient {patient_id}")
+            else:
+                parts.append("Pharmacy dispensing record")
+        elif is_prescription:
+            if patient_id:
+                parts.append(f"Medicine prescribed for patient {patient_id}")
+            else:
+                parts.append("Prescription record")
+        elif is_insurance:
+            if patient_id:
+                parts.append(f"Insurance verified for patient {patient_id}")
+            else:
+                parts.append("Insurance verification record")
+        elif is_billing_paid:
+            if patient_id:
+                parts.append(f"Bill paid by patient {patient_id}")
+            else:
+                parts.append("Bill payment record")
+        elif is_doctor_assignment:
+            if patient_id:
+                parts.append(f"Doctor assigned to patient {patient_id}")
+            else:
+                parts.append("Doctor assignment record")
+        elif is_followup:
+            if patient_id:
+                parts.append(f"Followup visit scheduled for patient {patient_id}")
+            else:
+                parts.append("Followup visit record")
         else:
             if patient_id:
                 parts.append(f"Record for patient {patient_id}")
@@ -474,18 +618,21 @@ class HealthcareAnalyzer:
 
         if role in ("patient", "register"):
             name = kv.get('name', 'Patient')
-            parts.append(f"{name} registered" + (f" (ID: {patient_id})" if patient_id else ""))
+            parts.append(f"Patient {patient_id or name} registered")
         elif role == "login_logout":
             parts.append(f"Login/Logout" + (f" (patient {patient_id})" if patient_id else ""))
-        elif role == "doctor":
-            name = kv.get('name', 'Doctor')
-            parts.append(f"{name} profile created" + (f" (ID: {kv.get('patient_id', '')})" if kv.get('patient_id') else ""))
-        elif role == "appointment":
-            parts.append(f"Appointment recorded for patient {patient_id or '—'}")
+        elif role == "appointment" or role == "appointment_booked":
+            parts.append(f"Appointment booked for patient {patient_id or '—'}")
             if kv.get('ward'):
                 parts.append(f"at {kv['ward']}")
             if kv.get('reason'):
                 parts.append(f"({kv['reason']})")
+        elif role == "doctor_assignment":
+            doctor_name = kv.get('name', 'Doctor')
+            parts.append(f"Doctor {doctor_name} assigned to patient {patient_id or '—'}")
+        elif role == "doctor":
+            name = kv.get('name', 'Doctor')
+            parts.append(f"{name} profile created" + (f" (ID: {kv.get('patient_id', '')})" if kv.get('patient_id') else ""))
         elif role == "admission":
             parts.append(f"Patient {patient_id or '—'} admitted" + (f" to {kv['ward']}" if kv.get('ward') else ""))
             if kv.get('reason'):
@@ -493,13 +640,28 @@ class HealthcareAnalyzer:
         elif role == "treatment":
             t = kv.get('treatment', 'treatment')
             parts.append(f"Treatment: {t}" + (f" (patient {patient_id})" if patient_id else ""))
+        elif role == "lab_order":
+            test_name = kv.get('test', kv.get('test_name', 'test'))
+            parts.append(f"Lab test ordered for patient {patient_id or '—'}" + (f": {test_name}" if test_name else ""))
+        elif role == "lab_result" or role == "lab":
+            parts.append(f"Lab test result generated for patient {patient_id or '—'}")
+        elif role == "prescription":
+            medicine = kv.get('medicine', kv.get('medication', 'medicine'))
+            parts.append(f"Medicine prescribed for patient {patient_id or '—'}" + (f": {medicine}" if medicine else ""))
+        elif role == "pharmacy":
+            parts.append(f"Medicine dispensed from pharmacy for patient {patient_id or '—'}")
+        elif role == "insurance":
+            parts.append(f"Insurance verified for patient {patient_id or '—'}")
+        elif role == "billing_paid":
+            amt = kv.get('amount', '—')
+            parts.append(f"Bill paid by patient {patient_id or '—'}" + (f", amount {amt}" if amt != '—' else ""))
         elif role == "billing":
             amt = kv.get('amount', '—')
             parts.append(f"Bill generated for patient {patient_id or '—'}" + (f", amount {amt}" if amt != '—' else ""))
         elif role == "discharge":
             parts.append(f"Patient {patient_id or '—'} discharged" + (f" ({kv['status']})" if kv.get('status') else ""))
-        elif role == "lab":
-            parts.append(f"Lab/test for patient {patient_id or '—'}")
+        elif role == "followup":
+            parts.append(f"Followup visit scheduled for patient {patient_id or '—'}")
         elif role == "donation":
             parts.append(f"Donation by patient {patient_id or '—'}" + (f", {kv.get('amount', '')}" if kv.get('amount') else ""))
         else:
@@ -698,6 +860,44 @@ class HealthcareAnalyzer:
                         r['hospital_delay'] = gap_result
                     break
 
+    def _scan_row_for_event_pattern(self, row: Any, columns: List[str]) -> Optional[str]:
+        """
+        Scan ALL column values in row for healthcare event pattern match.
+        Observes actual data values, not just column names.
+        Returns event name if pattern found, None otherwise.
+        """
+        # Healthcare event patterns to look for in data values
+        event_patterns = {
+            'PATIENT_REGISTERED': ['register', 'registered', 'registration', 'patient registered', 'new patient'],
+            'APPOINTMENT_BOOKED': ['appointment booked', 'booked', 'appointment scheduled', 'scheduled appointment'],
+            'DOCTOR_ASSIGNED': ['doctor assigned', 'assigned doctor', 'doctor assigned to', 'physician assigned'],
+            'LAB_TEST_ORDERED': ['test ordered', 'lab ordered', 'order test', 'order lab', 'test order', 'lab order'],
+            'LAB_RESULT_GENERATED': ['test result', 'lab result', 'result generated', 'test completed', 'lab completed'],
+            'MEDICINE_PRESCRIBED': ['prescribed', 'prescription', 'medicine prescribed', 'medication prescribed', 'prescribe'],
+            'PHARMACY_DISPENSED': ['dispensed', 'pharmacy dispensed', 'dispense', 'medicine dispensed', 'medication dispensed'],
+            'INSURANCE_VERIFIED': ['insurance verified', 'verified', 'verification', 'insurance verification', 'verify'],
+            'BILL_PAID': ['paid', 'payment', 'bill paid', 'payment received', 'paid bill'],
+            'FOLLOWUP_VISIT_SCHEDULED': ['followup', 'follow up', 'follow-up', 'followup scheduled', 'follow up visit'],
+        }
+        
+        for col in columns:
+            if col.startswith("__"):
+                continue
+            val = row.get(col)
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                continue
+            s = str(val).strip().lower()
+            if not s:
+                continue
+            
+            # Check each event pattern
+            for event_name, patterns in event_patterns.items():
+                for pattern in patterns:
+                    if pattern in s:
+                        return event_name
+        
+        return None
+
     def _explain_value(self, value: Any, purpose_info: Dict, col_name: str) -> str:
         """Generate explanation for a single value based on observed patterns."""
         if value is None or (isinstance(value, float) and pd.isna(value)) or str(value).strip() == '':
@@ -870,31 +1070,49 @@ class HealthcareAnalyzer:
     def _time_column_to_event_name(self, col_name: str) -> str:
         """
         Derive event name dynamically from the time column name.
-        NO hardcoding - valid events only: Register, Visit, Procedure, Pharmacy, LabTest, Billing, Login, Logout.
+        NO hardcoding - maps to all healthcare events including missing ones.
         Never return Other, Unknown, or table names.
         """
         if not col_name or not str(col_name).strip():
             return 'Visit'
         c = str(col_name).lower().replace('-', '_')
-        # Explicit mappings from time column to event (user spec)
+        # Explicit mappings from time column to event (comprehensive healthcare events)
         if 'register' in c or 'reg_' in c or (c.startswith('reg') and 'time' in c):
-            return 'Register'
-        if 'visit' in c or 'appointment' in c or 'appt_' in c or 'admission' in c:
+            return 'PATIENT_REGISTERED'
+        if 'appointment' in c or 'appt_' in c:
+            if 'book' in c or 'booked' in c:
+                return 'APPOINTMENT_BOOKED'
+            return 'APPOINTMENT_BOOKED'  # Default appointment to booked
+        if 'doctor' in c and ('assign' in c or 'assigned' in c):
+            return 'DOCTOR_ASSIGNED'
+        if ('test_order' in c or 'lab_order' in c) and 'result' not in c:
+            return 'LAB_TEST_ORDERED'
+        if ('test_result' in c or 'lab_result' in c) or (('test' in c or 'lab' in c) and 'result' in c):
+            return 'LAB_RESULT_GENERATED'
+        if 'prescribe' in c or 'prescription' in c or ('medicine' in c and 'prescribe' in c):
+            return 'MEDICINE_PRESCRIBED'
+        if 'dispense' in c or ('pharmacy' in c and 'dispense' in c):
+            return 'PHARMACY_DISPENSED'
+        if 'insurance' in c and ('verify' in c or 'verification' in c):
+            return 'INSURANCE_VERIFIED'
+        if 'payment' in c or 'paid' in c or ('bill' in c and ('paid' in c or 'payment' in c)):
+            return 'BILL_PAID'
+        if 'followup' in c or 'follow_up' in c or ('follow' in c and 'up' in c):
+            return 'FOLLOWUP_VISIT_SCHEDULED'
+        if 'visit' in c or 'admission' in c:
             return 'Visit'
         if 'procedure' in c or 'treatment' in c:
             return 'Procedure'
-        if 'dispense' in c or 'pharmacy' in c:
-            return 'Pharmacy'
         if 'test_' in c or 'lab_' in c or '_test' in c or '_lab' in c:
-            return 'LabTest'
+            return 'LAB_RESULT_GENERATED'  # Default lab/test to result
         if 'bill' in c or 'billing' in c:
-            return 'Billing'
+            return 'Billing'  # Generic billing (not paid yet)
         if 'login' in c and 'logout' not in c:
             return 'Login'
         if 'logout' in c:
             return 'Logout'
         if 'discharge' in c:
-            return 'Visit'  # End of visit
+            return 'Discharge'
         # Fallback: infer from column name - still meaningful, never Other/Unknown
         if 'created' in c or 'recorded' in c or 'event' in c:
             return 'Visit'
@@ -913,32 +1131,66 @@ class HealthcareAnalyzer:
 
         Strong rule: **always prefer the inferred table workflow role** (register, appointment,
         admission, treatment, lab, billing, discharge, etc.) whenever we can map it to a
-        canonical event. Only fall back to the time column naming when role is unknown.
+        canonical event. Also scans row data values for event patterns (not just column names).
+        Only fall back to the time column naming when role is unknown.
         """
         time_col = (rec.get('_event_time_column') or '').strip().lower().replace('-', '_')
         role_info = rec.get('table_workflow_role') or {}
         role = (role_info.get('role') or '').strip()
+        raw = rec.get('record') or {}
+        
         ROLE_TO_EVENT = {
-            'register': 'Register', 'patient': 'Register', 'registration': 'Register',
-            'login_logout': 'Login', 'appointment': 'Visit', 'admission': 'Admission',
-            'treatment': 'Procedure', 'lab': 'LabTest', 'billing': 'Billing',
-            'discharge': 'Discharge', 'doctor': 'Doctor', 'donation': 'Procedure',
+            # Core patient journey events
+            'register': 'PATIENT_REGISTERED', 'patient': 'PATIENT_REGISTERED', 'registration': 'PATIENT_REGISTERED',
+            'appointment': 'APPOINTMENT_BOOKED', 'appointment_booked': 'APPOINTMENT_BOOKED',
+            'doctor_assignment': 'DOCTOR_ASSIGNED', 'doctor': 'DOCTOR_ASSIGNED',  # Doctor assignment takes precedence
+            'admission': 'Admission',
+            'discharge': 'Discharge',
+            'followup': 'FOLLOWUP_VISIT_SCHEDULED',
+            
+            # Lab events - distinguish order from result
+            'lab_order': 'LAB_TEST_ORDERED',
+            'lab_result': 'LAB_RESULT_GENERATED', 'lab': 'LAB_RESULT_GENERATED',  # Default lab to result if not specified
+            
+            # Treatment and procedures
+            'treatment': 'Procedure', 'donation': 'Procedure',
+            
+            # Medicine and pharmacy
+            'prescription': 'MEDICINE_PRESCRIBED',
+            'pharmacy': 'PHARMACY_DISPENSED',
+            
+            # Insurance and billing
+            'insurance': 'INSURANCE_VERIFIED',
+            'billing_paid': 'BILL_PAID',
+            'billing': 'Billing',  # Generic billing (not paid yet)
+            
+            # Login/logout
+            'login_logout': 'Login',
         }
 
-        # 1) If we know the table workflow role and can map it, ALWAYS use that first.
+        # 1) FIRST: Scan row data values for event patterns (actual data, not column names)
+        #    This catches events that might be in status columns, description fields, etc.
+        if raw:
+            columns_list = list(raw.keys())
+            # Create a simple row-like object for scanning
+            row_data = {col: raw.get(col, '') for col in columns_list}
+            scanned_event = self._scan_row_for_event_pattern(row_data, columns_list)
+            if scanned_event:
+                return scanned_event
+
+        # 2) If we know the table workflow role and can map it, use that.
         #    This ensures different tables (registration, lab, billing, admission, etc.)
         #    show different event types instead of everything collapsing to "Visit".
         if role and role in ROLE_TO_EVENT:
             return ROLE_TO_EVENT[role]
 
-        # 2) Otherwise, try deriving from the time column name (register_time, bill_time, etc.).
+        # 3) Otherwise, try deriving from the time column name (register_time, bill_time, etc.).
         if time_col:
             event = self._time_column_to_event_name(time_col)
             if event and event not in ('Other', 'Unknown'):
                 return event
 
-        # 3) Fallback: inspect raw column names to infer event type.
-        raw = rec.get('record') or {}
+        # 4) Fallback: inspect raw column names to infer event type.
         for col in raw:
             ev = self._time_column_to_event_name(str(col).lower())
             if ev and ev not in ('Other', 'Unknown'):
