@@ -25,7 +25,15 @@ function extractEventSequence(caseItem) {
                 .map(e => {
                     if (e === null || e === undefined) return null;
                     const str = String(e).trim();
-                    return str || null;
+                    // Filter out invalid event values
+                    if (!str || str.length === 0 || 
+                        str.toLowerCase() === 'none' || 
+                        str.toLowerCase() === 'null' || 
+                        str.toLowerCase() === 'unknown' || 
+                        str.toLowerCase() === 'other') {
+                        return null;
+                    }
+                    return str;
                 })
                 .filter(e => e !== null && e.length > 0); // Ensure non-empty
             
@@ -36,7 +44,17 @@ function extractEventSequence(caseItem) {
                 }
                 // Return as-is - already in correct order from case ID logic
                 return events;
+            } else if (window.currentDomain === 'Retail') {
+                console.warn(`[Sankey] Retail case ${caseItem.case_id}: event_sequence exists but all events filtered out`, {
+                    originalSequence: caseItem.event_sequence,
+                    filteredCount: events.length
+                });
             }
+        } else if (window.currentDomain === 'Retail') {
+            console.warn(`[Sankey] Retail case ${caseItem.case_id}: event_sequence is not an array`, {
+                type: typeof caseItem.event_sequence,
+                value: caseItem.event_sequence
+            });
         }
     }
     
@@ -52,21 +70,33 @@ function extractEventSequence(caseItem) {
             // Handle both object and direct event value
             let eventValue = null;
             if (typeof activity === 'object') {
-                // Retail uses activity.event field
-                eventValue = activity.event || activity.event_name || activity.type || activity.name;
+                // Retail uses activity.event field - check multiple possible fields
+                eventValue = activity.event || activity.event_name || activity.type || activity.name || activity.step;
             } else {
                 eventValue = activity;
             }
             
+            // Validate and clean event value
             if (eventValue !== null && eventValue !== undefined) {
                 const str = String(eventValue).trim();
-                if (str && str.length > 0) {
+                // Filter out empty, null, unknown, other
+                if (str && str.length > 0 && 
+                    str.toLowerCase() !== 'none' && 
+                    str.toLowerCase() !== 'null' && 
+                    str.toLowerCase() !== 'unknown' && 
+                    str.toLowerCase() !== 'other') {
                     events.push(str);
                 } else if (window.currentDomain === 'Retail') {
-                    console.warn(`[Sankey] Retail case ${caseItem.case_id}: Empty event at activity index ${idx}`, activity);
+                    console.warn(`[Sankey] Retail case ${caseItem.case_id}: Invalid event at activity index ${idx}:`, {
+                        eventValue: eventValue,
+                        activity: activity
+                    });
                 }
             } else if (window.currentDomain === 'Retail') {
-                console.warn(`[Sankey] Retail case ${caseItem.case_id}: Missing event value at activity index ${idx}`, activity);
+                console.warn(`[Sankey] Retail case ${caseItem.case_id}: Missing event value at activity index ${idx}`, {
+                    activityKeys: activity && typeof activity === 'object' ? Object.keys(activity) : 'not an object',
+                    activity: activity
+                });
             }
         });
         
@@ -79,7 +109,8 @@ function extractEventSequence(caseItem) {
         } else if (window.currentDomain === 'Retail') {
             console.warn(`[Sankey] Retail case ${caseItem.case_id}: No events extracted from activities`, {
                 activitiesLength: caseItem.activities.length,
-                sampleActivity: caseItem.activities[0]
+                sampleActivity: caseItem.activities[0],
+                allActivityKeys: caseItem.activities[0] ? Object.keys(caseItem.activities[0]) : 'no activities'
             });
         }
     }
