@@ -35,7 +35,15 @@ def extract_event_sequence(case_item: Dict[str, Any]) -> List[str]:
     event_sequence = case_item.get('event_sequence')
     if event_sequence:
         if isinstance(event_sequence, list):
-            events = [str(e).strip() for e in event_sequence if e and str(e).strip()]
+            events = []
+            for e in event_sequence:
+                if e is None:
+                    continue
+                event_str = str(e).strip()
+                # Filter out invalid event values
+                if (event_str and 
+                    event_str.lower() not in ('none', 'null', 'unknown', 'other', '')):
+                    events.append(event_str)
             if events:
                 # Return as-is - already in correct order from case ID logic
                 return events
@@ -53,13 +61,20 @@ def extract_event_sequence(case_item: Dict[str, Any]) -> List[str]:
             # Handle both dict and direct event value
             event_value = None
             if isinstance(activity, dict):
-                event_value = activity.get('event') or activity.get('event_name') or activity.get('type')
+                # Check multiple possible fields for event name
+                event_value = (activity.get('event') or 
+                              activity.get('event_name') or 
+                              activity.get('type') or 
+                              activity.get('name') or 
+                              activity.get('step'))
             elif isinstance(activity, str):
                 event_value = activity
             
             if event_value:
                 event_str = str(event_value).strip()
-                if event_str:
+                # Filter out invalid event values
+                if (event_str and 
+                    event_str.lower() not in ('none', 'null', 'unknown', 'other', '')):
                     events.append(event_str)
         
         if events:

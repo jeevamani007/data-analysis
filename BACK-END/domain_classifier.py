@@ -1,42 +1,3 @@
-"""
-domain_classifier.py
-====================
-Classifies database schemas into one of six domains:
-  Banking | Finance | Insurance | Healthcare | Retail | Other
-
-Fixes applied (v4)
-------------------
-FIX-A  HR column tokens (employee, department, designation, jobtitle, etc.)
-       added to _GENERIC_TOKENS so pure-HR schemas no longer score Finance.
-FIX-B  'pf' and 'esi' moved from Finance exclusive_keywords → shared_keywords.
-       They only become Finance-exclusive when combined with a payroll combo rule.
-       This stops pf_number / esi_card in HR schemas from triggering Finance.
-FIX-C  _kw_match() replaces raw `kw in col` substring matching.
-       Prevents 'designation' matching 'esi', 'district' matching 'ict', etc.
-       Keyword must equal col, or be a proper prefix/suffix boundary.
-FIX-D  MIN_SCORE_FLOOR raised 4.0 → 8.0.  A single exclusive column (score=4)
-       no longer wins alone; government schemas with one ifsc_code → Other.
-       Real banking schemas score via combos (≥ 6 bonus) and pass the floor.
-FIX-E  Short schemas (≤3 columns) rely more on row values and ML fallback,
-       not only column names, to reduce noisy finance/banking confusion.
-FIX-F  Value scoring ignores purely numeric values and focuses on
-       meaningful text phrases (e.g. "premium emi offer").
-FIX-G  Strong HR patterns (employee_id + salary + pf/esi) down-rank Finance
-       and prefer Other unless clear payroll combos are present.
-
-Previous fixes retained (v2)
-----------------------------
-FIX-1  Alias expansion uses list-union (no set dedup).
-FIX-2  _build_column_map guards against IndexError.
-FIX-3  txndt/trndt → "transactiondate" (not "transactionid").
-FIX-4  lnamt/lnamount → "loanamount" (not "loanid").
-FIX-5  invamt → "invoiceamount", invdt → "invoicedate".
-OPT-1  MIN_SCORE_FLOOR (now 8.0) prevents false positives.
-OPT-2  Consistent [:200] cap on value scoring everywhere.
-OPT-3  ML training data includes abbreviated column samples.
-OPT-4  secondary_domain field flags mixed schemas.
-OPT-5  _build_column_map bounds-check on expansion index.
-"""
 
 from __future__ import annotations
 
@@ -323,61 +284,107 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
     DomainConfig(
         name="Finance", ml_label=1,
         exclusive_keywords=[
-            "gst", "gstin", "cgst", "sgst", "igst",
-            "tds",                        # FIX-B: pf/esi removed from here
-            "ledgerid", "ledgername", "journalid", "voucherno",
-            "costcenter", "fiscalyear",
-            "accountspayable", "accountsreceivable",
-            "grosssalary", "netsalary", "payrollmonth",
-            "payroll",                    # FIX-B: payroll is exclusive; pure HR won't have it
-            "cogs", "ebitda",
-            "debitamount", "creditamount",
-            "invoiceamount", "invoicedate",
+            "gst", "gstin", "cgst", "sgst", "igst", "gstno",
+            "tds", "tdsamt",
+            "ledgerid", "ledgername", "journalid", "voucherno", "vchrno",
+            "costcenter", "fiscalyear", "fiscal_year",
+            "accountspayable", "accountsreceivable", "acctpay", "acctrec",
+            "grosssalary", "netsalary", "payrollmonth", "payroll", "grssal", "netsal",
+            "cogs", "ebitda", "ebit",
+            "debitamount", "creditamount", "dramt", "cramt",
+            "invoiceamount", "invoicedate", "invamt", "invdt",
+            "taxablevalue", "taxable_value",
         ],
         shared_keywords=[
-            "invoice", "invoiceid", "invoiceno",
-            "tax", "taxamount",
+            "invoice", "invoiceid", "invoiceno", "invno", "invid",
+            "tax", "taxamount", "taxamt",
             "expense", "budget",
             "profit", "loss", "revenue",
             "receivable", "payable",
             "debit", "credit",
             "vendor", "supplier",
-            "pf", "esi",                  # FIX-B: demoted to shared
+            "pf", "esi", "pfamt", "esiamt",
         ],
         combo_rules=[
-            {"invoice", "gst"}, {"invoice", "tax"},
-            {"salary", "payroll"}, {"ledger", "journal"},
-            {"profit", "loss", "revenue"}, {"gst", "tax"},
-            {"tds", "payroll"},                    # tds alone with payroll context
-            {"pf", "payroll"}, {"esi", "payroll"}, # FIX-B: pf/esi only Finance with payroll
-            {"pf", "tds"}, {"esi", "tds"},         # pf+tds or esi+tds = payroll schema
-            {"pf", "esi"},
-            {"invoice", "paymentmode"},
+            # Strong Finance patterns - high bonus
+            {"invoice", "gst"}, {"invoice", "gstin"}, {"invoice", "cgst"}, {"invoice", "sgst"},
+            {"invoice", "tax"}, {"invoice", "taxamount"},
+            {"gst", "tax"}, {"gstin", "tax"}, {"cgst", "sgst"},
+            {"invoice", "vendor"}, {"invoice", "supplier"},
+            {"invoice", "accountspayable"}, {"invoice", "accountsreceivable"},
+            {"invoice", "ledger"}, {"invoice", "journal"},
+            # Payroll patterns
+            {"salary", "payroll"}, {"grosssalary", "netsalary"}, {"payroll", "tds"},
+            {"tds", "payroll"}, {"pf", "payroll"}, {"esi", "payroll"},
+            {"pf", "tds"}, {"esi", "tds"}, {"pf", "esi"},
+            # Accounting patterns
+            {"ledger", "journal"}, {"ledger", "voucher"}, {"journal", "voucher"},
+            {"profit", "loss"}, {"profit", "revenue"}, {"loss", "revenue"},
+            {"debit", "credit"}, {"debitamount", "creditamount"},
+            {"accountspayable", "accountsreceivable"},
+            # Invoice + payment patterns
+            {"invoice", "paymentmode"}, {"invoice", "duedate"},
             {"invoiceamount", "gst"}, {"invoicedate", "taxamount"},
+            {"invoice", "cgst", "sgst"}, {"invoice", "gst", "tax"},
         ],
         value_keywords=[
-            "gst", "gstin", "tds", "payroll", "salary", "invoice",
-            "debit note", "credit note", "journal entry", "ledger",
-            "accounts payable", "accounts receivable",
+            "gst", "gstin", "cgst", "sgst", "igst", "gst number",
+            "tds", "tds deducted", "tds amount",
+            "payroll", "payroll processing", "payroll month",
+            "salary", "gross salary", "net salary",
+            "invoice", "invoice number", "invoice date",
+            "debit note", "credit note", "journal entry", "ledger entry",
+            "accounts payable", "accounts receivable", "ap", "ar",
+            "vendor invoice", "supplier invoice", "tax invoice",
+            "fiscal year", "cost center", "profit and loss",
         ],
         ml_samples=[
-            "invoice_no gst gstin tax_amount cgst sgst igst taxable_value",
+            # Invoice + GST patterns (strong Finance)
+            "invoice_no gst gstin tax_amount cgst sgst igst taxable_value invoice_date",
+            "invoice_id invoice_number gst_number cgst_amount sgst_amount igst_amount",
+            "vendor_invoice gstin tax_invoice cgst sgst igst total_amount",
+            "invoice_date invoice_amount gst gstin tax_amount vendor_name",
+            "supplier_invoice invoice_no gst cgst sgst payment_status",
+            # Payroll patterns
             "payroll_month gross_salary net_salary tds pf esi deductions",
+            "payroll_id employee_id payroll_month gross_salary net_salary tds pf esi",
+            "payroll_period gross_pay net_pay tds_deduction pf_contribution esi_contribution",
+            "salary_month gross_salary net_salary tds pf esi other_deductions",
+            # Accounting ledger patterns
             "ledger_id ledger_name journal_id voucher_no narration",
+            "ledger_account journal_entry voucher_number debit_credit",
+            "general_ledger journal_id voucher_id transaction_type amount",
+            "chart_of_accounts ledger_code account_name debit_credit_balance",
+            # Accounts Payable/Receivable
             "accounts_payable supplier_id bill_no amount_due paid_amount",
             "accounts_receivable receipt_no amount_received balance_due",
+            "ap_vendor invoice_number due_date payment_status outstanding_amount",
+            "ar_customer invoice_no received_amount pending_amount",
+            # Budget and expense
             "budget_amount planned_amount actual_amount variance cost_center",
-            "profit loss revenue cogs margin fiscal_year quarter",
             "expense_type expense_amount cost_center vendor_name",
+            "budget_code department budget_allocated budget_spent",
+            # Profit/Loss/Revenue
+            "profit loss revenue cogs margin fiscal_year quarter",
+            "income_statement revenue expenses profit loss fiscal_period",
+            "p_and_l revenue cost_of_goods gross_profit net_profit",
+            # Invoice + payment
             "invoice_date payment_mode payment_status due_date gst",
+            "invoice_number invoice_amount gst_amount payment_received",
+            # Abbreviated forms
             "invno gstno taxamt tdsamt pfamt esiamt salmth",
             "ldgrid jrnlid vchrno dramt cramt acctpay acctrec",
             "grssal netsal grpay invamt invdt invcno",
-            "payroll_id employee_id payroll_month gross_salary net_salary tds pf esi",
+            "invno invdt invamt gstno cgst sgst taxamt",
+            # Mixed Finance patterns
+            "invoice gst vendor payment accounts_payable ledger",
+            "payroll salary tds pf esi employee gross net",
+            "journal voucher ledger debit credit narration",
+            "gst invoice tax vendor supplier accounts_payable",
         ],
-        exclusive_weight=3.8,
-        shared_weight=1.0,
-        combo_bonus=5.8,
+        exclusive_weight=4.5,  # Increased from 3.8
+        shared_weight=1.2,     # Increased from 1.0
+        combo_bonus=8.0,       # Increased from 5.8 for stronger combo signals
     ),
 
     DomainConfig(
@@ -610,6 +617,7 @@ def _score_values(sample_values: list[str], config: DomainConfig) -> int:
     - Ignores purely numeric values (dates/IDs already captured via columns).
     - Focuses on text phrases containing domain value keywords.
     - Normalises case and trims whitespace.
+    - For Finance: gives extra weight to GST/invoice patterns.
     """
     score = 0
     for val in sample_values[:200]:
@@ -619,8 +627,23 @@ def _score_values(sample_values: list[str], config: DomainConfig) -> int:
         # Pure numbers (or numbers with punctuation) add almost no domain signal
         if re.fullmatch(r"[0-9,.\-\/]+", s):
             continue
-        if any(kw in s for kw in config.value_keywords):
+        
+        # Check for keyword matches
+        matched_keywords = [kw for kw in config.value_keywords if kw in s]
+        if matched_keywords:
             score += 1
+            # Extra weight for Finance-specific strong patterns
+            if config.name == "Finance":
+                # GST patterns are very strong Finance indicators
+                if any(kw in s for kw in ["gst", "gstin", "cgst", "sgst", "igst", "gst number"]):
+                    score += 1  # Bonus point for GST
+                # Invoice + GST together in value is very strong
+                if "invoice" in s and any(kw in s for kw in ["gst", "gstin", "cgst", "sgst"]):
+                    score += 2  # Strong Finance pattern
+                # Payroll patterns
+                if "payroll" in s and any(kw in s for kw in ["tds", "pf", "esi", "salary"]):
+                    score += 1  # Bonus for payroll context
+    
     return score
 
 
@@ -740,22 +763,111 @@ class DomainClassifier:
             col_scores["Other"] = col_scores.get("Other", 0.0) + 5.0
             col_scores["Finance"] *= 0.3
 
-        # Banking priority hint: if table looks transaction-like (account/loan +
-        # timestamp + amount + event) or ML/value hints have strong UPI/ATM/EMI
-        # wording, gently boost Banking so that pure banking uploads are not
-        # overshadowed by generic Finance/Retail scores.
-        banking_hint = False
+        # Finance hard override rules (must come before Banking hints)
+        # If we see clear Finance patterns, strongly boost Finance
         joined_cols = " ".join(all_columns).lower()
         joined_vals = " ".join(values[:50]).lower()
-        if any(k in joined_cols for k in ("account_id", "accountid", "loan_account", "loanaccount")) and \
-           any(k in joined_cols for k in ("timestamp", "time", "txndt", "transactiondate")) and \
-           any(k in joined_cols for k in ("event_type", "eventtype", "status", "amount")):
-            banking_hint = True
-        if any(k in joined_vals for k in ("upi", "netbanking", "atm", "emi pay", "emi_due", "emi due", "atm withdrawal")):
-            banking_hint = True
-        if banking_hint:
-            col_scores["Banking"] = col_scores.get("Banking", 0.0) * 1.3 + 1.0
+        finance_hint = False
+        
+        # Pattern 1: Invoice + GST = Finance (not Retail, not Banking)
+        if any(k in joined_cols for k in ("invoice", "invoiceno", "invoiceid", "invno")) and \
+           any(k in joined_cols for k in ("gst", "gstin", "gstno", "cgst", "sgst", "igst")):
+            finance_hint = True
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 2.0 + 10.0  # Strong boost
+            col_scores["Retail"] *= 0.3  # Down-rank Retail
+            col_scores["Banking"] *= 0.3  # Down-rank Banking
+        
+        # Pattern 2: Invoice + Tax + Vendor/Supplier = Finance (not Retail)
+        if any(k in joined_cols for k in ("invoice", "invoiceno", "invoiceid")) and \
+           any(k in joined_cols for k in ("tax", "taxamount", "taxamt")) and \
+           any(k in joined_cols for k in ("vendor", "supplier", "vendorid", "supplierid")):
+            finance_hint = True
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 8.0
+            col_scores["Retail"] *= 0.4
+        
+        # Retail hard override: Product/Order + Invoice (without GST) = Retail (not Finance)
+        retail_hint = False
+        if any(k in joined_cols for k in ("product", "productid", "productname", "prodid", "prodnm")) and \
+           any(k in joined_cols for k in ("order", "orderid", "orderno", "ordid")) and \
+           any(k in joined_cols for k in ("invoice", "invoiceno", "invoiceid")) and \
+           not any(k in joined_cols for k in ("gst", "gstin", "gstno", "cgst", "sgst", "igst", "vendor", "supplier")):
+            retail_hint = True
+            col_scores["Retail"] = col_scores.get("Retail", 0.0) * 1.6 + 7.0
+            col_scores["Finance"] *= 0.4  # Down-rank Finance
+        
+        # Retail: SKU + Order + Invoice = Retail (not Finance)
+        if any(k in joined_cols for k in ("sku", "skucd", "skuno")) and \
+           any(k in joined_cols for k in ("order", "orderid", "orderno")) and \
+           any(k in joined_cols for k in ("invoice", "invoiceno", "billno")):
+            retail_hint = True
+            col_scores["Retail"] = col_scores.get("Retail", 0.0) * 1.5 + 6.0
+            col_scores["Finance"] *= 0.5
+        
+        # Pattern 3: Payroll + TDS/PF/ESI = Finance (not HR)
+        if any(k in joined_cols for k in ("payroll", "payrollmonth", "payroll_month")) and \
+           any(k in joined_cols for k in ("tds", "tdsamt", "pf", "pfamt", "esi", "esiamt")):
+            finance_hint = True
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 8.0
+            col_scores["Other"] *= 0.5  # Down-rank HR/Other
+        
+        # Pattern 4: Ledger + Journal + Voucher = Finance
+        if any(k in joined_cols for k in ("ledger", "ledgerid", "ledgername")) and \
+           any(k in joined_cols for k in ("journal", "journalid")) and \
+           any(k in joined_cols for k in ("voucher", "voucherno", "vchrno")):
+            finance_hint = True
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.6 + 7.0
+        
+        # Pattern 5: Accounts Payable/Receivable = Finance
+        if any(k in joined_cols for k in ("accountspayable", "accountsreceivable", "acctpay", "acctrec", "ap", "ar")):
+            finance_hint = True
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.5 + 6.0
+        
+        # Pattern 6: Value-based Finance detection (GST in values)
+        if any(k in joined_vals for k in ("gst", "gstin", "cgst", "sgst", "igst", "gst number", "tax invoice")):
+            if any(k in joined_cols for k in ("invoice", "invoiceno", "invoiceid", "invno")):
+                finance_hint = True
+                col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.4 + 5.0
+        
+        # Healthcare vs Insurance differentiation
+        # Patient + Claim = Insurance (not Healthcare)
+        if any(k in joined_cols for k in ("patient", "patientid", "patientname", "ptid", "patnm")) and \
+           any(k in joined_cols for k in ("claim", "claimid", "claimno", "claimamount", "claimstatus", "clmno", "clmid")):
+            col_scores["Insurance"] = col_scores.get("Insurance", 0.0) * 1.5 + 6.0
+            col_scores["Healthcare"] *= 0.4  # Down-rank Healthcare
+        
+        # Insurance: Policy + Premium + Claim = Insurance (not Healthcare)
+        if any(k in joined_cols for k in ("policy", "policyno", "policyid", "plyno", "plyid")) and \
+           any(k in joined_cols for k in ("premium", "premiumamt", "premamt", "prmamt")) and \
+           any(k in joined_cols for k in ("claim", "claimid", "claimamount", "clmno", "clmid")):
+            col_scores["Insurance"] = col_scores.get("Insurance", 0.0) * 1.8 + 8.0
+            col_scores["Healthcare"] *= 0.3
+        
+        # Banking priority hint: if table looks transaction-like (account/loan +
+        # timestamp + amount + event) BUT NOT Finance patterns, boost Banking
+        banking_hint = False
+        if not finance_hint:  # Only if Finance patterns not detected
+            if any(k in joined_cols for k in ("account_id", "accountid", "loan_account", "loanaccount")) and \
+               any(k in joined_cols for k in ("timestamp", "time", "txndt", "transactiondate")) and \
+               any(k in joined_cols for k in ("event_type", "eventtype", "status", "amount")) and \
+               not any(k in joined_cols for k in ("gst", "gstin", "invoice", "vendor", "supplier")):
+                banking_hint = True
+            if any(k in joined_vals for k in ("upi", "netbanking", "atm", "emi pay", "emi_due", "emi due", "atm withdrawal")) and \
+               not any(k in joined_vals for k in ("gst", "invoice", "vendor", "supplier")):
+                banking_hint = True
+            if banking_hint:
+                col_scores["Banking"] = col_scores.get("Banking", 0.0) * 1.3 + 1.0
 
+        # Finance priority for short schemas with Finance keywords
+        # If we have 2-3 columns and see Finance keywords, boost Finance
+        if n_cols <= 3 and not used_ml:
+            finance_keywords_found = sum(
+                1 for nc in norm_cols
+                if any(kw in nc for kw in ["gst", "gstin", "invoice", "payroll", "ledger", "journal", "voucher", "tds"])
+            )
+            if finance_keywords_found >= 1:
+                # Even with short schema, Finance keywords are strong signal
+                col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.5 + 5.0
+        
         # FIX-D: minimum score floor (only when we did not already decide via ML)
         if not used_ml and max(col_scores.values()) < MIN_SCORE_FLOOR:
             col_scores = {k: 0.0 for k in col_scores}

@@ -1,0 +1,21 @@
+customer_id,first_name,last_name,email,phone,date_of_birth,gender,city,state,segment,preferred_channel,total_orders,total_spent,loyalty_points,registered_at,last_login_at,created_at,updated_at
+CUST00001,Arun,Kumar,arun.kumar@shop.com,9310718380,1994-09-05,Female,Chennai,Tamil Nadu,Bronze,Online,12,493947.66,5220,2024-08-09 12:08:37,2026-02-04 12:08:37,2024-11-15 12:08:37,2026-02-02 12:08:37
+CUST00002,Priya,Sharma,priya.sharma@shop.com,9516505714,1962-12-18,Female,Mumbai,Maharashtra,Silver,In-Store,61,270520.31,20855,2023-12-02 12:08:37,2026-01-27 12:08:37,2023-05-09 12:08:37,2026-02-12 12:08:37
+CUST00003,Rahul,Nair,rahul.nair@shop.com,9347617321,1962-02-11,Male,Delhi,Delhi,Gold,Mobile App,33,20992.4,37378,2023-10-27 12:08:37,2026-01-18 12:08:37,2024-06-29 12:08:37,2026-02-12 12:08:37
+CUST00004,Meera,Patel,meera.patel@shop.com,9638986818,1969-09-19,Male,Bangalore,Karnataka,Platinum,WhatsApp,49,116249.06,14853,2024-07-18 12:08:37,2026-01-31 12:08:37,2024-08-23 12:08:37,2026-02-04 12:08:37
+CUST00005,Suresh,Reddy,suresh.reddy@shop.com,9215028295,1971-05-03,Female,Hyderabad,Telangana,VIP,Phone,43,414812.34,21284,2024-02-09 12:08:37,2026-01-25 12:08:37,2024-07-21 12:08:37,2026-02-06 12:08:37
+CUST00006,Kavitha,Iyer,kavitha.iyer@shop.com,9276197601,1988-04-20,Female,Pune,Maharashtra,Bronze,Online,60,88001.57,36308,2024-09-01 12:08:37,2026-01-30 12:08:37,2024-07-14 12:08:37,2026-02-04 12:08:37
+CUST00007,Vijay,Pillai,vijay.pillai@shop.com,9871415419,1970-11-22,Female,Kolkata,West Bengal,Silver,In-Store,17,413727.08,38394,2023-06-07 12:08:37,2026-01-21 12:08:37,2024-10-27 12:08:37,2026-02-01 12:08:37
+CUST00008,Lakshmi,Menon,lakshmi.menon@shop.com,9976217139,1984-09-30,Female,Ahmedabad,Gujarat,Gold,Mobile App,11,127527.01,20586,2024-05-13 12:08:37,2026-02-09 12:08:37,2024-11-20 12:08:37,2026-01-25 12:08:37
+CUST00009,Karthik,Das,karthik.das@shop.com,9633409188,1964-06-16,Male,Madurai,Tamil Nadu,Platinum,WhatsApp,54,395292.24,31557,2024-05-21 12:08:37,2026-01-27 12:08:37,2024-02-16 12:08:37,2026-02-10 12:08:37
+CUST00010,Divya,Gupta,divya.gupta@shop.com,9700378868,1970-03-06,Female,Coimbatore,Tamil Nadu,VIP,Phone,36,112675.88,38678,2024-08-19 12:08:37,2026-01-24 12:08:37,2024-05-06 12:08:37,2026-02-12 12:08:37
+CUST00011,Rajesh,Singh,rajesh.singh@shop.com,9880529305,1976-04-04,Female,Kochi,Kerala,Bronze,Online,31,399607.46,21165,2023-02-23 12:08:37,2026-02-02 12:08:37,2023-07-19 12:08:37,2026-01-16 12:08:37
+CUST00012,Sunita,Verma,sunita.verma@shop.com,9865124179,1990-03-09,Female,Jaipur,Rajasthan,Silver,In-Store,1,18256.48,21460,2023-10-22 12:08:37,2026-01-28 12:08:37,2024-04-21 12:08:37,2026-01-14 12:08:37
+CUST00013,Mohan,Rao,mohan.rao@shop.com,9793767575,1964-03-01,Male,Lucknow,Uttar Pradesh,Gold,Mobile App,68,203084.51,43180,2024-06-05 12:08:37,2026-02-08 12:08:37,2023-08-10 12:08:37,2026-02-07 12:08:37
+CUST00014,Anitha,Devi,anitha.devi@shop.com,9794833229,1964-04-17,Male,Nagpur,Maharashtra,Platinum,WhatsApp,45,222999.39,46053,2024-12-26 12:08:37,2026-01-27 12:08:37,2024-11-05 12:08:37,2026-01-25 12:08:37
+CUST00015,Ganesh,Krishnan,ganesh.krishnan@shop.com,9615495745,1989-03-07,Female,Surat,Gujarat,VIP,Phone,65,127564.4,7962,2023-12-09 12:08:37,2026-02-07 12:08:37,2024-05-01 12:08:37,2026-01-17 12:08:37
+CUST00016,Shalini,Bose,shalini.bose@shop.com,9130178497,1988-04-13,Female,Indore,Madhya Pradesh,Bronze,Online,27,397132.52,37099,2023-10-15 12:08:37,2026-01-25 12:08:37,2024-07-19 12:08:37,2026-01-19 12:08:37
+CUST00017,Bala,Shah,bala.shah@shop.com,9570810184,1983-08-20,Male,Bhopal,Madhya Pradesh,Silver,In-Store,55,13538.09,27933,2024-02-16 12:08:37,2026-01-31 12:08:37,2023-08-01 12:08:37,2026-02-01 12:08:37
+CUST00018,Rekha,Joshi,rekha.joshi@shop.com,9999785132,1995-11-25,Female,Patna,Bihar,Gold,Mobile App,42,38618.57,9653,2025-01-19 12:08:37,2026-02-11 12:08:37,2023-08-15 12:08:37,2026-01-21 12:08:37
+CUST00019,Senthil,Mishra,senthil.mishra@shop.com,9980191272,1983-12-13,Female,Vadodara,Gujarat,Platinum,WhatsApp,8,327654.28,3198,2023-04-25 12:08:37,2026-01-24 12:08:37,2023-07-27 12:08:37,2026-02-11 12:08:37
+CUST00020,Nithya,Chatterjee,nithya.chatterjee@shop.com,9359904794,2006-03-10,Female,Visakhapatnam,Andhra Pradesh,VIP,Phone,54,270396.05,5331,2025-01-06 12:08:37,2026-02-02 12:08:37,2023-12-03 12:08:37,2026-01-23 12:08:37

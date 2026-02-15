@@ -221,13 +221,106 @@ class RetailTimelineAnalyzer:
         return None
 
     def _normalize_event_from_data(self, val: Any) -> str:
-        """Convert event value from data to display: Customer_Visit -> Customer Visit, Add_To_Cart -> Add To Cart."""
+        """
+        Convert event value from data to canonical format.
+        Examples: Customer_Visit -> Customer Visit, Add_To_Cart -> Add To Cart, 
+                  "order placed" -> Order Placed, "payment_success" -> Payment Success
+        """
         if val is None or (isinstance(val, float) and pd.isna(val)):
             return "Order Placed"
         s = str(val).strip()
         if not s:
             return "Order Placed"
-        return s.replace("_", " ").replace("-", " ").title()
+        
+        # Normalize format: replace underscores/dashes with spaces, title case
+        normalized = s.replace("_", " ").replace("-", " ").strip()
+        
+        # Map common variations to canonical names (case-insensitive)
+        normalized_lower = normalized.lower()
+        canonical_map = {
+            # User events
+            "user signed up": "User Signed Up",
+            "signup": "User Signed Up",
+            "sign up": "User Signed Up",
+            "registration": "User Signed Up",
+            "register": "User Signed Up",
+            "user logged in": "User Logged In",
+            "login": "User Logged In",
+            "log in": "User Logged In",
+            "signin": "User Logged In",
+            "user logged out": "User Logged Out",
+            "logout": "User Logged Out",
+            "log out": "User Logged Out",
+            "signout": "User Logged Out",
+            # Customer actions
+            "customer visit": "Customer Visit",
+            "visit": "Customer Visit",
+            "product view": "Product View",
+            "product viewed": "Product View",
+            "view": "Product View",
+            "product search": "Product Search",
+            "search": "Product Search",
+            "add to cart": "Add To Cart",
+            "added to cart": "Add To Cart",
+            "add cart": "Add To Cart",
+            "remove from cart": "Remove From Cart",
+            "removed from cart": "Remove From Cart",
+            "remove cart": "Remove From Cart",
+            "apply coupon": "Apply Coupon",
+            "coupon": "Apply Coupon",
+            # Checkout & Payment
+            "checkout started": "Checkout Started",
+            "checkout": "Checkout Started",
+            "address entered": "Address Entered",
+            "address": "Address Entered",
+            "payment selected": "Payment Selected",
+            "payment initiated": "Payment Selected",
+            "payment success": "Payment Success",
+            "payment completed": "Payment Success",
+            "payment successful": "Payment Success",
+            "paid": "Payment Success",
+            "payment failed": "Payment Failed",
+            "payment fail": "Payment Failed",
+            # Order events
+            "order placed": "Order Placed",
+            "order created": "Order Placed",
+            "order": "Order Placed",
+            "order confirmed": "Order Confirmed",
+            "confirmed": "Order Confirmed",
+            "invoice generated": "Invoice Generated",
+            "invoice": "Invoice Generated",
+            # Fulfillment
+            "order packed": "Order Packed",
+            "packed": "Order Packed",
+            "order shipped": "Order Shipped",
+            "shipped": "Order Shipped",
+            "out for delivery": "Out For Delivery",
+            "order delivered": "Order Delivered",
+            "delivered": "Order Delivered",
+            "order cancelled": "Order Cancelled",
+            "cancelled": "Order Cancelled",
+            "canceled": "Order Cancelled",
+            # Returns & Refunds
+            "return initiated": "Return Initiated",
+            "return requested": "Return Initiated",
+            "return received": "Return Received",
+            "returned": "Return Received",
+            "refund processed": "Refund Processed",
+            "refund": "Refund Processed",
+            "refunded": "Refund Processed",
+        }
+        
+        # Check for exact match first
+        if normalized_lower in canonical_map:
+            return canonical_map[normalized_lower]
+        
+        # Check for partial matches
+        for key, canonical in canonical_map.items():
+            if key in normalized_lower or normalized_lower in key:
+                return canonical
+        
+        # If no match, format as title case
+        return normalized.title()
 
     def _find_datetime_columns(self, df: pd.DataFrame) -> Optional[Tuple[str, Optional[str]]]:
         """
@@ -321,6 +414,61 @@ class RetailTimelineAnalyzer:
                 return ""
             return str(val).strip().lower()
         return ""
+
+    def _scan_row_for_event_pattern(self, row: Any, columns: List[str]) -> Optional[str]:
+        """
+        Scan ALL column values in row for retail event pattern match.
+        Observes actual data values, not just column names.
+        Returns canonical event name if pattern found, None otherwise.
+        """
+        # Retail event patterns to look for in data values
+        event_patterns = {
+            'User Signed Up': ['signup', 'sign up', 'sign-up', 'registered', 'registration', 'register', 'new customer', 'account created', 'user created'],
+            'User Logged In': ['login', 'log in', 'log-in', 'signin', 'sign in', 'sign-in', 'logged in', 'authenticated'],
+            'User Logged Out': ['logout', 'log out', 'log-out', 'signout', 'sign out', 'sign-out', 'logged out'],
+            'Customer Visit': ['visit', 'visited', 'browse', 'browsed', 'customer visit', 'store visit', 'website visit'],
+            'Product View': ['view', 'viewed', 'product view', 'viewed product', 'see product', 'saw product'],
+            'Product Search': ['search', 'searched', 'product search', 'search product', 'find product', 'looking for'],
+            'Add To Cart': ['add to cart', 'added to cart', 'add cart', 'cart add', 'add item', 'added item', 'add product'],
+            'Remove From Cart': ['remove from cart', 'removed from cart', 'remove cart', 'cart remove', 'remove item', 'removed item', 'delete from cart'],
+            'Checkout Started': ['checkout', 'checkout started', 'started checkout', 'begin checkout', 'checkout begin'],
+            'Address Entered': ['address', 'address entered', 'delivery address', 'shipping address', 'address added'],
+            'Payment Selected': ['payment selected', 'payment method', 'select payment', 'payment choose', 'payment option'],
+            'Payment Success': ['payment success', 'payment successful', 'paid', 'payment completed', 'payment succeed', 'payment success', 'transaction success'],
+            'Payment Failed': ['payment failed', 'payment fail', 'payment error', 'transaction failed', 'payment declined', 'payment reject'],
+            'Order Placed': ['order placed', 'order created', 'order', 'placed order', 'new order', 'order new', 'order submit'],
+            'Order Confirmed': ['order confirmed', 'confirmed', 'order confirmation', 'confirm order'],
+            'Invoice Generated': ['invoice', 'invoice generated', 'invoice created', 'bill generated', 'bill created'],
+            'Order Packed': ['packed', 'order packed', 'packing', 'pack order', 'order packing'],
+            'Order Shipped': ['shipped', 'order shipped', 'shipping', 'ship order', 'dispatch', 'dispatched'],
+            'Out For Delivery': ['out for delivery', 'out for deliver', 'on the way', 'on way', 'delivery started', 'courier'],
+            'Order Delivered': ['delivered', 'order delivered', 'delivery', 'delivery completed', 'received', 'order received'],
+            'Order Cancelled': ['cancelled', 'canceled', 'order cancelled', 'order canceled', 'cancel order', 'order cancel'],
+            'Return Initiated': ['return initiated', 'return request', 'return requested', 'initiate return', 'request return'],
+            'Return Received': ['return received', 'returned', 'return complete', 'return finished', 'product returned'],
+            'Refund Processed': ['refund', 'refund processed', 'refunded', 'refund complete', 'refund issued', 'refund processed'],
+            'Apply Coupon': ['coupon', 'apply coupon', 'coupon applied', 'discount', 'discount applied', 'promo code', 'promotion'],
+        }
+        
+        # Scan all column values for event patterns
+        for col in columns:
+            if col.startswith("__"):
+                continue
+            val = row.get(col)
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                continue
+            
+            val_str = str(val).lower().strip()
+            if not val_str:
+                continue
+            
+            # Check each event pattern
+            for event_name, patterns in event_patterns.items():
+                for pattern in patterns:
+                    if pattern in val_str:
+                        return event_name
+        
+        return None
 
     def _infer_event_for_row(
         self,
@@ -513,13 +661,44 @@ class RetailTimelineAnalyzer:
             ts = row["__dt"]
             if pd.isna(ts):
                 continue
-            if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
+            # 1) FIRST: Scan row data values for event patterns (actual data, not column names)
+            #    This catches events that might be in status columns, description fields, etc.
+            scanned_event = self._scan_row_for_event_pattern(row, list(df.columns))
+            if scanned_event:
+                event_name = scanned_event  # Already in canonical format
+            # 2) SECOND: Check event_name column if available (data value)
+            elif event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
                 event_name = self._normalize_event_from_data(row[event_name_col])
+                # Normalize to canonical if needed
+                if event_name and event_name not in self.step_order:
+                    event_name = self._normalize_legacy_event(event_name)
+            # 3) THIRD: Derive from time column name
             else:
                 event_name = self._time_column_to_retail_event(event_time_col)
                 if not event_name or event_name in ("Other", "Unknown"):
                     event_name = self._infer_event_for_row(table.table_name, df, row, status_col)
                     event_name = self._normalize_legacy_event(event_name)
+            
+            # Ensure event_name is never None or empty and is in canonical format - critical for Sankey diagram
+            if not event_name or not str(event_name).strip() or event_name in ("Other", "Unknown", "None"):
+                # Final fallback: use table name or generic retail event
+                event_name = self._infer_event_for_row(table.table_name, df, row, status_col)
+                event_name = self._normalize_legacy_event(event_name)
+                if not event_name or not str(event_name).strip():
+                    event_name = "Order Placed"  # Safe default for retail
+            
+            # Final validation: ensure event is in canonical step_order list
+            # This ensures consistency across all events for Sankey diagram
+            if event_name not in self.step_order:
+                # Try to find closest match or use default
+                event_name_lower = event_name.lower()
+                for canonical_event in self.step_order:
+                    if canonical_event.lower() == event_name_lower or canonical_event.lower() in event_name_lower:
+                        event_name = canonical_event
+                        break
+                else:
+                    # If still no match, keep the event_name as-is (it might be a valid user-specific event)
+                    pass
             user_id = None
             if user_col and user_col in row.index and pd.notna(row[user_col]):
                 user_id = str(row[user_col]).strip()
@@ -743,9 +922,15 @@ class RetailTimelineAnalyzer:
                 if hasattr(ts, "strftime"):
                     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
                 raw = ev.get("raw_record") or {}
+                # Ensure event is never None or empty - critical for Sankey diagram
+                event_val = ev.get("event")
+                if not event_val or not str(event_val).strip() or str(event_val).strip().lower() in ("none", "null", "unknown", "other"):
+                    # Try to infer from table name or use safe default
+                    event_val = "Order Placed"  # Safe default for retail
+                
                 activities.append(
                     {
-                        "event": ev.get("event"),
+                        "event": str(event_val).strip() if event_val else "Order Placed",
                         "timestamp_str": ts_str,
                         "user_id": user_id,
                         "order_id": ev.get("order_id", ""),
@@ -761,7 +946,21 @@ class RetailTimelineAnalyzer:
 
             first_ts = activities[0]["timestamp_str"]
             last_ts = activities[-1]["timestamp_str"]
-            event_sequence = [a["event"] for a in activities]
+            # Build event_sequence, filtering out None/empty events - critical for Sankey diagram
+            event_sequence = []
+            for a in activities:
+                event_val = a.get("event")
+                if event_val and str(event_val).strip() and str(event_val).strip().lower() not in ("none", "null", "unknown", "other"):
+                    event_sequence.append(str(event_val).strip())
+            # If no valid events found, try to extract from raw events
+            if not event_sequence:
+                for ev in events:
+                    event_val = ev.get("event")
+                    if event_val and str(event_val).strip() and str(event_val).strip().lower() not in ("none", "null", "unknown", "other"):
+                        event_sequence.append(str(event_val).strip())
+            # Final fallback: if still no events, create generic sequence
+            if not event_sequence:
+                event_sequence = ["Order Placed"]  # At least one event for Sankey
             explanation = self._build_case_explanation(case_id, user_id, events)
 
             case_details.append(
