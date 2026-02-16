@@ -65,6 +65,11 @@ from date_detector import DateColumnDetector
 from customer_linker import CustomerLinker
 from db_grouping_engine import DBGroupingEngine
 from login_analyzer import LoginWorkflowAnalyzer
+import importlib.util
+spec = importlib.util.spec_from_file_location("data_synthesis", Path(__file__).parent / "data-synthesis.py")
+data_synthesis_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(data_synthesis_module)
+DataSynthesisEngine = data_synthesis_module.DataSynthesisEngine
 
 # Initialize analyzers
 csv_analyzer = CSVAnalyzer()
@@ -75,6 +80,7 @@ date_detector = DateColumnDetector()
 customer_linker = CustomerLinker()
 db_grouping_engine = DBGroupingEngine()
 login_analyzer = LoginWorkflowAnalyzer()
+synthesis_engine = DataSynthesisEngine()
 
 
 # Store session data (in production, use proper session management)
@@ -938,6 +944,79 @@ async def analyze_credit(session_id: str):
             'error': str(e)
         }
 
+
+@app.post("/api/synthesize/{session_id}")
+async def synthesize_database(session_id: str, num_rows: int = 100):
+    """
+    Generate synthetic data based on uploaded database schema
+    
+    Args:
+        session_id: Session ID from upload
+        num_rows: Number of rows to generate per table (default: 100)
+        
+    Returns:
+        Dictionary with schema analysis and synthetic data
+    """
+    # Get session
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    session = sessions[session_id]
+    session_dir = Path(session["directory"])
+    
+    try:
+        # First, we need to get the relationships from the analysis
+        # Re-analyze to get relationships, or use cached if available
+        tables: List[TableAnalysis] = []
+        dataframes: dict[str, pd.DataFrame] = {}
+        
+        for filename in session["files"]:
+            file_path = session_dir / filename
+            table_name = filename.replace('.csv', '').replace('_', ' ').title()
+            table_analysis = csv_analyzer.analyze_table(str(file_path), table_name)
+            tables.append(table_analysis)
+            input_df = pd.read_csv(file_path)
+            dataframes[table_name] = input_df
+        
+        # Detect relationships
+        all_relationships = relationship_detector.detect_relationships(tables, dataframes)
+        
+        # Convert relationships to dict format for synthesis engine
+        relationships_dict = []
+        for rel in all_relationships:
+            relationships_dict.append({
+                'source_table': rel.source_table,
+                'target_table': rel.target_table,
+                'source_column': rel.source_column,
+                'target_column': rel.target_column,
+                'relationship_type': rel.relationship_type,
+                'is_foreign_key': rel.is_foreign_key
+            })
+        
+        # Generate synthetic data
+        result = synthesis_engine.synthesize_database(
+            session_dir,
+            session["files"],
+            relationships_dict,
+            num_rows_per_table={table_name: num_rows for table_name in dataframes.keys()}
+        )
+        
+        return {
+            'success': True,
+            'message': 'Synthetic data generated successfully',
+            'schema': _to_native(result['schema']),
+            'synthetic_data': _to_native(result['synthetic_data']),
+            'relationships': _to_native(result['relationships'])
+        }
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {
+            'success': False,
+            'message': 'Synthesis failed',
+            'error': str(e)
+        }
 
 
 # Mount static files at root to serve index.html, styles.css, and app.js

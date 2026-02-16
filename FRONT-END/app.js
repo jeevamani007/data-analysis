@@ -3823,8 +3823,8 @@ function showDomainSplitView() {
                             </div>
                         </div>
 
-                        <!-- Analyze Button (Per Database) -->
-                        <div style="margin-top: 2rem;">
+                        <!-- Action Buttons (Per Database) -->
+                        <div style="margin-top: 2rem; display: flex; flex-direction: column; gap: 1rem;">
                             <button 
                                 type="button" 
                                 class="btn-primary" 
@@ -3845,6 +3845,18 @@ function showDomainSplitView() {
             } →
                             </button>
                             <div id="analyze-status-${index}" style="margin-top: 0.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; display: none;">
+                                Processing...
+                            </div>
+                            
+                            <button 
+                                type="button" 
+                                class="btn-secondary" 
+                                id="synthesize-btn-${index}"
+                                onclick="generateSyntheticData(${index}, 100)"
+                                style="width: 100%; padding: 1rem 2rem; font-size: 1.1rem; background: rgba(139, 92, 246, 0.1); border: 2px solid #8b5cf6; color: #7c3aed; font-weight: 600;">
+                                🔄 Generate Synthetic Data
+                            </button>
+                            <div id="synthesize-status-${index}" style="margin-top: 0.5rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; display: none;">
                                 Processing...
                             </div>
                         </div>
