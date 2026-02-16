@@ -774,18 +774,35 @@ def _detect_hr_data_patterns(
     """
     Detect HR domain using data types and patterns (not just column names).
     Returns a score based on detected HR data patterns.
+    Only triggers when HR-specific column indicators are present.
     """
     score = 0.0
     patterns_found: list[str] = []
     
+    # Check if we have HR column indicators - if not, don't score
+    hr_column_indicators = sum(
+        1 for nc in norm_cols
+        if any(kw in nc for kw in ["employeeid", "empid", "empcode", "employeename",
+                                    "departmentid", "deptid", "attendanceid", "attid",
+                                    "leaveid", "lvid", "performanceid", "perfid",
+                                    "hiredate", "doj", "checkin", "checkout", "leavetype"])
+    )
+    if hr_column_indicators == 0:
+        return {"pattern_score": 0.0, "patterns_found": []}
+    
     # Email pattern detection (HR: employee emails)
+    # Only if we have email column or employee-related columns
+    has_email_col = any("email" in nc or "mail" in nc for nc in norm_cols)
+    has_emp_col = any(kw in nc for nc in norm_cols for kw in ["employee", "empid", "empcode"])
     email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     email_matches = sum(1 for v in sample_values[:200] if email_pattern.match(str(v).strip()))
-    if email_matches >= 3:
+    if email_matches >= 3 and (has_email_col or has_emp_col):
         score += 3.0
         patterns_found.append(f"email_patterns({email_matches})")
     
     # Phone number patterns (HR: employee contact)
+    # Only if we have phone/contact column or employee-related columns
+    has_phone_col = any(kw in nc for nc in norm_cols for kw in ["phone", "phno", "mobile", "contact"])
     phone_patterns = [
         re.compile(r'^\+?[0-9]{10,15}$'),  # Standard phone
         re.compile(r'^[0-9]{3}[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}$'),  # US format
@@ -795,7 +812,7 @@ def _detect_hr_data_patterns(
         1 for v in sample_values[:200]
         if any(p.match(str(v).strip()) for p in phone_patterns)
     )
-    if phone_matches >= 3:
+    if phone_matches >= 3 and (has_phone_col or has_emp_col):
         score += 2.0
         patterns_found.append(f"phone_patterns({phone_matches})")
     
@@ -917,18 +934,21 @@ def _detect_hr_data_patterns(
     
     # Salary/Amount patterns (HR: payroll amounts)
     # Look for numeric values that could be salaries (typically 5-8 digits)
-    salary_pattern = re.compile(r'^[0-9]{4,8}(\.[0-9]{2})?$')
-    salary_matches = sum(
-        1 for v in sample_values[:200]
-        if salary_pattern.match(str(v).strip().replace(',', ''))
-    )
+    # BUT only if we have BOTH salary columns AND employee columns (not just any amount)
     salary_cols = sum(
         1 for nc in norm_cols
-        if any(kw in nc for kw in ["salary", "sal", "pay", "compensation", "bassal", "netsal"])
+        if any(kw in nc for kw in ["salary", "sal", "pay", "compensation", "bassal", "netsal", "netpay"])
     )
-    if salary_matches >= 3 and salary_cols >= 1:
-        score += 2.5
-        patterns_found.append(f"salary_patterns({salary_matches})")
+    # Require both salary column AND employee column to prevent false positives on banking/finance amounts
+    if salary_cols >= 1 and has_emp_col:
+        salary_pattern = re.compile(r'^[0-9]{4,8}(\.[0-9]{2})?$')
+        salary_matches = sum(
+            1 for v in sample_values[:200]
+            if salary_pattern.match(str(v).strip().replace(',', ''))
+        )
+        if salary_matches >= 3:
+            score += 2.5
+            patterns_found.append(f"salary_patterns({salary_matches})")
     
     return {
         "pattern_score": score,
@@ -1205,6 +1225,9 @@ class DomainClassifier:
         norm_cols = _normalise_all(all_columns)
         values = list(sample_values or [])
         expanded = _expand_aliases(norm_cols)
+        
+        # Reasoning layer: Track decision-making process
+        reasoning_steps: list[str] = []
 
         col_scores: dict[str, float] = {
             cfg.name: _score_domain(norm_cols, cfg, expanded.get(cfg.name))["total"]
@@ -1216,7 +1239,16 @@ class DomainClassifier:
                 col_scores[cfg.name] += _score_values(values[:200], cfg) * 0.5
         
         # HR-specific: Add data type and pattern detection scores (compulsory)
-        if values:
+        # BUT only if we have HR column indicators - prevent false positives on banking/finance
+        hr_column_indicators = sum(
+            1 for nc in norm_cols
+            if any(kw in nc for kw in ["employeeid", "empid", "empcode", "employeename", 
+                                        "departmentid", "deptid", "attendanceid", "attid",
+                                        "leaveid", "lvid", "performanceid", "perfid",
+                                        "hiredate", "doj", "checkin", "checkout"])
+        )
+        if values and hr_column_indicators >= 1:
+            # Only run HR pattern detection if we have HR column indicators
             hr_patterns = _detect_hr_data_patterns(all_columns, norm_cols, values)
             hr_types = _detect_hr_data_types(all_columns, norm_cols, values)
             hr_combined_score = hr_patterns["pattern_score"] + hr_types["type_score"]
@@ -1241,26 +1273,66 @@ class DomainClassifier:
             col_scores = self._ml.predict(text, all_generic)
             used_ml = True
 
+        # Prepare joined columns string for pattern matching (needed for HR and Finance/Banking rules)
+        joined_cols = " ".join(all_columns).lower()
+        
+        # Banking/Finance priority: Check for banking/finance indicators first
+        # to prevent HR from incorrectly overriding banking/finance data
+        banking_indicators = sum(
+            1 for nc in norm_cols
+            if any(kw in nc for kw in ["ifsc", "ifsccode", "swiftcode", "iban", "bic",
+                                        "accountnumber", "accountid", "accountbalance",
+                                        "loanid", "loannumber", "emi", "emiamount",
+                                        "transactionid", "transactiondate", "kyc",
+                                        "branchid", "branchcode", "routingnumber"])
+        )
+        finance_indicators = sum(
+            1 for nc in norm_cols
+            if any(kw in nc for kw in ["gst", "gstin", "cgst", "sgst", "igst",
+                                        "invoice", "invoiceno", "invoiceid", "invno",
+                                        "ledgerid", "ledgername", "journalid", "voucherno",
+                                        "accountspayable", "accountsreceivable",
+                                        "tds", "tdsamt", "taxamount", "taxamt"])
+        )
+        
+        # Reasoning: Log indicator counts
+        if banking_indicators > 0:
+            reasoning_steps.append(f"Banking indicators detected: {banking_indicators} (IFSC, account, loan, EMI, transaction, KYC, branch)")
+        if finance_indicators > 0:
+            reasoning_steps.append(f"Finance indicators detected: {finance_indicators} (GST, invoice, ledger, journal, TDS, tax)")
+        
         # HR positive rule: if strong HR pattern detected, boost HR domain
+        # BUT only if banking/finance indicators are weak/absent
         hr_hits = sum(
             1 for nc in norm_cols
             if any(tok in nc for tok in _HR_STRONG_TOKENS)
         )
         if hr_hits >= 3:
-            # Strong HR pattern detected - boost HR, down-rank Finance if weak
-            col_scores["HR"] = col_scores.get("HR", 0.0) + 6.0
-            if col_scores.get("Finance", 0.0) < MIN_SCORE_FLOOR + 2:
-                col_scores["Finance"] *= 0.3  # Down-rank weak Finance
+            # Only boost HR if banking/finance indicators are not strong
+            if banking_indicators < 2 and finance_indicators < 2:
+                # Strong HR pattern detected - boost HR, down-rank Finance if weak
+                col_scores["HR"] = col_scores.get("HR", 0.0) + 6.0
+                if col_scores.get("Finance", 0.0) < MIN_SCORE_FLOOR + 2:
+                    col_scores["Finance"] *= 0.3  # Down-rank weak Finance
+            else:
+                # Banking/Finance indicators present - don't boost HR
+                # Instead, down-rank HR if banking/finance is stronger
+                if banking_indicators >= 2:
+                    col_scores["HR"] *= 0.3
+                if finance_indicators >= 2:
+                    col_scores["HR"] *= 0.3
         
         # HR hard override rules: detect HR patterns even without explicit column names
+        # BUT only if banking/finance indicators are not present
         hr_hint = False
-        if values:
+        if values and banking_indicators < 2 and finance_indicators < 2:
             hr_patterns = _detect_hr_data_patterns(all_columns, norm_cols, values)
             hr_types = _detect_hr_data_types(all_columns, norm_cols, values)
             combined_hr_score = hr_patterns["pattern_score"] + hr_types["type_score"]
             
             # If we detect strong HR data patterns/types, boost HR significantly
-            if combined_hr_score >= 8.0:
+            # BUT require HR column indicators to prevent false positives
+            if combined_hr_score >= 8.0 and hr_column_indicators >= 1:
                 hr_hint = True
                 col_scores["HR"] = col_scores.get("HR", 0.0) * 1.5 + combined_hr_score
                 # Down-rank other domains if HR is clearly detected
@@ -1268,50 +1340,104 @@ class DomainClassifier:
                 col_scores["Other"] *= 0.5
         
         # HR: Employee + Department + Manager = HR (not Finance, not Other)
-        joined_cols = " ".join(all_columns).lower()
-        if any(k in joined_cols for k in ("employee", "employeeid", "empid", "empcode")) and \
-           any(k in joined_cols for k in ("department", "departmentid", "deptid", "dept")) and \
-           any(k in joined_cols for k in ("manager", "managerid", "mgrid", "supervisor")) and \
-           not any(k in joined_cols for k in ("gst", "gstin", "invoice", "vendor", "supplier", "ledger", "journal")):
-            hr_hint = True
-            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.8 + 10.0
-            col_scores["Finance"] *= 0.4
-            col_scores["Other"] *= 0.4
-        
-        # HR: Employee + Attendance = HR (not Other)
-        if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
-           any(k in joined_cols for k in ("attendance", "attendanceid", "attid", "checkin", "checkout")):
-            hr_hint = True
-            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
-            col_scores["Other"] *= 0.5
-        
-        # HR: Employee + Leave = HR (not Other)
-        if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
-           any(k in joined_cols for k in ("leave", "leaveid", "lvid", "leavetype")):
-            hr_hint = True
-            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
-            col_scores["Other"] *= 0.5
-        
-        # HR: Employee + Performance = HR (not Other)
-        if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
-           any(k in joined_cols for k in ("performance", "performanceid", "perfid", "rating", "review")):
-            hr_hint = True
-            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
-            col_scores["Other"] *= 0.5
-        
-        # HR vs Finance: Payroll with TDS/PF/ESI = Finance, but pure HR employee data = HR
-        if any(k in joined_cols for k in ("payroll", "payrollmonth", "payroll_month")) and \
-           any(k in joined_cols for k in ("tds", "tdsamt", "pf", "pfamt", "esi", "esiamt")):
-            # This is Finance (payroll processing), not HR
-            pass  # Already handled by Finance rules
-        elif any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
-             any(k in joined_cols for k in ("department", "dept", "job", "position", "manager")) and \
-             not any(k in joined_cols for k in ("payroll", "gst", "invoice", "ledger", "journal")):
-            # Pure HR employee management, not Finance
-            hr_hint = True
-            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.5 + 7.0
-            col_scores["Finance"] *= 0.4
+        # BUT only if banking/finance indicators are not present
+        if banking_indicators < 2 and finance_indicators < 2:
+            if any(k in joined_cols for k in ("employee", "employeeid", "empid", "empcode")) and \
+               any(k in joined_cols for k in ("department", "departmentid", "deptid", "dept")) and \
+               any(k in joined_cols for k in ("manager", "managerid", "mgrid", "supervisor")) and \
+               not any(k in joined_cols for k in ("gst", "gstin", "invoice", "vendor", "supplier", "ledger", "journal",
+                                                   "ifsc", "ifsccode", "swiftcode", "iban", "accountnumber", "accountid",
+                                                   "loanid", "emi", "transactionid", "kyc", "branchid")):
+                hr_hint = True
+                col_scores["HR"] = col_scores.get("HR", 0.0) * 1.8 + 10.0
+                col_scores["Finance"] *= 0.4
+                col_scores["Other"] *= 0.4
+            
+            # HR: Employee + Attendance = HR (not Other)
+            if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
+               any(k in joined_cols for k in ("attendance", "attendanceid", "attid", "checkin", "checkout")) and \
+               not any(k in joined_cols for k in ("ifsc", "ifsccode", "swiftcode", "accountnumber", "accountid",
+                                                  "loanid", "emi", "transactionid", "gst", "gstin", "invoice")):
+                hr_hint = True
+                col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
+                col_scores["Other"] *= 0.5
+            
+            # HR: Employee + Leave = HR (not Other)
+            if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
+               any(k in joined_cols for k in ("leave", "leaveid", "lvid", "leavetype")) and \
+               not any(k in joined_cols for k in ("ifsc", "ifsccode", "swiftcode", "accountnumber", "accountid",
+                                                  "loanid", "emi", "transactionid", "gst", "gstin", "invoice")):
+                hr_hint = True
+                col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
+                col_scores["Other"] *= 0.5
+            
+            # HR: Employee + Performance = HR (not Other)
+            if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
+               any(k in joined_cols for k in ("performance", "performanceid", "perfid", "rating", "review")) and \
+               not any(k in joined_cols for k in ("ifsc", "ifsccode", "swiftcode", "accountnumber", "accountid",
+                                                  "loanid", "emi", "transactionid", "gst", "gstin", "invoice")):
+                hr_hint = True
+                col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
+                col_scores["Other"] *= 0.5
+            
+            # HR vs Finance: Payroll with TDS/PF/ESI = Finance, but pure HR employee data = HR
+            if any(k in joined_cols for k in ("payroll", "payrollmonth", "payroll_month")) and \
+               any(k in joined_cols for k in ("tds", "tdsamt", "pf", "pfamt", "esi", "esiamt")):
+                # This is Finance (payroll processing), not HR
+                pass  # Already handled by Finance rules
+            elif any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
+                 any(k in joined_cols for k in ("department", "dept", "job", "position", "manager")) and \
+                 not any(k in joined_cols for k in ("payroll", "gst", "invoice", "ledger", "journal",
+                                                    "ifsc", "ifsccode", "swiftcode", "accountnumber", "accountid",
+                                                    "loanid", "emi", "transactionid", "kyc")):
+                # Pure HR employee management, not Finance
+                hr_hint = True
+                col_scores["HR"] = col_scores.get("HR", 0.0) * 1.5 + 7.0
+                col_scores["Finance"] *= 0.4
 
+        # Finance vs Banking Differentiation Layer
+        # Finance indicators take priority over Banking when both are present
+        # Key difference: Finance = GST/Invoice/Ledger, Banking = IFSC/Account/Loan/Transaction
+        
+        # Check for Finance-specific patterns that should NOT be Banking
+        finance_specific_patterns = {
+            "gst": ["gst", "gstin", "gstno", "cgst", "sgst", "igst"],
+            "invoice": ["invoice", "invoiceno", "invoiceid", "invno", "invid"],
+            "ledger": ["ledger", "ledgerid", "ledgername"],
+            "journal": ["journal", "journalid"],
+            "voucher": ["voucher", "voucherno", "vchrno"],
+            "vendor": ["vendor", "vendorid", "supplier", "supplierid"],
+            "accounts": ["accountspayable", "accountsreceivable", "acctpay", "acctrec"],
+            "tds": ["tds", "tdsamt"],
+        }
+        
+        # Check for Banking-specific patterns
+        banking_specific_patterns = {
+            "ifsc": ["ifsc", "ifsccode"],
+            "swift": ["swiftcode", "swift"],
+            "iban": ["iban"],
+            "loan": ["loanid", "loannumber", "loanamount", "loantype"],
+            "emi": ["emi", "emiamount", "emidue"],
+            "kyc": ["kyc", "kycstatus"],
+            "branch": ["branchid", "branchcode", "branchname"],
+            "transaction": ["transactionid", "transactiondate", "transactiontype"],
+        }
+        
+        finance_pattern_count = sum(
+            1 for pattern_type, keywords in finance_specific_patterns.items()
+            if any(k in joined_cols for k in keywords)
+        )
+        banking_pattern_count = sum(
+            1 for pattern_type, keywords in banking_specific_patterns.items()
+            if any(k in joined_cols for k in keywords)
+        )
+        
+        # Reasoning: Log pattern analysis
+        if finance_pattern_count > 0:
+            reasoning_steps.append(f"Finance-specific patterns found: {finance_pattern_count} types (GST/Invoice/Ledger/Vendor/TDS)")
+        if banking_pattern_count > 0:
+            reasoning_steps.append(f"Banking-specific patterns found: {banking_pattern_count} types (IFSC/SWIFT/Loan/EMI/KYC/Branch)")
+        
         # Finance hard override rules (must come before Banking hints)
         # If we see clear Finance patterns, strongly boost Finance
         joined_vals = " ".join(values[:50]).lower() if values else ""
@@ -1321,17 +1447,20 @@ class DomainClassifier:
         if any(k in joined_cols for k in ("invoice", "invoiceno", "invoiceid", "invno")) and \
            any(k in joined_cols for k in ("gst", "gstin", "gstno", "cgst", "sgst", "igst")):
             finance_hint = True
-            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 2.0 + 10.0  # Strong boost
+            reasoning_steps.append("STRONG FINANCE: Invoice + GST detected → Finance domain (not Banking)")
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 2.0 + 12.0  # Stronger boost
             col_scores["Retail"] *= 0.3  # Down-rank Retail
-            col_scores["Banking"] *= 0.3  # Down-rank Banking
+            col_scores["Banking"] *= 0.2  # Strongly down-rank Banking
         
-        # Pattern 2: Invoice + Tax + Vendor/Supplier = Finance (not Retail)
+        # Pattern 2: Invoice + Tax + Vendor/Supplier = Finance (not Retail, not Banking)
         if any(k in joined_cols for k in ("invoice", "invoiceno", "invoiceid")) and \
            any(k in joined_cols for k in ("tax", "taxamount", "taxamt")) and \
            any(k in joined_cols for k in ("vendor", "supplier", "vendorid", "supplierid")):
             finance_hint = True
-            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 8.0
+            reasoning_steps.append("STRONG FINANCE: Invoice + Tax + Vendor/Supplier → Finance domain (not Banking)")
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 9.0
             col_scores["Retail"] *= 0.4
+            col_scores["Banking"] *= 0.3  # Down-rank Banking
         
         # Retail hard override: Product/Order + Invoice (without GST) = Retail (not Finance)
         retail_hint = False
@@ -1351,31 +1480,39 @@ class DomainClassifier:
             col_scores["Retail"] = col_scores.get("Retail", 0.0) * 1.5 + 6.0
             col_scores["Finance"] *= 0.5
         
-        # Pattern 3: Payroll + TDS/PF/ESI = Finance (not HR)
+        # Pattern 3: Payroll + TDS/PF/ESI = Finance (not HR, not Banking)
         if any(k in joined_cols for k in ("payroll", "payrollmonth", "payroll_month")) and \
            any(k in joined_cols for k in ("tds", "tdsamt", "pf", "pfamt", "esi", "esiamt")):
             finance_hint = True
-            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 8.0
+            reasoning_steps.append("STRONG FINANCE: Payroll + TDS/PF/ESI → Finance domain (not Banking)")
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 9.0
             col_scores["HR"] *= 0.5  # Down-rank HR (payroll processing is Finance)
+            col_scores["Banking"] *= 0.3  # Down-rank Banking
             col_scores["Other"] *= 0.5
         
-        # Pattern 4: Ledger + Journal + Voucher = Finance
+        # Pattern 4: Ledger + Journal + Voucher = Finance (not Banking)
         if any(k in joined_cols for k in ("ledger", "ledgerid", "ledgername")) and \
            any(k in joined_cols for k in ("journal", "journalid")) and \
            any(k in joined_cols for k in ("voucher", "voucherno", "vchrno")):
             finance_hint = True
-            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.6 + 7.0
+            reasoning_steps.append("STRONG FINANCE: Ledger + Journal + Voucher → Finance domain (accounting, not Banking)")
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.6 + 8.0
+            col_scores["Banking"] *= 0.4  # Down-rank Banking
         
-        # Pattern 5: Accounts Payable/Receivable = Finance
+        # Pattern 5: Accounts Payable/Receivable = Finance (not Banking)
         if any(k in joined_cols for k in ("accountspayable", "accountsreceivable", "acctpay", "acctrec", "ap", "ar")):
             finance_hint = True
-            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.5 + 6.0
+            reasoning_steps.append("STRONG FINANCE: Accounts Payable/Receivable → Finance domain (not Banking)")
+            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.5 + 7.0
+            col_scores["Banking"] *= 0.4  # Down-rank Banking
         
         # Pattern 6: Value-based Finance detection (GST in values)
         if any(k in joined_vals for k in ("gst", "gstin", "cgst", "sgst", "igst", "gst number", "tax invoice")):
             if any(k in joined_cols for k in ("invoice", "invoiceno", "invoiceid", "invno")):
                 finance_hint = True
-                col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.4 + 5.0
+                reasoning_steps.append("STRONG FINANCE: GST values + Invoice columns → Finance domain (not Banking)")
+                col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.4 + 6.0
+                col_scores["Banking"] *= 0.4  # Down-rank Banking
         
         # Healthcare vs Insurance differentiation
         # Patient + Claim = Insurance (not Healthcare)
@@ -1393,18 +1530,45 @@ class DomainClassifier:
         
         # Banking priority hint: if table looks transaction-like (account/loan +
         # timestamp + amount + event) BUT NOT Finance patterns, boost Banking
+        # This should run AFTER Finance rules to prevent Banking from overriding Finance
         banking_hint = False
-        if not finance_hint:  # Only if Finance patterns not detected
-            if any(k in joined_cols for k in ("account_id", "accountid", "loan_account", "loanaccount")) and \
-               any(k in joined_cols for k in ("timestamp", "time", "txndt", "transactiondate")) and \
-               any(k in joined_cols for k in ("event_type", "eventtype", "status", "amount")) and \
-               not any(k in joined_cols for k in ("gst", "gstin", "invoice", "vendor", "supplier")):
+        
+        # CRITICAL: Only boost Banking if Finance indicators are NOT present
+        # Finance takes priority over Banking when Finance patterns are detected
+        if not finance_hint and finance_indicators < 2:  # Only if Finance patterns not detected
+            # Check for Banking-specific patterns (IFSC, SWIFT, Loan, EMI, KYC, Branch)
+            has_banking_specific = any(
+                any(k in joined_cols for k in keywords)
+                for pattern_type, keywords in banking_specific_patterns.items()
+            )
+            
+            if has_banking_specific:
+                # Banking-specific patterns found (IFSC, SWIFT, Loan, EMI, etc.)
+                if any(k in joined_cols for k in ("account_id", "accountid", "loan_account", "loanaccount")) and \
+                   any(k in joined_cols for k in ("timestamp", "time", "txndt", "transactiondate")) and \
+                   any(k in joined_cols for k in ("event_type", "eventtype", "status", "amount")) and \
+                   not any(k in joined_cols for k in ("gst", "gstin", "invoice", "vendor", "supplier",
+                                                       "ledger", "journal", "voucher", "tds",
+                                                       "employee", "employeeid", "empid", "department", "attendance")):
+                    banking_hint = True
+                    reasoning_steps.append("BANKING: Account/Loan + Transaction + Banking-specific patterns → Banking domain")
+            
+            # Banking value patterns (UPI, NEFT, RTGS, ATM, etc.)
+            if any(k in joined_vals for k in ("upi", "netbanking", "atm", "emi pay", "emi_due", "emi due", 
+                                               "atm withdrawal", "neft", "rtgs", "imps", "cheque")) and \
+               not any(k in joined_vals for k in ("gst", "invoice", "vendor", "supplier", "tax invoice")):
                 banking_hint = True
-            if any(k in joined_vals for k in ("upi", "netbanking", "atm", "emi pay", "emi_due", "emi due", "atm withdrawal")) and \
-               not any(k in joined_vals for k in ("gst", "invoice", "vendor", "supplier")):
-                banking_hint = True
+                reasoning_steps.append("BANKING: Banking transaction values (UPI/ATM/EMI/NEFT) → Banking domain")
+            
             if banking_hint:
-                col_scores["Banking"] = col_scores.get("Banking", 0.0) * 1.3 + 1.0
+                col_scores["Banking"] = col_scores.get("Banking", 0.0) * 1.5 + 5.0  # Stronger boost
+                # Down-rank HR if banking is detected
+                col_scores["HR"] *= 0.3
+        else:
+            # Finance indicators present - prevent Banking from overriding
+            if finance_indicators >= 2:
+                reasoning_steps.append(f"Finance priority: {finance_indicators} Finance indicators detected → Banking down-ranked")
+                col_scores["Banking"] *= 0.4  # Down-rank Banking when Finance is present
 
         # Finance priority for short schemas with Finance keywords
         # If we have 2-3 columns and see Finance keywords, boost Finance
@@ -1417,6 +1581,36 @@ class DomainClassifier:
                 # Even with short schema, Finance keywords are strong signal
                 col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.5 + 5.0
         
+        # Final priority check: Finance should take priority over Banking
+        # if both have similar scores but Finance indicators are present
+        banking_score = col_scores.get("Banking", 0.0)
+        finance_score = col_scores.get("Finance", 0.0)
+        hr_score = col_scores.get("HR", 0.0)
+        
+        if not used_ml:
+            
+            # CRITICAL: Finance takes priority over Banking when Finance indicators are strong
+            if finance_indicators >= 2 and finance_score > 0:
+                if banking_score > finance_score * 0.9:  # Banking is close to Finance
+                    reasoning_steps.append(f"Finance priority override: {finance_indicators} Finance indicators → Finance boosted, Banking down-ranked")
+                    col_scores["Finance"] = finance_score * 1.3 + 4.0
+                    col_scores["Banking"] *= 0.5  # Strongly down-rank Banking
+                elif finance_pattern_count >= 2:  # Multiple Finance patterns
+                    reasoning_steps.append(f"Finance pattern priority: {finance_pattern_count} Finance patterns → Finance boosted")
+                    col_scores["Finance"] = finance_score * 1.2 + 3.0
+                    col_scores["Banking"] *= 0.6
+            
+            # If banking/finance has strong indicators but HR is winning, boost banking/finance
+            if banking_indicators >= 2 and banking_score > 0 and hr_score > banking_score * 0.8:
+                reasoning_steps.append(f"Banking priority: {banking_indicators} Banking indicators → Banking boosted, HR down-ranked")
+                col_scores["Banking"] = banking_score * 1.5 + 3.0
+                col_scores["HR"] *= 0.4
+            
+            if finance_indicators >= 2 and finance_score > 0 and hr_score > finance_score * 0.8:
+                reasoning_steps.append(f"Finance priority: {finance_indicators} Finance indicators → Finance boosted, HR down-ranked")
+                col_scores["Finance"] = finance_score * 1.5 + 3.0
+                col_scores["HR"] *= 0.4
+        
         # FIX-D: minimum score floor (only when we did not already decide via ML)
         if not used_ml and max(col_scores.values()) < MIN_SCORE_FLOOR:
             col_scores = {k: 0.0 for k in col_scores}
@@ -1427,6 +1621,19 @@ class DomainClassifier:
         confidence = round(probs[primary] * 100, 2)
         percentages = self._round_to_100({k: v * 100 for k, v in probs.items()})
         secondary_domain = self._find_secondary(probs, primary, confidence)
+        
+        # Final reasoning summary
+        if not reasoning_steps:
+            reasoning_steps.append(f"Domain classification based on column scores: {primary} ({confidence}% confidence)")
+        else:
+            reasoning_steps.append(f"Final decision: {primary} domain ({confidence}% confidence)")
+        
+        # Add score comparison reasoning
+        if finance_score > 0 and banking_score > 0:
+            if primary == "Finance":
+                reasoning_steps.append(f"Finance score ({finance_score:.1f}) > Banking score ({banking_score:.1f}) → Finance selected")
+            elif primary == "Banking":
+                reasoning_steps.append(f"Banking score ({banking_score:.1f}) > Finance score ({finance_score:.1f}) → Banking selected")
 
         return {
             "domain_label": primary,
@@ -1437,6 +1644,8 @@ class DomainClassifier:
             "evidence": self._build_evidence(all_columns, norm_cols, values, expanded),
             "column_domain_map": self._build_column_map(all_columns, norm_cols, expanded),
             "used_ml_fallback": used_ml,
+            "reasoning": reasoning_steps,  # Add reasoning layer
+            "domain_scores": {k: round(v, 2) for k, v in col_scores.items()},  # Add raw scores for debugging
         }
 
     def predict_domain_2step(

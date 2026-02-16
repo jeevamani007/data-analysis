@@ -1,0 +1,6 @@
+employee_id,first_name,last_name,gender,date_of_birth,email,phone_number,hire_date,job_title,department,manager_id,status
+1001,Raj,Kumar,M,1995-04-12,raj.kumar@company.com,9876543210,2020-06-15,Software Engineer,IT,2001,Active
+1002,Priya,Sharma,F,1997-09-22,priya.sharma@company.com,9876543211,2021-01-10,HR Executive,HR,2002,Active
+1003,Arun,Das,M,1993-11-05,arun.das@company.com,9876543212,2019-03-20,Data Analyst,Finance,2003,Active
+1004,Meena,R,F,1996-02-18,meena.r@company.com,9876543213,2022-07-01,Recruiter,HR,2002,Active
+1005,Karthik,Vel,M,1990-08-30,karthik.vel@company.com,9876543214,2018-12-12,Project Manager,IT,2001,Active
