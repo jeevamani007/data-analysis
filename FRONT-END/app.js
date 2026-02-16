@@ -1739,6 +1739,7 @@ window.showSingleCaseFlow = function (caseIdStr) {
             window.currentInsuranceUnifiedFlowData ||
             window.currentFinanceUnifiedFlowData ||
             window.currentHealthcareUnifiedFlowData ||
+            window.currentHRUnifiedFlowData ||
             null;
         if (!activeUnifiedData || !activeUnifiedData.case_paths || !activeUnifiedData.case_paths.length) {
             container.innerHTML = '<div style="color: #b91c1c;">No unified flow data is loaded. Please run analysis first.</div>';
@@ -1786,7 +1787,7 @@ window.showSingleCaseFlow = function (caseIdStr) {
                 window.initMergedStepDiagram();
                 // Automatically advance to the next step every 4 seconds
                 if (window.startMergedStepAutoPlay) {
-                    window.startMergedStepAutoPlay(4000);
+                    window.startMergedStepAutoPlay(3000);
                 }
             }, 0);
         }
@@ -1839,6 +1840,7 @@ window.showUserMergedFlow = function (userId) {
         }
 
         const activeUnifiedData =
+            window.currentHRUnifiedFlowData ||
             window.currentBankingUnifiedFlowData ||
             window.currentRetailUnifiedFlowData ||
             window.currentInsuranceUnifiedFlowData ||
@@ -3958,10 +3960,12 @@ window.startDatabaseAnalysis = async function (profileIndex) {
             showHealthcareAnalysisResults(profile);
         } else if (primaryDomain === 'Insurance') {
             showInsuranceAnalysisResults(profile);
+        } else if (primaryDomain === 'HR') {
+            showHRAnalysisResults(profile);
         } else {
             statusDiv.style.display = 'block';
             statusDiv.style.color = 'var(--text-muted)';
-            statusDiv.innerHTML = 'Domain is General/Other. For case timelines, use Banking, Finance, Insurance, Healthcare, or Retail data.';
+            statusDiv.innerHTML = 'Domain is General/Other. For case timelines, use Banking, Finance, Insurance, Healthcare, Retail, or HR data.';
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.style.cursor = 'pointer';
@@ -6441,6 +6445,229 @@ window.showHealthcareDateDetails = function (dateIndex) {
     }, 100);
 };
 
+
+// HR Analysis Results – events across DB, Case IDs sorted by time (92 events)
+function showHRAnalysisResults(profile) {
+    window.currentProfile = profile;
+    window.currentDomain = 'HR';
+    const mainContent = document.getElementById('mainContent');
+    const hrData = profile.hr_analysis;
+
+    if (!hrData || !hrData.success) {
+        mainContent.innerHTML = `
+            <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 1.5rem;">👥</div>
+                <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #EC4899;">HR Database Detected</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                    ${hrData?.error || 'No HR events with usable timestamps found across tables. We look for event/date columns and row data matching the 92 HR events across 7 categories (Recruitment, Onboarding, Attendance, Payroll, Performance, Training, Exit).'}
+                </p>
+                <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+            </div>
+        `;
+        return;
+    }
+
+    const caseDetails = hrData.case_details || [];
+    const totalCases = hrData.total_cases || 0;
+    const totalEmployees = hrData.total_employees || 0;
+    const employees = hrData.employees || [];
+    const totalActivities = hrData.total_activities || hrData.total_events || 0;
+    const unifiedFlowData = hrData.unified_flow_data;
+    const HR_COLOR = '#EC4899';
+    const HR_BG = 'rgba(236,72,153,0.08)';
+    const HR_BORDER = 'rgba(236,72,153,0.3)';
+
+    if (caseDetails.length > 0 && unifiedFlowData && unifiedFlowData.case_paths && unifiedFlowData.case_paths.length > 0) {
+        window.currentHRUnifiedFlowData = unifiedFlowData;
+        let html = `
+        <div style="padding: 2rem; overflow-y: auto; height: 100%;">
+            <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">← Back</button>
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: ${HR_COLOR};">👥 HR Case IDs</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 1.1rem;">
+                ${profile.database_name} • ${totalCases} Case(s) • ${totalEmployees} employee(s) • ${totalActivities} events
+            </p>
+
+            <div style="margin-bottom: 2rem;">
+                <button type="button" onclick="showSankeyDiagramFromWindow('HR', '${HR_COLOR}')" 
+                        style="cursor: pointer; border-radius: 10px; border: 2px solid ${HR_COLOR}; padding: 0.75rem 1.5rem; font-size: 1rem; background: linear-gradient(135deg, ${HR_COLOR}, #DB2777); color: white; font-weight: 700; box-shadow: 0 2px 8px rgba(236,72,153,0.3); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.2rem;">📊</span>
+                    <span>View Sankey Diagram</span>
+                </button>
+            </div>
+
+            ${renderMergedCaseFlowDiagram(unifiedFlowData)}
+
+            <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
+                <div id="single-case-flow-container" style="border-top: 1px dashed ${HR_BORDER}; padding-top: 1.25rem;">
+                    <button type="button"
+                            onclick="window.toggleSingleCaseFlow(event)"
+                            style="width: 100%; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-radius: 10px; border: 1px solid ${HR_BORDER}; padding: 0.55rem 0.8rem; cursor: pointer; font-size: 0.9rem; color: #0f172a; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 600;">Single Case Flow (Filtered)</span>
+                        <span style="font-size: 0.9rem; color: #6b7280;">▼</span>
+                    </button>
+                    <div id="single-case-flow-body" style="display: none; margin-top: 0.25rem;">
+                        <div id="single-case-flow-content" style="font-size: 0.85rem; color: #6b7280;">
+                            Pick a Case ID chip above to see the event-to-event flow for that single case only.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click a Case ID chip to see a separate diagram only for that HR journey (shown under the merged diagram).
+                </p>
+                <div style="display: flex; flex-wrap: nowrap; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem;">
+                    ${(function () {
+                        var unified = unifiedFlowData || {};
+                        var paths = (unified.case_paths || []);
+                        var colorById = {};
+                        paths.forEach(function (p) {
+                            colorById[String(p.case_id)] = p.color || '${HR_COLOR}';
+                        });
+                        return (caseDetails || []).map(function (c) {
+                            var cid = String(c.case_id);
+                            var color = colorById[cid] || '${HR_COLOR}';
+                            return '<button type="button" data-single-case-id="' + cid + '" ' +
+                                   'style="cursor:pointer; border-radius:999px; border:1px solid ' + color + '; ' +
+                                   'padding:0.3rem 0.7rem; font-size:0.8rem; background:#ffffff; color:' + color + '; ' +
+                                   'display:inline-flex; align-items:center; gap:0.35rem; box-shadow:0 1px 2px rgba(15,23,42,0.08);">' +
+                                   '<span style="width:14px; height:3px; border-radius:2px; background:' + color + ';"></span>' +
+                                   '<span>Case ' + cid + '</span>' +
+                                   '</button>';
+                        }).join('');
+                    })()}
+                </div>
+            </section>
+
+            <section style="margin-bottom: 1.75rem;">
+                <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Employee Flow Filter (Merged Case IDs)</h2>
+                <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;">
+                    Click an employee button below to see ALL Case IDs for that employee merged into one continuous flow diagram.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; padding-bottom: 0.25rem;">
+                    ${(employees || []).map(function (u) {
+                        var userCases = caseDetails.filter(function (c) { return c.user_id === u; });
+                        var ids = userCases.map(function (c) { return c.case_id; });
+                        var caseCount = ids.length;
+                        return '<button type="button" data-user-merge-id="' + String(u).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" ' +
+                               'style="cursor:pointer; border-radius:999px; border:1px solid ' + HR_COLOR + '; ' +
+                               'padding:0.4rem 0.8rem; font-size:0.85rem; background:#ffffff; color:' + HR_COLOR + '; ' +
+                               'display:inline-flex; align-items:center; gap:0.4rem; box-shadow:0 1px 2px rgba(15,23,42,0.08); font-weight:600;">' +
+                               '<span style="font-size:0.9rem;">👤</span>' +
+                               '<span>' + u + '</span>' +
+                               '<span style="background:' + HR_COLOR + '; color:#ffffff; border-radius:999px; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:700;">' + caseCount + ' Case' + (caseCount !== 1 ? 's' : '') + '</span>' +
+                               '</button>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <section style="margin-top: 1.75rem; margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);"> How It Works</h2>
+                <div style="background: ${HR_BG}; border: 1px solid ${HR_BORDER}; border-radius: 12px; padding: 1.25rem;">
+                    <ul style="margin: 0; padding-left: 1.25rem; color: var(--text-primary); line-height: 1.8;">
+                        ${(hrData.explanations || []).map(function (e) { return '<li>' + e + '</li>'; }).join('')}
+                    </ul>
+                </div>
+            </section>
+
+            <section style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 0.75rem; color: var(--text-primary);">Case IDs (sorted by first event time)</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">Each case shows its sequence; each step shows <strong>Across DB</strong> source (table · file · row).</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                    ${caseDetails.map(function (c, i) {
+                        return '<div class="hr-case-node" style="flex-shrink: 0; cursor: pointer; padding: 0.6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, #EC4899, #DB2777); color: white; font-weight: 700; font-size: 1rem; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(236,72,153,0.3); transition: all 0.2s;" onclick="showHRCaseDetails(' + i + ')" role="button" tabindex="0">Case #' + c.case_id + '</div>';
+                    }).join('')}
+                </div>
+            </section>
+
+            <div id="hr-case-details" style="display: none;">
+                <div id="hr-case-details-content"></div>
+            </div>
+        </div>
+        `;
+        mainContent.innerHTML = html;
+        window.hrCaseDetails = caseDetails;
+        window.currentCaseDetails = caseDetails;
+        window.currentDomain = 'HR';
+        return;
+    }
+
+    mainContent.innerHTML = `
+        <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
+            <h2 style="font-size: 2rem; margin-bottom: 1rem; color: #EC4899;">HR Data Detected</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                We detected HR data, but could not build case-based timelines from the uploaded files.
+            </p>
+            <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
+        </div>
+    `;
+}
+
+window.showHRCaseDetails = function (caseIndex) {
+    const container = document.getElementById('hr-case-details');
+    const content = document.getElementById('hr-case-details-content');
+    const cases = window.hrCaseDetails;
+    if (!container || !content || !cases || caseIndex < 0 || caseIndex >= cases.length) return;
+
+    const c = cases[caseIndex];
+    const prevIdx = window.hrSelectedCaseIndex;
+    if (prevIdx === caseIndex) {
+        container.style.display = 'none';
+        window.hrSelectedCaseIndex = null;
+        return;
+    }
+    window.hrSelectedCaseIndex = caseIndex;
+
+    const activities = c.activities || [];
+    const seq = (c.event_sequence || []).join(' → ');
+    const stepLabel = activities.length === 1 ? '1 step' : activities.length + ' steps';
+    let html = `
+        <div style="background: var(--bg-card); border: 2px solid #EC4899; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 4px 20px rgba(236,72,153,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.15rem; color: #EC4899; margin: 0;">Case ID ${c.case_id} · Employee ${c.user_id}</h3>
+                <button class="btn-secondary" onclick="showHRCaseDetails(${caseIndex})" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">✕ Close</button>
+            </div>
+            <p style="color: #475569; font-size: 0.9rem; margin-bottom: 0.5rem;">${c.explanation || (c.first_activity_timestamp + ' → ' + c.last_activity_timestamp + ' · ' + stepLabel)}</p>
+            <p style="color: #64748b; font-size: 0.8rem; margin-bottom: 1rem;"><strong>Sequence (${stepLabel}):</strong> ${seq}</p>
+            <p style="color: #EC4899; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.75rem;">Across DB — each step shows source: Table · File · Row</p>
+            <div style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+    `;
+
+    activities.forEach(function (a, stepIdx) {
+        const ev = a.event || '';
+        const ts = a.timestamp_str || '';
+        const story = a.event_story || '';
+        const tbl = a.table_name || '';
+        const fname = a.file_name || '';
+        const rowNum = a.source_row != null && a.source_row !== '' ? (typeof a.source_row === 'number' ? a.source_row + 1 : a.source_row) : '';
+        const raw = a.raw_record || {};
+        const sourceParts = [tbl, fname].filter(Boolean);
+        const sourceStr = sourceParts.length ? (sourceParts.join(' · ') + (rowNum ? ' · row ' + rowNum : '')) : '';
+        const rawPreview = typeof raw === 'object' && Object.keys(raw).length
+            ? Object.entries(raw).slice(0, 5).map(function (kv) { return kv[0] + ': ' + (kv[1] || ''); }).join('; ')
+            : '';
+        html += `
+            <div style="background: #f8fafc; border-left: 3px solid #EC4899; padding: 0.75rem; border-radius: 6px;">
+                <div style="display: flex; flex-direction: column; margin-bottom: 0.3rem;">
+                    <span style="font-weight: 700; color: #EC4899; font-size: 0.9rem;">Step ${stepIdx + 1}: ${ev}</span>
+                    ${story ? '<span style="font-size: 0.8rem; color: #475569; margin-top: 0.1rem;">' + story + '</span>' : ''}
+                </div>
+                <span style="color: var(--text-muted); font-size: 0.85rem;">${ts || '—'}</span>
+                <div style="font-size: 0.8rem; color: #475569; margin-top: 0.35rem; font-weight: 600;">Across DB → ${sourceStr || '—'}</div>
+                ${rawPreview ? '<div style="font-size: 0.75rem; color: #64748b; margin-top: 0.2rem; font-family: monospace;">' + rawPreview + '</div>' : ''}
+            </div>
+        `;
+    });
+
+    html += `
+            </div>
+        </div>
+    `;
+    content.innerHTML = html;
+    container.style.display = 'block';
+};
 
 // Show Account Analysis Results - REMOVED (use Banking Case ID from domain split)
 function showAccountAnalysisResults(data, dateColumn, idColumn) {

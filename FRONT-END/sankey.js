@@ -543,6 +543,10 @@ function getDomainExplanation(domain) {
         'finance': [
             'Shows financial service workflows',
             'Visualizes account, loan, and transaction patterns'
+        ],
+        'hr': [
+            'Shows HR processes from recruitment to exit',
+            'Visualizes employee lifecycle: onboarding, attendance, payroll, performance, training'
         ]
     };
     
@@ -933,7 +937,8 @@ function showSankeyDiagram(caseDetails, domain, domainColor) {
             'Retail': ['#F59E0B', '#D97706', '#FBBF24', '#FCD34D', '#FDE68A', '#F97316'],
             'Healthcare': ['#3B82F6', '#2563EB', '#60A5FA', '#93C5FD', '#DBEAFE', '#14B8A6'],
             'Insurance': ['#7C3AED', '#6D28D9', '#8B5CF6', '#A78BFA', '#C4B5FD', '#A855F7'],
-            'Finance': ['#4F46E5', '#4338CA', '#6366F1', '#818CF8', '#A5B4FC', '#6366F1']
+            'Finance': ['#4F46E5', '#4338CA', '#6366F1', '#818CF8', '#A5B4FC', '#6366F1'],
+            'HR': ['#EC4899', '#DB2777', '#F472B6', '#F9A8D4', '#FBCFE8', '#F43F5E']
         };
 
         renderSankeyDiagram(containerId, sankeyData, {
@@ -962,7 +967,8 @@ function showSankeyDiagramFromWindow(domain, domainColor) {
         'Retail': 'retailCaseDetails',
         'Insurance': 'insuranceCaseDetails',
         'Finance': 'financeCaseDetails',
-        'Healthcare': 'healthcareCaseDetails'
+        'Healthcare': 'healthcareCaseDetails',
+        'HR': 'hrCaseDetails'
     };
     
     const caseVarName = domainCaseMap[domain] || 'currentCaseDetails';
@@ -978,7 +984,8 @@ function showSankeyDiagramFromWindow(domain, domainColor) {
             'Retail': 'retail_analysis',
             'Insurance': 'insurance_analysis',
             'Finance': 'finance_analysis',
-            'Healthcare': 'healthcare_analysis'
+            'Healthcare': 'healthcare_analysis',
+            'HR': 'hr_analysis'
         };
         
         const analysisKey = domainAnalysisMap[domain];
@@ -995,7 +1002,7 @@ function showSankeyDiagramFromWindow(domain, domainColor) {
     if ((!caseDetails || caseDetails.length === 0) && window.currentProfile) {
         // Check if analysis results are stored directly
         const analysisKeys = ['banking_analysis', 'retail_analysis', 'insurance_analysis', 
-                              'finance_analysis', 'healthcare_analysis'];
+                              'finance_analysis', 'healthcare_analysis', 'hr_analysis'];
         for (const key of analysisKeys) {
             if (window.currentProfile[key] && window.currentProfile[key].case_details) {
                 const details = window.currentProfile[key].case_details;
@@ -1017,6 +1024,7 @@ function showSankeyDiagramFromWindow(domain, domainColor) {
             insuranceCaseDetails: window.insuranceCaseDetails ? window.insuranceCaseDetails.length : 'not set',
             financeCaseDetails: window.financeCaseDetails ? window.financeCaseDetails.length : 'not set',
             healthcareCaseDetails: window.healthcareCaseDetails ? window.healthcareCaseDetails.length : 'not set',
+            hrCaseDetails: window.hrCaseDetails ? window.hrCaseDetails.length : 'not set',
             currentCaseDetails: window.currentCaseDetails ? window.currentCaseDetails.length : 'not set',
             currentProfile: window.currentProfile ? 'exists' : 'not set'
         });
@@ -1048,7 +1056,8 @@ function closeSankeyDiagram() {
         'Retail': 'showRetailAnalysisResults',
         'Insurance': 'showInsuranceAnalysisResults',
         'Finance': 'showFinanceAnalysisResults',
-        'Healthcare': 'showHealthcareAnalysisResults'
+        'Healthcare': 'showHealthcareAnalysisResults',
+        'HR': 'showHRAnalysisResults'
     };
     
     const functionName = domainFunctionMap[domain];

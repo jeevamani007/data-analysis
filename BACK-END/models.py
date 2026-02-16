@@ -159,6 +159,12 @@ class DatabaseProfile(BaseModel):
         description="Finance timeline: events across DB (20 events), Case IDs sorted by time"
     )
 
+    # HR Process Timeline Analysis (for HR domains)
+    hr_analysis: Optional[Dict[str, Any]] = Field(
+        None,
+        description="HR timeline: events across DB (92 events across 7 categories), Case IDs sorted by time"
+    )
+
 
 
 class UploadResponse(BaseModel):

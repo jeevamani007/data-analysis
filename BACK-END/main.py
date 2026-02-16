@@ -357,6 +357,24 @@ async def analyze_database(session_id: str):
                 except Exception as fe:
                     print(f"[Finance Analysis] Error in cluster {i+1}: {str(fe)}")
 
+            # HR Process Timeline Analysis (ONLY for HR domain)
+            hr_analysis_result = None
+            if domain_result.get('primary_domain') == 'HR':
+                try:
+                    from hr_analyzer import HRTimelineAnalyzer
+                    hr_analyzer = HRTimelineAnalyzer()
+                    hr_analysis_result = hr_analyzer.analyze_cluster(
+                        tables=cluster_tables,
+                        dataframes=dataframes,
+                        relationships=cluster_relationships
+                    )
+                    if hr_analysis_result and hr_analysis_result.get('success'):
+                        print(f"[HR Analysis] Success for cluster {i+1}")
+                    else:
+                        print(f"[HR Analysis] No usable HR events found in cluster {i+1}")
+                except Exception as he:
+                    print(f"[HR Analysis] Error in cluster {i+1}: {str(he)}")
+
             # Create profile (sanitize dicts so numpy types serialize to JSON)
             profile = DatabaseProfile(
                 database_name=db_name,
@@ -379,6 +397,7 @@ async def analyze_database(session_id: str):
                 retail_analysis=_to_native(retail_analysis_result) if retail_analysis_result else None,
                 insurance_analysis=_to_native(insurance_analysis_result) if insurance_analysis_result else None,
                 finance_analysis=_to_native(finance_analysis_result) if finance_analysis_result else None,
+                hr_analysis=_to_native(hr_analysis_result) if hr_analysis_result else None,
                 database_explanation=db_explanation,
                 relationship_explanation=relationship_explanation
             )
