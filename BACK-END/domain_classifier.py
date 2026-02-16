@@ -191,10 +191,46 @@ _RETAIL_ALIASES: dict[str, str] = {
     "taxamt": "taxamount",
 }
 
+_HR_ALIASES: dict[str, str] = {
+    "empid": "employeeid", "empcode": "employeeid", "empno": "employeeid",
+    "empnm": "employeename", "empname": "employeename",
+    "fname": "firstname", "lname": "lastname", "fullnm": "fullname",
+    "dob": "dateofbirth", "birthdate": "dateofbirth",
+    "gen": "gender", "gend": "gender",
+    "phno": "phonenumber", "mobno": "phonenumber", "mobile": "phonenumber",
+    "doj": "hiredate", "joindate": "hiredate", "startdate": "hiredate",
+    "dol": "leavedate", "exitdate": "leavedate", "relievingdate": "leavedate",
+    "jobid": "jobid", "posid": "position", "pos": "position",
+    "deptid": "departmentid", "deptcd": "departmentid", "dept": "departmentid",
+    "deptnm": "departmentname", "deptname": "departmentname",
+    "mgrid": "managerid", "mngrid": "managerid", "supid": "supervisorid",
+    "sal": "salary", "pay": "salary", "comp": "salary",
+    "paygrade": "paygrade", "grade": "paygrade", "band": "paygrade",
+    "sts": "status", "empsts": "status", "activestatus": "status",
+    "payid": "payrollid", "payno": "payrollid",
+    "bassal": "basicsalary", "basesal": "basicsalary",
+    "allow": "allowances", "allowamt": "allowances",
+    "ded": "deductions", "dedamt": "deductions",
+    "netpay": "netpay", "nettpay": "netpay",
+    "paydt": "paydate", "paymth": "payrollmonth",
+    "attid": "attendanceid", "attno": "attendanceid",
+    "chkin": "checkintime", "chkintime": "checkintime",
+    "chkout": "checkouttime", "chkouttime": "checkouttime",
+    "hrswrk": "hoursworked", "wrkhrs": "hoursworked", "hrs": "hoursworked",
+    "lvtype": "leavetype", "lvtyp": "leavetype",
+    "lvstart": "startdate", "lvend": "enddate",
+    "lvsts": "leavestatus", "lvappr": "leavestatus",
+    "perfid": "performanceid", "perfno": "performanceid",
+    "revprd": "reviewperiod", "revperiod": "reviewperiod",
+    "rtng": "rating", "perfrtng": "rating",
+    "fdbk": "feedback", "revfdbk": "feedback",
+    "revrid": "reviewerid", "revr": "reviewerid",
+}
+
 _ALL_ALIASES: dict[str, dict[str, str]] = {
     "Banking": _BANKING_ALIASES, "Finance": _FINANCE_ALIASES,
     "Insurance": _INSURANCE_ALIASES, "Healthcare": _HEALTHCARE_ALIASES,
-    "Retail": _RETAIL_ALIASES,
+    "Retail": _RETAIL_ALIASES, "HR": _HR_ALIASES,
 }
 
 
@@ -536,15 +572,178 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
     ),
 
     DomainConfig(
-        name="Other", ml_label=5,
+        name="HR", ml_label=5,
+        exclusive_keywords=[
+            # Employee table
+            "employeeid", "empid", "empcode", "employeename", "empname",
+            "firstname", "lastname", "fullname",
+            "dateofbirth", "dob", "birthdate",
+            "gender", "gend",
+            "hiredate", "doj", "joindate", "startdate",
+            "leavedate", "dol", "exitdate", "relievingdate",
+            "jobid", "position", "pos", "jobtitle", "jobtitle",
+            "departmentid", "deptid", "deptcd",
+            "managerid", "mgrid", "mngrid", "supervisorid", "reportingto",
+            "paygrade", "grade", "band",
+            "activestatus", "empstatus", "status",
+            # Department table
+            "departmentname", "deptname", "deptnm",
+            "locationid", "locid",
+            # Payroll table
+            "payrollid", "payid", "payno",
+            "basicsalary", "bassal", "basesal",
+            "allowances", "allow", "allowamt",
+            "deductions", "ded", "dedamt",
+            "netpay", "nettpay",
+            "paydate", "paydt",
+            # Attendance table
+            "attendanceid", "attid", "attno",
+            "checkintime", "chkin", "chkintime",
+            "checkouttime", "chkout", "chkouttime",
+            "hoursworked", "hrswrk", "wrkhrs", "hrs",
+            "present", "absent", "leave",
+            # Leave table
+            "leaveid", "lvid",
+            "leavetype", "lvtype", "lvtyp",
+            "startdate", "lvstart",
+            "enddate", "lvend",
+            "leavestatus", "lvsts", "lvappr",
+            "approved", "pending", "rejected",
+            # Performance table
+            "performanceid", "perfid", "perfno",
+            "reviewperiod", "revprd", "revperiod",
+            "rating", "rtng", "perfrtng",
+            "feedback", "fdbk", "revfdbk",
+            "reviewerid", "revrid", "revr",
+        ],
+        shared_keywords=[
+            "employee", "emp", "staff", "personnel",
+            "department", "dept", "division",
+            "designation", "title", "role",
+            "manager", "supervisor", "lead",
+            "salary", "compensation", "pay",
+            "attendance", "time", "tracking",
+            "leave", "timeoff", "holiday",
+            "performance", "review", "appraisal",
+            "probation", "notice", "confirmation",
+            "location", "worksite", "shift",
+        ],
+        combo_rules=[
+            # Employee + Department combos
+            {"employeeid", "departmentid"}, {"employeeid", "departmentname"},
+            {"empid", "deptid"}, {"empcode", "dept"},
+            # Employee + Manager combos
+            {"employeeid", "managerid"}, {"empid", "mgrid"},
+            {"employeeid", "reportingto"}, {"empid", "supervisorid"},
+            # Employee + Job combos
+            {"employeeid", "jobid"}, {"employeeid", "position"},
+            {"empid", "jobtitle"}, {"empcode", "designation"},
+            # Employee + Hire Date combos
+            {"employeeid", "hiredate"}, {"empid", "doj"},
+            {"employeeid", "joindate"}, {"empcode", "startdate"},
+            # Payroll combos
+            {"employeeid", "payrollid"}, {"empid", "payid"},
+            {"employeeid", "basicsalary"}, {"empid", "netpay"},
+            {"payrollid", "allowances"}, {"payid", "deductions"},
+            {"payrollid", "netpay"}, {"payid", "paydate"},
+            # Attendance combos
+            {"employeeid", "attendanceid"}, {"empid", "attid"},
+            {"employeeid", "checkintime"}, {"empid", "checkouttime"},
+            {"attendanceid", "date"}, {"attid", "hoursworked"},
+            # Leave combos
+            {"employeeid", "leaveid"}, {"empid", "lvid"},
+            {"employeeid", "leavetype"}, {"empid", "startdate"},
+            {"leaveid", "leavetype"}, {"lvid", "leavestatus"},
+            # Performance combos
+            {"employeeid", "performanceid"}, {"empid", "perfid"},
+            {"employeeid", "rating"}, {"empid", "reviewperiod"},
+            {"performanceid", "rating"}, {"perfid", "feedback"},
+            # Strong HR patterns
+            {"employeeid", "departmentid", "managerid"},
+            {"employeeid", "hiredate", "jobid"},
+            {"employeeid", "attendanceid", "date"},
+            {"employeeid", "payrollid", "netpay"},
+            {"employeeid", "leaveid", "leavetype"},
+            {"employeeid", "performanceid", "rating"},
+        ],
+        value_keywords=[
+            "employee", "staff", "personnel", "worker",
+            "department", "hr department", "human resources",
+            "manager", "supervisor", "team lead",
+            "hired", "joined", "onboarded", "recruited",
+            "resigned", "terminated", "exited", "relieved",
+            "active", "inactive", "resigned", "retired",
+            "present", "absent", "on leave", "sick leave",
+            "casual leave", "annual leave", "paid leave",
+            "performance review", "appraisal", "rating",
+            "probation", "confirmed", "notice period",
+            "salary", "payroll", "compensation", "benefits",
+            "check in", "check out", "punch in", "punch out",
+            "overtime", "shift", "attendance",
+        ],
+        ml_samples=[
+            # Employee table patterns
+            "employee_id first_name last_name full_name date_of_birth gender email phone_number",
+            "employee_id hire_date job_id position department_id manager_id salary pay_grade status",
+            "emp_id emp_code emp_name doj designation dept_id mgr_id salary grade",
+            "employee_id date_of_birth gender email phone_number hire_date job_title",
+            "empid empname dob gender email phno doj position deptid mgrid",
+            # Department table patterns
+            "department_id department_name manager_id location_id",
+            "dept_id dept_name dept_head location",
+            # Payroll table patterns
+            "payroll_id employee_id basic_salary allowances deductions net_pay pay_date",
+            "pay_id emp_id bassal allow dedamt netpay paydt",
+            "payroll_id employee_id gross_salary net_salary tds pf esi pay_date",
+            "payid empid grssal netsal tdsamt pfamt esiamt paymth",
+            # Attendance table patterns
+            "attendance_id employee_id date check_in_time check_out_time hours_worked status",
+            "attid empid date chkin chkout hrswrk status",
+            "attendance_id employee_id date present absent leave hours_worked",
+            "attid empid date status present absent overtime",
+            # Leave table patterns
+            "leave_id employee_id leave_type start_date end_date status reason",
+            "lvid empid lvtype lvstart lvend lvsts reason",
+            "leave_id employee_id sick_leave casual_leave annual_leave approved pending",
+            "lvid empid leavetype startdate enddate leavestatus",
+            # Performance table patterns
+            "performance_id employee_id review_period rating feedback reviewer_id",
+            "perfid empid revprd rtng fdbk revrid",
+            "performance_id employee_id appraisal_period rating score feedback",
+            "perfid empid reviewperiod rating performance_score reviewer",
+            # Combined HR patterns
+            "employee_id department_id manager_id hire_date job_id salary status",
+            "empid deptid mgrid doj position paygrade activestatus",
+            "employee_id attendance_id date check_in check_out hours_worked",
+            "empid attid date chkin chkout hrswrk",
+            "employee_id payroll_id basic_salary allowances deductions net_pay",
+            "empid payid bassal allow ded netpay",
+            "employee_id leave_id leave_type start_date end_date approved",
+            "empid lvid lvtype lvstart lvend approved",
+            "employee_id performance_id review_period rating feedback",
+            "empid perfid revprd rtng fdbk",
+            # Abbreviated forms
+            "empid empcode empname fname lname dob gen email phno",
+            "doj dol jobid pos deptid mgrid sal paygrade sts",
+            "payid bassal allow dedamt netpay paydt paymth",
+            "attid chkin chkout hrswrk present absent leave",
+            "lvid lvtype lvstart lvend lvsts approved pending rejected",
+            "perfid revprd rtng fdbk revrid",
+        ],
+        exclusive_weight=4.5,
+        shared_weight=1.2,
+        combo_bonus=7.0,
+    ),
+
+    DomainConfig(
+        name="Other", ml_label=6,
         exclusive_keywords=[],
         shared_keywords=[
-            "employeeid", "studentid", "ticketid", "vehicleid", "deviceid",
+            "studentid", "ticketid", "vehicleid", "deviceid",
         ],
         combo_rules=[],
         value_keywords=[],
         ml_samples=[
-            "employee_id department hire_date job_title manager_id",
             "student_id course_id grade semester enrollment_date",
             "ticket_id issue_description priority created_at resolved_at",
             "vehicle_id model make year vin_number owner_id",
@@ -552,9 +751,6 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "property_id address bedrooms area listing_date",
             "post_id likes shares platform published_at",
             "shipment_id origin destination carrier estimated_delivery",
-            # FIX-A: pure HR schemas
-            "employee_id department designation job_title manager reporting_to doj",
-            "emp_id salary pf_number esi_number designation grade band",
             # FIX-A: government/civic schemas
             "citizen_id aadhaar_no voter_id pan_no ration_card scheme_code",
             "beneficiary_id district_code state_code block_name panchayat",
@@ -564,6 +760,290 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
 
 DOMAIN_MAP: dict[str, DomainConfig] = {d.name: d for d in DOMAIN_CONFIGS}
 DOMAIN_NAMES: list[str] = [d.name for d in DOMAIN_CONFIGS]
+
+
+# ---------------------------------------------------------------------------
+# HR Data Type and Pattern Detection
+# ---------------------------------------------------------------------------
+
+def _detect_hr_data_patterns(
+    columns: list[str],
+    norm_cols: list[str],
+    sample_values: list[str],
+) -> dict[str, float]:
+    """
+    Detect HR domain using data types and patterns (not just column names).
+    Returns a score based on detected HR data patterns.
+    """
+    score = 0.0
+    patterns_found: list[str] = []
+    
+    # Email pattern detection (HR: employee emails)
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    email_matches = sum(1 for v in sample_values[:200] if email_pattern.match(str(v).strip()))
+    if email_matches >= 3:
+        score += 3.0
+        patterns_found.append(f"email_patterns({email_matches})")
+    
+    # Phone number patterns (HR: employee contact)
+    phone_patterns = [
+        re.compile(r'^\+?[0-9]{10,15}$'),  # Standard phone
+        re.compile(r'^[0-9]{3}[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}$'),  # US format
+        re.compile(r'^[0-9]{10}$'),  # 10-digit
+    ]
+    phone_matches = sum(
+        1 for v in sample_values[:200]
+        if any(p.match(str(v).strip()) for p in phone_patterns)
+    )
+    if phone_matches >= 3:
+        score += 2.0
+        patterns_found.append(f"phone_patterns({phone_matches})")
+    
+    # Gender values (HR: Male/Female/Other)
+    gender_values = {"male", "female", "m", "f", "other", "o", "man", "woman"}
+    gender_matches = sum(
+        1 for v in sample_values[:200]
+        if str(v).strip().lower() in gender_values
+    )
+    if gender_matches >= 2:
+        score += 2.5
+        patterns_found.append(f"gender_values({gender_matches})")
+    
+    # Employee status values (HR: Active/Resigned/Retired)
+    status_values = {
+        "active", "inactive", "resigned", "retired", "terminated",
+        "on leave", "suspended", "probation", "confirmed"
+    }
+    status_matches = sum(
+        1 for v in sample_values[:200]
+        if any(sv in str(v).lower() for sv in status_values)
+    )
+    if status_matches >= 2:
+        score += 2.0
+        patterns_found.append(f"status_values({status_matches})")
+    
+    # Leave type values (HR: Sick/Casual/Annual)
+    leave_types = {
+        "sick", "casual", "annual", "paid", "unpaid", "maternity",
+        "paternity", "emergency", "compensatory", "holiday"
+    }
+    leave_matches = sum(
+        1 for v in sample_values[:200]
+        if any(lt in str(v).lower() for lt in leave_types)
+    )
+    if leave_matches >= 2:
+        score += 2.5
+        patterns_found.append(f"leave_types({leave_matches})")
+    
+    # Date patterns for hire dates, DOB (HR: common date fields)
+    date_patterns = [
+        re.compile(r'^\d{4}-\d{2}-\d{2}'),  # YYYY-MM-DD
+        re.compile(r'^\d{2}/\d{2}/\d{4}'),  # MM/DD/YYYY
+        re.compile(r'^\d{2}-\d{2}-\d{4}'),  # DD-MM-YYYY
+    ]
+    date_matches = sum(
+        1 for v in sample_values[:200]
+        if any(dp.match(str(v).strip()) for dp in date_patterns)
+    )
+    # If we have date columns with HR keywords, boost score
+    date_cols = sum(
+        1 for nc in norm_cols
+        if any(kw in nc for kw in ["hiredate", "doj", "dob", "birthdate", "joindate", "leavedate", "exitdate"])
+    )
+    if date_matches >= 5 and date_cols >= 1:
+        score += 2.0
+        patterns_found.append(f"date_patterns({date_matches})")
+    
+    # Employee ID patterns (HR: typically numeric or alphanumeric codes)
+    # Look for columns that might be employee IDs
+    emp_id_cols = sum(
+        1 for nc in norm_cols
+        if any(kw in nc for kw in ["employeeid", "empid", "empcode", "empno"])
+    )
+    if emp_id_cols >= 1:
+        # Check if values look like employee IDs (numeric or alphanumeric codes)
+        id_pattern = re.compile(r'^[A-Z0-9]{4,10}$')
+        id_matches = sum(
+            1 for v in sample_values[:200]
+            if id_pattern.match(str(v).strip().upper())
+        )
+        if id_matches >= 3:
+            score += 3.0
+            patterns_found.append(f"employee_id_patterns({id_matches})")
+    
+    # Department name patterns (HR: common department names)
+    dept_names = {
+        "hr", "human resources", "it", "information technology",
+        "finance", "accounting", "sales", "marketing",
+        "operations", "production", "engineering", "r&d",
+        "research", "development", "admin", "administration",
+        "legal", "compliance", "quality", "supply chain"
+    }
+    dept_matches = sum(
+        1 for v in sample_values[:200]
+        if any(dn in str(v).lower() for dn in dept_names)
+    )
+    if dept_matches >= 2:
+        score += 2.0
+        patterns_found.append(f"department_names({dept_matches})")
+    
+    # Time patterns for attendance (HR: check-in/check-out times)
+    time_pattern = re.compile(r'^\d{1,2}:\d{2}(:\d{2})?(\s?(AM|PM|am|pm))?$')
+    time_matches = sum(
+        1 for v in sample_values[:200]
+        if time_pattern.match(str(v).strip())
+    )
+    time_cols = sum(
+        1 for nc in norm_cols
+        if any(kw in nc for kw in ["checkin", "checkout", "chkin", "chkout", "time"])
+    )
+    if time_matches >= 3 and time_cols >= 1:
+        score += 2.5
+        patterns_found.append(f"time_patterns({time_matches})")
+    
+    # Rating/Performance score patterns (HR: typically 1-5 or 1-10)
+    rating_pattern = re.compile(r'^[1-5](\.[0-9])?$|^[1-9](\.[0-9])?$|^10(\.0)?$')
+    rating_matches = sum(
+        1 for v in sample_values[:200]
+        if rating_pattern.match(str(v).strip())
+    )
+    rating_cols = sum(
+        1 for nc in norm_cols
+        if any(kw in nc for kw in ["rating", "rtng", "score", "performance"])
+    )
+    if rating_matches >= 2 and rating_cols >= 1:
+        score += 2.0
+        patterns_found.append(f"rating_patterns({rating_matches})")
+    
+    # Salary/Amount patterns (HR: payroll amounts)
+    # Look for numeric values that could be salaries (typically 5-8 digits)
+    salary_pattern = re.compile(r'^[0-9]{4,8}(\.[0-9]{2})?$')
+    salary_matches = sum(
+        1 for v in sample_values[:200]
+        if salary_pattern.match(str(v).strip().replace(',', ''))
+    )
+    salary_cols = sum(
+        1 for nc in norm_cols
+        if any(kw in nc for kw in ["salary", "sal", "pay", "compensation", "bassal", "netsal"])
+    )
+    if salary_matches >= 3 and salary_cols >= 1:
+        score += 2.5
+        patterns_found.append(f"salary_patterns({salary_matches})")
+    
+    return {
+        "pattern_score": score,
+        "patterns_found": patterns_found,
+    }
+
+
+def _detect_hr_data_types(
+    columns: list[str],
+    norm_cols: list[str],
+    sample_values: list[str],
+) -> dict[str, float]:
+    """
+    Detect HR domain using data types (not just column names).
+    Returns a score based on detected HR data types.
+    """
+    score = 0.0
+    types_found: list[str] = []
+    
+    # Check for common HR column name + data type combinations
+    for i, (col, nc) in enumerate(zip(columns, norm_cols)):
+        col_lower = col.lower()
+        nc_lower = nc.lower()
+        
+        # Sample values for this column (if we can identify them)
+        # For simplicity, we'll check all sample values
+        
+        # Employee ID: typically integer or alphanumeric
+        if any(kw in nc_lower for kw in ["employeeid", "empid", "empcode"]):
+            # Check if values are numeric or alphanumeric codes
+            numeric_count = sum(
+                1 for v in sample_values[:50]
+                if str(v).strip().isdigit() or re.match(r'^[A-Z0-9]{4,10}$', str(v).strip().upper())
+            )
+            if numeric_count >= 2:
+                score += 1.5
+                types_found.append(f"employee_id_type({col})")
+        
+        # Email: string with @ symbol
+        if any(kw in nc_lower for kw in ["email", "mail"]):
+            email_count = sum(
+                1 for v in sample_values[:50]
+                if '@' in str(v) and '.' in str(v)
+            )
+            if email_count >= 2:
+                score += 1.5
+                types_found.append(f"email_type({col})")
+        
+        # Phone: numeric or formatted string
+        if any(kw in nc_lower for kw in ["phone", "phno", "mobile", "contact"]):
+            phone_count = sum(
+                1 for v in sample_values[:50]
+                if re.match(r'^\+?[0-9\s\-\(\)]{10,15}$', str(v).strip())
+            )
+            if phone_count >= 2:
+                score += 1.5
+                types_found.append(f"phone_type({col})")
+        
+        # Date fields: date type
+        if any(kw in nc_lower for kw in ["date", "dob", "doj", "dol", "hiredate", "birthdate"]):
+            date_count = sum(
+                1 for v in sample_values[:50]
+                if re.match(r'^\d{4}-\d{2}-\d{2}', str(v)) or 
+                   re.match(r'^\d{2}[/-]\d{2}[/-]\d{4}', str(v))
+            )
+            if date_count >= 2:
+                score += 1.5
+                types_found.append(f"date_type({col})")
+        
+        # Gender: categorical string
+        if any(kw in nc_lower for kw in ["gender", "gend", "sex"]):
+            gender_values = {"male", "female", "m", "f", "other", "o"}
+            gender_count = sum(
+                1 for v in sample_values[:50]
+                if str(v).strip().lower() in gender_values
+            )
+            if gender_count >= 2:
+                score += 1.5
+                types_found.append(f"gender_type({col})")
+        
+        # Status: categorical string
+        if any(kw in nc_lower for kw in ["status", "sts", "activestatus"]):
+            status_values = {"active", "inactive", "resigned", "retired", "terminated"}
+            status_count = sum(
+                1 for v in sample_values[:50]
+                if any(sv in str(v).lower() for sv in status_values)
+            )
+            if status_count >= 2:
+                score += 1.5
+                types_found.append(f"status_type({col})")
+        
+        # Salary/Amount: numeric (float or integer)
+        if any(kw in nc_lower for kw in ["salary", "sal", "pay", "amount", "bassal", "netsal"]):
+            numeric_count = sum(
+                1 for v in sample_values[:50]
+                if re.match(r'^[0-9,]+(\.[0-9]{2})?$', str(v).strip().replace(',', ''))
+            )
+            if numeric_count >= 2:
+                score += 1.5
+                types_found.append(f"salary_type({col})")
+        
+        # Time fields: time type
+        if any(kw in nc_lower for kw in ["time", "checkin", "checkout", "chkin", "chkout"]):
+            time_count = sum(
+                1 for v in sample_values[:50]
+                if re.match(r'^\d{1,2}:\d{2}', str(v).strip())
+            )
+            if time_count >= 2:
+                score += 1.5
+                types_found.append(f"time_type({col})")
+    
+    return {
+        "type_score": score,
+        "types_found": types_found,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -702,12 +1182,13 @@ class _MLFallback:
 class DomainClassifier:
     """
     Classifies database schemas into Banking, Finance, Insurance,
-    Healthcare, Retail, or Other.
+    Healthcare, Retail, HR, or Other.
 
-    Key behaviours (v3)
+    Key behaviours (v4)
     -------------------
-    - Pure HR schemas (employee, department, designation, pf_number)  -> Other
+    - Pure HR schemas (employee, department, designation, attendance)  -> HR
     - HR + Payroll schemas (payroll_month, gross_salary, tds)          -> Finance
+    - HR detection uses column names, data types, and data patterns (compulsory)
     - Government schemas (aadhaar, voter_id + ifsc_code)               -> Other
     - Mixed schemas expose secondary_domain in all outputs
     """
@@ -733,6 +1214,14 @@ class DomainClassifier:
         if values:
             for cfg in DOMAIN_CONFIGS:
                 col_scores[cfg.name] += _score_values(values[:200], cfg) * 0.5
+        
+        # HR-specific: Add data type and pattern detection scores (compulsory)
+        if values:
+            hr_patterns = _detect_hr_data_patterns(all_columns, norm_cols, values)
+            hr_types = _detect_hr_data_types(all_columns, norm_cols, values)
+            hr_combined_score = hr_patterns["pattern_score"] + hr_types["type_score"]
+            if hr_combined_score > 0:
+                col_scores["HR"] = col_scores.get("HR", 0.0) + hr_combined_score
 
         # For very short schemas (few columns), fall back more strongly to ML /
         # value-based signals so we do not overfit on a single ambiguous column.
@@ -752,21 +1241,80 @@ class DomainClassifier:
             col_scores = self._ml.predict(text, all_generic)
             used_ml = True
 
-        # HR negative rule (FIX-G): if strong HR pattern and Finance is only
-        # weakly indicated, down-rank Finance in favour of Other.
+        # HR positive rule: if strong HR pattern detected, boost HR domain
         hr_hits = sum(
             1 for nc in norm_cols
             if any(tok in nc for tok in _HR_STRONG_TOKENS)
         )
-        if hr_hits >= 3 and col_scores.get("Finance", 0.0) < MIN_SCORE_FLOOR + 2:
-            # Remove weak Finance bias, prefer Other for HR schemas
-            col_scores["Other"] = col_scores.get("Other", 0.0) + 5.0
-            col_scores["Finance"] *= 0.3
+        if hr_hits >= 3:
+            # Strong HR pattern detected - boost HR, down-rank Finance if weak
+            col_scores["HR"] = col_scores.get("HR", 0.0) + 6.0
+            if col_scores.get("Finance", 0.0) < MIN_SCORE_FLOOR + 2:
+                col_scores["Finance"] *= 0.3  # Down-rank weak Finance
+        
+        # HR hard override rules: detect HR patterns even without explicit column names
+        hr_hint = False
+        if values:
+            hr_patterns = _detect_hr_data_patterns(all_columns, norm_cols, values)
+            hr_types = _detect_hr_data_types(all_columns, norm_cols, values)
+            combined_hr_score = hr_patterns["pattern_score"] + hr_types["type_score"]
+            
+            # If we detect strong HR data patterns/types, boost HR significantly
+            if combined_hr_score >= 8.0:
+                hr_hint = True
+                col_scores["HR"] = col_scores.get("HR", 0.0) * 1.5 + combined_hr_score
+                # Down-rank other domains if HR is clearly detected
+                col_scores["Finance"] *= 0.5
+                col_scores["Other"] *= 0.5
+        
+        # HR: Employee + Department + Manager = HR (not Finance, not Other)
+        joined_cols = " ".join(all_columns).lower()
+        if any(k in joined_cols for k in ("employee", "employeeid", "empid", "empcode")) and \
+           any(k in joined_cols for k in ("department", "departmentid", "deptid", "dept")) and \
+           any(k in joined_cols for k in ("manager", "managerid", "mgrid", "supervisor")) and \
+           not any(k in joined_cols for k in ("gst", "gstin", "invoice", "vendor", "supplier", "ledger", "journal")):
+            hr_hint = True
+            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.8 + 10.0
+            col_scores["Finance"] *= 0.4
+            col_scores["Other"] *= 0.4
+        
+        # HR: Employee + Attendance = HR (not Other)
+        if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
+           any(k in joined_cols for k in ("attendance", "attendanceid", "attid", "checkin", "checkout")):
+            hr_hint = True
+            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
+            col_scores["Other"] *= 0.5
+        
+        # HR: Employee + Leave = HR (not Other)
+        if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
+           any(k in joined_cols for k in ("leave", "leaveid", "lvid", "leavetype")):
+            hr_hint = True
+            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
+            col_scores["Other"] *= 0.5
+        
+        # HR: Employee + Performance = HR (not Other)
+        if any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
+           any(k in joined_cols for k in ("performance", "performanceid", "perfid", "rating", "review")):
+            hr_hint = True
+            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.6 + 8.0
+            col_scores["Other"] *= 0.5
+        
+        # HR vs Finance: Payroll with TDS/PF/ESI = Finance, but pure HR employee data = HR
+        if any(k in joined_cols for k in ("payroll", "payrollmonth", "payroll_month")) and \
+           any(k in joined_cols for k in ("tds", "tdsamt", "pf", "pfamt", "esi", "esiamt")):
+            # This is Finance (payroll processing), not HR
+            pass  # Already handled by Finance rules
+        elif any(k in joined_cols for k in ("employee", "employeeid", "empid")) and \
+             any(k in joined_cols for k in ("department", "dept", "job", "position", "manager")) and \
+             not any(k in joined_cols for k in ("payroll", "gst", "invoice", "ledger", "journal")):
+            # Pure HR employee management, not Finance
+            hr_hint = True
+            col_scores["HR"] = col_scores.get("HR", 0.0) * 1.5 + 7.0
+            col_scores["Finance"] *= 0.4
 
         # Finance hard override rules (must come before Banking hints)
         # If we see clear Finance patterns, strongly boost Finance
-        joined_cols = " ".join(all_columns).lower()
-        joined_vals = " ".join(values[:50]).lower()
+        joined_vals = " ".join(values[:50]).lower() if values else ""
         finance_hint = False
         
         # Pattern 1: Invoice + GST = Finance (not Retail, not Banking)
@@ -808,7 +1356,8 @@ class DomainClassifier:
            any(k in joined_cols for k in ("tds", "tdsamt", "pf", "pfamt", "esi", "esiamt")):
             finance_hint = True
             col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 8.0
-            col_scores["Other"] *= 0.5  # Down-rank HR/Other
+            col_scores["HR"] *= 0.5  # Down-rank HR (payroll processing is Finance)
+            col_scores["Other"] *= 0.5
         
         # Pattern 4: Ledger + Journal + Voucher = Finance
         if any(k in joined_cols for k in ("ledger", "ledgerid", "ledgername")) and \
@@ -925,7 +1474,7 @@ class DomainClassifier:
         colors = {
             "Banking": "#0F766E", "Finance": "#4F46E5",
             "Insurance": "#7C3AED", "Healthcare": "#14B8A6",
-            "Retail": "#F59E0B", "Other": "#64748B",
+            "Retail": "#F59E0B", "HR": "#EC4899", "Other": "#64748B",
         }
         return {
             "percentages": pcts,
@@ -1102,6 +1651,8 @@ class DomainClassifier:
                            "a <strong>Healthcare-related</strong> database"),
             "Retail":     ("a <strong>Retail / E-commerce</strong> database",
                            "a <strong>Retail-related</strong> database"),
+            "HR":         ("an <strong>HR / Human Resources</strong> database",
+                           "an <strong>HR-related</strong> database"),
             "Other":      ("a <strong>General / Other</strong> domain database",
                            "a database with <strong>mixed or unclear characteristics</strong>"),
         }
