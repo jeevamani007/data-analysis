@@ -1,0 +1,4 @@
+domain_id,beneficiary_name,ration_card_number,pension_type,scheme_name,aadhaar_number,amount,status
+4,Lakshmi,RC1001,Old Age,Amma Scheme,987654321000,1000,Active
+4,Mohan,RC1002,Disability,Central Welfare,123456789111,1500,Active
+4,Selvi,RC1003,Widow,State Pension,222333444555,1200,Pending

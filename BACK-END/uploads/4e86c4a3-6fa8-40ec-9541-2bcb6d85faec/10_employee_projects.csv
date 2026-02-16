@@ -1,0 +1,16 @@
+project_assignment_id,employee_id,project_id,project_name,role_in_project,start_date,end_date,hours_allocated,status,created_at,updated_at
+11001,1001,2001,Customer Portal Redesign,Project Lead,2024-01-10,2024-04-30,320,Active,2024-01-05 10:00:00,2024-02-16 10:30:00
+11002,1003,2001,Customer Portal Redesign,Backend Developer,2024-01-10,2024-04-30,280,Active,2024-01-05 10:00:00,2024-02-16 10:30:00
+11003,1007,2001,Customer Portal Redesign,Frontend Developer,2024-01-10,2024-04-30,280,Active,2024-01-05 10:00:00,2024-02-16 10:30:00
+11004,1012,2001,Customer Portal Redesign,Junior Developer,2024-01-10,2024-04-30,240,Active,2024-01-05 10:00:00,2024-02-16 10:30:00
+11005,1004,2002,Marketing Campaign Q1,Campaign Manager,2024-01-15,2024-03-31,200,Active,2024-01-10 09:00:00,2024-02-16 10:30:00
+11006,1015,2002,Marketing Campaign Q1,Content Creator,2024-01-15,2024-03-31,180,Active,2024-01-10 09:00:00,2024-02-16 10:30:00
+11007,1006,2003,Financial Audit 2024,Lead Analyst,2024-02-01,2024-05-31,300,Active,2024-01-25 11:00:00,2024-02-16 10:30:00
+11008,1011,2003,Financial Audit 2024,Financial Analyst,2024-02-01,2024-05-31,280,Active,2024-01-25 11:00:00,2024-02-16 10:30:00
+11009,1008,2004,Sales Expansion Initiative,Sales Lead,2024-01-20,2024-06-30,350,Active,2024-01-15 10:00:00,2024-02-16 10:30:00
+11010,1013,2004,Sales Expansion Initiative,Senior Sales Executive,2024-01-20,2024-06-30,320,Active,2024-01-15 10:00:00,2024-02-16 10:30:00
+11011,1002,2005,HR System Upgrade,Project Manager,2024-02-05,2024-07-31,280,Active,2024-02-01 09:00:00,2024-02-16 10:30:00
+11012,1010,2005,HR System Upgrade,HR Specialist,2024-02-05,2024-07-31,250,Active,2024-02-01 09:00:00,2024-02-16 10:30:00
+11013,1005,2006,Employee Wellness Program,Program Coordinator,2024-01-08,2024-12-31,160,Active,2024-01-03 10:00:00,2024-02-16 10:30:00
+11014,1009,2006,Employee Wellness Program,Marketing Support,2024-01-08,2024-12-31,120,Active,2024-01-03 10:00:00,2024-02-16 10:30:00
+11015,1014,2006,Employee Wellness Program,HR Coordinator,2024-01-08,2024-12-31,140,Active,2024-01-03 10:00:00,2024-02-16 10:30:00

@@ -1,0 +1,21 @@
+training_id,employee_id,department_id,training_name,training_mode,trainer_name,training_provider,duration_hours,cost,training_status,score,certification_awarded,cert_expiry_date,scheduled_at,started_at,completed_at,created_at,updated_at
+TRN00001,EMP00001,DEPT001,Python for Data Science,In-Person,Suresh Gupta,Coursera,78,26182.75,Failed,,No,,2025-09-11 12:45:53,2025-09-12 18:45:53,,2025-09-26 12:45:53,2026-02-05 12:45:53
+TRN00002,EMP00002,DEPT002,Leadership Development,Online,Kavitha Singh,Udemy,48,44877.84,Completed,48.5,No,,2025-12-11 12:45:53,2025-12-12 04:45:53,2025-12-13 15:45:53,2025-09-03 12:45:53,2026-02-07 12:45:53
+TRN00003,EMP00003,DEPT003,Sexual Harassment Prevention,Blended,Vijay Verma,LinkedIn Learning,59,14993.36,Deferred,,No,,2025-12-20 12:45:53,2025-12-20 17:45:53,,2025-11-26 12:45:53,2026-01-28 12:45:53
+TRN00004,EMP00004,DEPT004,Agile & Scrum Fundamentals,Workshop,Lakshmi Rao,Internal L&D,40,25645.07,Cancelled,,No,,2025-09-14 12:45:53,2025-09-14 20:45:53,,2026-01-08 12:45:53,2026-01-20 12:45:53
+TRN00005,EMP00005,DEPT005,Financial Modelling,Webinar,Karthik Devi,Simplilearn,31,38245.43,Completed,89.6,No,,2025-12-11 12:45:53,2025-12-13 09:45:53,2025-12-13 04:45:53,2025-10-06 12:45:53,2026-02-04 12:45:53
+TRN00006,EMP00006,DEPT006,Effective Communication,Simulation,Divya Krishnan,NIIT,32,49559.19,Cancelled,,No,,2025-11-03 12:45:53,2025-11-03 20:45:53,,2025-12-10 12:45:53,2026-02-11 12:45:53
+TRN00007,EMP00007,DEPT007,Cybersecurity Awareness,On-the-Job,Rajesh Bose,TCS iON,11,29916.22,Failed,,No,,2025-09-09 12:45:53,2025-09-11 05:45:53,,2026-02-12 12:45:53,2026-02-10 12:45:53
+TRN00008,EMP00008,DEPT008,Product Thinking,Mentoring,Sunita Shah,Infosys Springboard,73,48896.01,Scheduled,,No,,2025-10-13 12:45:53,,,2026-02-09 12:45:53,2026-01-27 12:45:53
+TRN00009,EMP00009,DEPT009,AWS Cloud Practitioner,Classroom,Mohan Joshi,edX,17,46852.68,In Progress,,No,,2026-01-02 12:45:53,2026-01-03 11:45:53,,2026-01-29 12:45:53,2026-01-22 12:45:53
+TRN00010,EMP00010,DEPT010,Performance Management,Self-Paced,Anitha Mishra,Google Training,70,34044.87,Completed,67.3,Yes,2028-12-30,2025-12-31 12:45:53,2025-12-31 14:45:53,2026-01-03 20:45:53,2025-11-14 12:45:53,2026-01-29 12:45:53
+TRN00011,EMP00011,DEPT011,HR Analytics,In-Person,Ganesh Chatterjee,Coursera,52,30372.52,Completed,75.2,No,,2026-01-24 12:45:53,2026-01-24 19:45:53,2026-01-26 20:45:53,2025-11-29 12:45:53,2026-02-08 12:45:53
+TRN00012,EMP00012,DEPT012,Six Sigma Green Belt,Online,Shalini Kumar,Udemy,31,36605.06,Scheduled,,No,,2025-08-29 12:45:53,,,2025-08-26 12:45:53,2026-02-14 12:45:53
+TRN00013,EMP00013,DEPT013,Customer Excellence,Blended,Bala Sharma,LinkedIn Learning,30,42400.69,Scheduled,,No,,2025-12-22 12:45:53,,,2025-12-19 12:45:53,2026-01-17 12:45:53
+TRN00014,EMP00014,DEPT014,Legal Compliance,Workshop,Rekha Nair,Internal L&D,58,44160.79,Completed,57.0,Yes,2028-12-26,2025-12-27 12:45:53,2025-12-28 13:45:53,2025-12-30 07:45:53,2026-01-09 12:45:53,2026-01-21 12:45:53
+TRN00015,EMP00015,DEPT015,Digital Marketing,Webinar,Senthil Patel,Simplilearn,37,1609.58,Deferred,,No,,2025-10-12 12:45:53,2025-10-12 20:45:53,,2025-12-16 12:45:53,2026-02-16 12:45:53
+TRN00016,EMP00016,DEPT016,Machine Learning Basics,Simulation,Nithya Reddy,NIIT,34,12661.13,Deferred,,No,,2025-09-16 12:45:53,2025-09-18 09:45:53,,2025-10-12 12:45:53,2026-02-05 12:45:53
+TRN00017,EMP00017,DEPT017,Project Management Professional,On-the-Job,Arun Iyer,TCS iON,6,7993.56,Cancelled,,No,,2026-01-22 12:45:53,2026-01-23 19:45:53,,2025-10-11 12:45:53,2026-02-15 12:45:53
+TRN00018,EMP00018,DEPT018,Design Thinking,Mentoring,Priya Pillai,Infosys Springboard,15,22758.59,Deferred,,No,,2026-02-12 12:45:53,2026-02-13 11:45:53,,2025-09-29 12:45:53,2026-01-22 12:45:53
+TRN00019,EMP00019,DEPT019,Emotional Intelligence,Classroom,Rahul Menon,edX,41,8487.06,Failed,,No,,2025-11-13 12:45:53,2025-11-15 09:45:53,,2025-11-25 12:45:53,2026-01-31 12:45:53
+TRN00020,EMP00020,DEPT020,Diversity & Inclusion,Self-Paced,Meera Das,Google Training,15,1265.73,Completed,54.0,No,,2025-09-03 12:45:53,2025-09-05 03:45:53,2025-09-04 06:45:53,2026-02-15 12:45:53,2026-01-22 12:45:53

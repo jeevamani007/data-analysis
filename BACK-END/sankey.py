@@ -203,10 +203,64 @@ def format_event_name(event_name: str) -> str:
     return formatted.strip()
 
 
+def assign_events_to_stages(event_positions: Dict[str, Dict[str, Any]], all_events: set) -> Dict[str, int]:
+    """
+    Assign events to sequential stages/columns based on their average position.
+    Groups events that occur at similar positions into the same stage.
+    Creates a linear left-to-right flow structure.
+    
+    Args:
+        event_positions: Dictionary mapping event names to position statistics
+        all_events: Set of all unique event names
+    
+    Returns:
+        Dictionary mapping event names to stage numbers (0, 1, 2, ...)
+    """
+    if not all_events:
+        return {}
+    
+    # Get average positions for all events
+    event_avg_positions = {}
+    for event in all_events:
+        pos_info = event_positions.get(event, {})
+        avg_pos = pos_info.get('average', 999)
+        event_avg_positions[event] = avg_pos
+    
+    if not event_avg_positions:
+        return {event: 0 for event in all_events}
+    
+    # Find min and max positions to determine stage range
+    min_pos = min(event_avg_positions.values())
+    max_pos = max(event_avg_positions.values())
+    pos_range = max_pos - min_pos
+    
+    if pos_range == 0:
+        # All events at same position - put them all in stage 0
+        return {event: 0 for event in all_events}
+    
+    # Determine number of stages based on position range
+    # Use dynamic staging: group events that are close together
+    # More stages = more granular, fewer stages = more grouped
+    num_stages = max(3, min(10, int(pos_range) + 1))
+    
+    # Assign each event to a stage based on normalized position
+    event_stages = {}
+    for event, avg_pos in event_avg_positions.items():
+        # Normalize position to [0, 1] range
+        normalized_pos = (avg_pos - min_pos) / pos_range if pos_range > 0 else 0
+        # Assign to stage (0 to num_stages-1)
+        stage = min(int(normalized_pos * num_stages), num_stages - 1)
+        event_stages[event] = stage
+    
+    return event_stages
+
+
 def generate_sankey_data(case_details: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Generate Sankey diagram data from case details.
-    Optimized: orders events by sequence position, not alphabetically.
+    LINEAR PIPELINE STRUCTURE: Start Process → Events → End Process
+    Structure: [Start Process (big box)] → [Event 1] → [Event 2] → ... → [End Process (big box)]
+    All flows are strictly forward (left to right), creating a linear pipeline.
     No hardcoding - derives everything from user case activities.
     Works with all domains: Banking, Healthcare, Insurance, Finance, Retail
     
@@ -229,6 +283,8 @@ def generate_sankey_data(case_details: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Works with all domains: Banking, Healthcare, Insurance, Finance, Retail
     all_events = set()
     total_events_found = 0
+    first_events = set()  # Events that appear first in sequences
+    last_events = set()   # Events that appear last in sequences
     
     for case in case_details:
         event_sequence = extract_event_sequence(case)
@@ -238,6 +294,13 @@ def generate_sankey_data(case_details: List[Dict[str, Any]]) -> Dict[str, Any]:
             event_key = str(event).strip()
             if event_key:
                 all_events.add(event_key)
+        
+        # Track first and last events for Start/End connections
+        if event_sequence:
+            if event_sequence[0]:
+                first_events.add(str(event_sequence[0]).strip())
+            if len(event_sequence) > 1 and event_sequence[-1]:
+                last_events.add(str(event_sequence[-1]).strip())
     
     if not all_events:
         # Provide helpful error message with detailed debugging info
@@ -265,25 +328,41 @@ def generate_sankey_data(case_details: List[Dict[str, Any]]) -> Dict[str, Any]:
             )
         }
     
-    # Sort events by average position (REUSES case ID sequence logic)
-    # Events are already ordered correctly in event_sequence by domain analyzers
-    # This preserves that order in the Sankey diagram
+    # Assign events to sequential stages (columns) for linear flow
+    event_stages = assign_events_to_stages(event_positions, all_events)
+    
+    # Sort events by stage first, then by average position within stage, then by frequency
+    # This creates a linear left-to-right flow: Stage 0 events → Stage 1 events → Stage 2 events → ...
     event_list = sorted(
         all_events,
         key=lambda e: (
-            event_positions.get(e, {}).get('average', 999),  # Primary: position (preserves case ID sequence)
-            -event_positions.get(e, {}).get('count', 0),     # Secondary: frequency (desc)
-            e  # Tertiary: alphabetical
+            event_stages.get(e, 999),  # Primary: stage (ensures linear flow)
+            event_positions.get(e, {}).get('average', 999),  # Secondary: position within stage
+            -event_positions.get(e, {}).get('count', 0),     # Tertiary: frequency (desc)
+            e  # Quaternary: alphabetical
         )
     )
     
+    # Add Start Process and End Process nodes
+    START_NODE_NAME = 'Start Process'
+    END_NODE_NAME = 'End Process'
+    
+    # Create node list: [Start Process] + [Events] + [End Process]
+    all_nodes_list = [START_NODE_NAME] + event_list + [END_NODE_NAME]
+    
     # Create node mapping: event_name -> node_index
-    node_map = {event: idx for idx, event in enumerate(event_list)}
+    node_map = {event: idx + 1 for idx, event in enumerate(event_list)}  # +1 because Start is at index 0
+    node_map[START_NODE_NAME] = 0
+    node_map[END_NODE_NAME] = len(all_nodes_list) - 1
     
     # Count transitions (from -> to) across all cases
+    # CRITICAL: Only allow forward transitions (earlier stage → later stage)
+    # This ensures linear flow and prevents backward/looping connections
     transition_counts = defaultdict(int)
     case_transitions = defaultdict(list)
     transition_details = defaultdict(lambda: {'cases': []})
+    start_to_first = defaultdict(int)  # Start → First events
+    last_to_end = defaultdict(int)      # Last events → End
     
     for case in case_details:
         case_id = case.get('case_id')
@@ -296,68 +375,199 @@ def generate_sankey_data(case_details: List[Dict[str, Any]]) -> Dict[str, Any]:
         )
         event_sequence = extract_event_sequence(case)
         
-        if len(event_sequence) < 2:
+        if not event_sequence:
             continue
         
-        # Track transitions in this case
-        # REUSES the case ID sequence - transitions follow the exact order
-        # from event_sequence which is already sorted by case ID logic
-        for i in range(len(event_sequence) - 1):
-            from_event = str(event_sequence[i]).strip()
-            to_event = str(event_sequence[i + 1]).strip()
-            
-            if from_event and to_event:
-                # This transition follows the case ID sequence order
-                # (already sorted by timestamp, case ID ascending)
-                key = (from_event, to_event)
-                transition_counts[key] += 1
-                
+        # Connect Start → First event
+        if event_sequence:
+            first_event = str(event_sequence[0]).strip()
+            if first_event:
+                start_to_first[first_event] += 1
+                key = (START_NODE_NAME, first_event)
                 if case_id not in case_transitions[key]:
                     case_transitions[key].append(case_id)
                     transition_details[key]['cases'].append({
                         'case_id': case_id,
                         'user_id': user_id
                     })
+        
+        # Connect Last event → End
+        if len(event_sequence) > 1:
+            last_event = str(event_sequence[-1]).strip()
+            if last_event:
+                last_to_end[last_event] += 1
+                key = (last_event, END_NODE_NAME)
+                if case_id not in case_transitions[key]:
+                    case_transitions[key].append(case_id)
+                    transition_details[key]['cases'].append({
+                        'case_id': case_id,
+                        'user_id': user_id
+                    })
+        
+        # Track transitions between events (Event → Event)
+        if len(event_sequence) >= 2:
+            for i in range(len(event_sequence) - 1):
+                from_event = str(event_sequence[i]).strip()
+                to_event = str(event_sequence[i + 1]).strip()
+                
+                if from_event and to_event:
+                    # Get stages for both events
+                    from_stage = event_stages.get(from_event, 999)
+                    to_stage = event_stages.get(to_event, 999)
+                    
+                    # ONLY allow forward transitions (from_stage < to_stage)
+                    # This creates linear flow: earlier events → later events
+                    if from_stage < to_stage:  # Strict forward only
+                        key = (from_event, to_event)
+                        transition_counts[key] += 1
+                        
+                        if case_id not in case_transitions[key]:
+                            case_transitions[key].append(case_id)
+                            transition_details[key]['cases'].append({
+                                'case_id': case_id,
+                                'user_id': user_id
+                            })
+                    elif from_stage == to_stage:
+                        # Same stage: only allow if they're consecutive in the sequence
+                        # This handles events that occur at similar times but in order
+                        key = (from_event, to_event)
+                        transition_counts[key] += 1
+                        
+                        if case_id not in case_transitions[key]:
+                            case_transitions[key].append(case_id)
+                            transition_details[key]['cases'].append({
+                                'case_id': case_id,
+                                'user_id': user_id
+                            })
     
-    # Build nodes array with formatted names
+    # Build nodes array: Start Process + Events + End Process
     nodes = []
+    
+    # Start Process node (big box, stage -1)
+    nodes.append({
+        'id': 0,
+        'name': START_NODE_NAME,
+        'label': 'Start Process',
+        'original_name': START_NODE_NAME,
+        'position': -1,
+        'frequency': len(case_details),
+        'stage': -1,
+        'is_start': True,
+        'is_end': False
+    })
+    
+    # Event nodes (middle)
     for idx, event in enumerate(event_list):
         pos_info = event_positions.get(event, {})
+        stage = event_stages.get(event, 0)
         nodes.append({
-            'id': idx,
+            'id': idx + 1,
             'name': event,
             'label': format_event_name(event),
             'original_name': event,
             'position': pos_info.get('average', idx),
-            'frequency': pos_info.get('count', 0)
+            'frequency': pos_info.get('count', 0),
+            'stage': stage,
+            'is_start': False,
+            'is_end': False
         })
     
+    # End Process node (big box, final stage)
+    max_stage = max(event_stages.values()) if event_stages else 0
+    nodes.append({
+        'id': len(event_list) + 1,
+        'name': END_NODE_NAME,
+        'label': 'End Process',
+        'original_name': END_NODE_NAME,
+        'position': max_stage + 1,
+        'frequency': len(case_details),
+        'stage': max_stage + 1,
+        'is_start': False,
+        'is_end': True
+    })
+    
     # Build links array (flows between nodes)
+    # Structure: Start → Events → End (strictly forward)
     links = []
-    for (from_event, to_event), count in transition_counts.items():
-        if from_event in node_map and to_event in node_map:
-            detail = transition_details[(from_event, to_event)]
+    
+    # Links: Start Process → First Events
+    for first_event, count in start_to_first.items():
+        if first_event in node_map:
+            detail = transition_details.get((START_NODE_NAME, first_event), {'cases': []})
             links.append({
-                'source': node_map[from_event],
-                'target': node_map[to_event],
+                'source': 0,  # Start Process
+                'target': node_map[first_event],
                 'value': count,
                 'label': str(count),
-                'from': from_event,
-                'to': to_event,
-                'from_formatted': format_event_name(from_event),
-                'to_formatted': format_event_name(to_event),
-                'case_ids': sorted(set(case_transitions[(from_event, to_event)])),
+                'from': START_NODE_NAME,
+                'to': first_event,
+                'from_formatted': 'Start Process',
+                'to_formatted': format_event_name(first_event),
+                'from_stage': -1,
+                'to_stage': event_stages.get(first_event, 0),
+                'case_ids': sorted(set(case_transitions.get((START_NODE_NAME, first_event), []))),
+                'cases': detail.get('cases', [])
+            })
+    
+    # Links: Event → Event (forward transitions only)
+    for (from_event, to_event), count in transition_counts.items():
+        if from_event in node_map and to_event in node_map:
+            from_stage = event_stages.get(from_event, 999)
+            to_stage = event_stages.get(to_event, 999)
+            
+            # Only forward transitions
+            if from_stage <= to_stage:
+                detail = transition_details[(from_event, to_event)]
+                links.append({
+                    'source': node_map[from_event],
+                    'target': node_map[to_event],
+                    'value': count,
+                    'label': str(count),
+                    'from': from_event,
+                    'to': to_event,
+                    'from_formatted': format_event_name(from_event),
+                    'to_formatted': format_event_name(to_event),
+                    'from_stage': from_stage,
+                    'to_stage': to_stage,
+                    'case_ids': sorted(set(case_transitions[(from_event, to_event)])),
+                    'cases': detail.get('cases', [])
+                })
+    
+    # Links: Last Events → End Process
+    for last_event, count in last_to_end.items():
+        if last_event in node_map:
+            detail = transition_details.get((last_event, END_NODE_NAME), {'cases': []})
+            links.append({
+                'source': node_map[last_event],
+                'target': len(event_list) + 1,  # End Process
+                'value': count,
+                'label': str(count),
+                'from': last_event,
+                'to': END_NODE_NAME,
+                'from_formatted': format_event_name(last_event),
+                'to_formatted': 'End Process',
+                'from_stage': event_stages.get(last_event, max_stage),
+                'to_stage': max_stage + 1,
+                'case_ids': sorted(set(case_transitions.get((last_event, END_NODE_NAME), []))),
                 'cases': detail.get('cases', [])
             })
     
     # Calculate statistics
     total_cases = len(case_details)
-    total_transitions = sum(transition_counts.values())
-    unique_paths = len(transition_counts)
+    total_transitions = sum(transition_counts.values()) + sum(start_to_first.values()) + sum(last_to_end.values())
+    unique_paths = len(transition_counts) + len(start_to_first) + len(last_to_end)
     unique_users = len(set(
         c.get('user_id') or c.get('customer_id') or c.get('patient_id') or 'unknown'
         for c in case_details
     ))
+    
+    # Calculate stage statistics
+    num_stages = max_stage + 3 if event_stages else 3  # +3 for Start, events, End
+    events_per_stage = {}
+    events_per_stage[-1] = 1  # Start Process
+    events_per_stage[max_stage + 1] = 1  # End Process
+    for event, stage in event_stages.items():
+        events_per_stage[stage] = events_per_stage.get(stage, 0) + 1
     
     return {
         'success': True,
@@ -368,7 +578,11 @@ def generate_sankey_data(case_details: List[Dict[str, Any]]) -> Dict[str, Any]:
             'total_transitions': total_transitions,
             'unique_paths': unique_paths,
             'unique_events': len(event_list),
-            'unique_users': unique_users
+            'unique_users': unique_users,
+            'num_stages': num_stages,
+            'events_per_stage': events_per_stage,
+            'linear_flow': True,  # Indicates linear structure
+            'has_start_end': True  # Indicates Start/End nodes
         }
     }
 

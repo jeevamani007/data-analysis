@@ -1,0 +1,4 @@
+domain_id,house_tax_number,water_connection_number,property_address,owner_name,tax_amount,payment_status,year
+5,HT1001,WC2001,Anna Nagar Chennai,Kumar,2500,Paid,2024
+5,HT1002,WC2002,T Nagar Chennai,Radha,3200,Unpaid,2024
+5,HT1003,WC2003,Velachery Chennai,Suresh,1800,Paid,2023

@@ -1,0 +1,6 @@
+Customer_ID,Name,Age,Gender,City,State,Country,Email,Phone,Account_Type,Join_Date,Last_Login,Total_Orders,Total_Spend,Avg_Order_Value,Payment_Method,Device_Type,Is_Active,Credit_Score,Feedback_Score,Churn_Risk
+C001,Ravi,28,Male,Chennai,TN,India,ravi@gmail.com,9876543210,Savings,2022-01-10,2026-02-12,15,45000,3000,UPI,Mobile,Yes,720,4.5,Low
+C002,Anu,32,Female,Coimbatore,TN,India,anu@gmail.com,9123456780,Current,2021-06-15,2026-02-13,22,88000,4000,Card,Laptop,Yes,760,4.2,Low
+C003,Kumar,41,Male,Madurai,TN,India,kumar@gmail.com,9988776655,Savings,2020-03-20,2026-02-11,9,27000,3000,Cash,Mobile,No,650,3.8,Medium
+C004,Priya,25,Female,Trichy,TN,India,priya@gmail.com,9090909090,Savings,2023-08-05,2026-02-14,6,18000,3000,UPI,Tablet,Yes,700,4.7,Low
+C005,Arjun,35,Male,Salem,TN,India,arjun@gmail.com,9567891234,Current,2019-11-30,2026-02-10,30,150000,5000,Card,Desktop,Yes,810,4.0,Very Low

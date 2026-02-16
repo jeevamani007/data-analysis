@@ -1,0 +1,4 @@
+domain_id,license_number,rc_number,vehicle_number,vehicle_type,owner_name,issue_date,expiry_date
+3,DL12345,RC98765,TN10AB1234,Bike,Ramesh,2023-01-01,2043-01-01
+3,DL54321,RC12345,TN22CD5678,Car,Divya,2022-06-15,2042-06-15
+3,DL67890,RC67890,TN33EF9999,Bus,Transport Corp,2021-03-10,2041-03-10

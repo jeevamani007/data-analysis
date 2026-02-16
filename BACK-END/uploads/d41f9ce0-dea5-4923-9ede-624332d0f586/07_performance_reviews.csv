@@ -1,0 +1,11 @@
+review_id,employee_id,reviewer_id,review_period_start,review_period_end,performance_score,communication_score,teamwork_score,technical_score,overall_rating,comments,review_date,created_at,updated_at
+8001,1003,1001,2023-07-01,2023-12-31,85,88,90,82,Excellent,Shows strong technical skills and team collaboration,2024-01-15,2024-01-15 14:00:00,2024-01-15 14:00:00
+8002,1005,1001,2023-07-01,2023-12-31,90,92,88,91,Excellent,Outstanding performance and leadership qualities,2024-01-16,2024-01-16 15:30:00,2024-01-16 15:30:00
+8003,1007,1001,2023-07-01,2023-12-31,78,80,85,75,Good,Consistent performer with room for technical growth,2024-01-17,2024-01-17 11:00:00,2024-01-17 11:00:00
+8004,1009,1002,2023-07-01,2023-12-31,82,85,80,84,Good,Reliable team member with solid performance,2024-01-18,2024-01-18 10:15:00,2024-01-18 10:15:00
+8005,1004,1002,2023-07-01,2023-12-31,88,90,87,85,Excellent,Creative approach and excellent client engagement,2024-01-19,2024-01-19 13:45:00,2024-01-19 13:45:00
+8006,1010,1001,2023-07-01,2023-12-31,80,82,83,78,Good,Good progress with steady improvement,2024-01-20,2024-01-20 09:30:00,2024-01-20 09:30:00
+8007,1012,1001,2023-07-01,2023-12-31,75,78,80,73,Satisfactory,Meeting expectations with potential for growth,2024-01-22,2024-01-22 14:20:00,2024-01-22 14:20:00
+8008,1011,1004,2023-07-01,2023-12-31,92,90,88,94,Excellent,Exceptional analytical skills and accuracy,2024-01-23,2024-01-23 11:45:00,2024-01-23 11:45:00
+8009,1014,1001,2023-07-01,2023-12-31,86,88,85,87,Excellent,Strong performer with excellent interpersonal skills,2024-01-24,2024-01-24 15:00:00,2024-01-24 15:00:00
+8010,1015,1002,2023-07-01,2023-12-31,79,82,78,80,Good,Good start showing positive trajectory,2024-01-25,2024-01-25 10:30:00,2024-01-25 10:30:00

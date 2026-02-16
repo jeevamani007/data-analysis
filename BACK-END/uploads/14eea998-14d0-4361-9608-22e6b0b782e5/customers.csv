@@ -1,0 +1,4 @@
+domain_id,person_name,fir_number,passport_number,police_station,verification_type,issue_date,status
+2,Suresh,FIR12345,,T Nagar,Criminal,2024-01-10,Open
+2,Meena,,P987654,Velachery,Passport,2023-12-05,Approved
+2,Arun,FIR67890,,Guindy,Police Verification,2024-02-01,Closed

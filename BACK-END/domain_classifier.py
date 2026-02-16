@@ -1275,16 +1275,50 @@ class DomainClassifier:
 
         # Prepare joined columns string for pattern matching (needed for HR and Finance/Banking rules)
         joined_cols = " ".join(all_columns).lower()
+
+        # Pre-compute core HR / Finance hints used in multiple rules below
+        has_hr_core = (
+            any(k in joined_cols for k in (
+                "employee", "employeeid", "empid", "empcode", "employeename",
+            ))
+            and hr_column_indicators >= 1
+        )
+        has_finance_core = any(
+            k in joined_cols
+            for k in (
+                # Core Finance / accounting artefacts. NOTE: we intentionally
+                # DO NOT include bare payroll markers like TDS / PF / ESI here,
+                # so that HR + Payroll schemas can still be treated as HR‑primary.
+                "gst", "gstin", "gstno", "cgst", "sgst", "igst",
+                "invoice", "invoiceno", "invoiceid", "invno",
+                "ledger", "ledgerid", "ledgername",
+                "journal", "journalid",
+                "voucher", "voucherno", "vchrno",
+                "accountspayable", "accountsreceivable", "acctpay", "acctrec",
+                "vendor", "vendorid", "supplier", "supplierid",
+            )
+        )
         
         # Banking/Finance priority: Check for banking/finance indicators first
-        # to prevent HR from incorrectly overriding banking/finance data
+        # to prevent HR from incorrectly overriding banking/finance data.
+        #
+        # IMPORTANT:
+        # ----------
+        # We intentionally do NOT treat bare "accountnumber"/"accountid"/"accountbalance"
+        # as strong Banking indicators anymore. Those columns also appear in general
+        # accounting / ERP schemas (Finance) and even generic customer master data.
+        #
+        # Banking should really light up only when we see *banking-specific* tokens
+        # such as IFSC / SWIFT / IBAN / loan / EMI / KYC / branch identifiers, etc.
         banking_indicators = sum(
             1 for nc in norm_cols
-            if any(kw in nc for kw in ["ifsc", "ifsccode", "swiftcode", "iban", "bic",
-                                        "accountnumber", "accountid", "accountbalance",
-                                        "loanid", "loannumber", "emi", "emiamount",
-                                        "transactionid", "transactiondate", "kyc",
-                                        "branchid", "branchcode", "routingnumber"])
+            if any(kw in nc for kw in [
+                "ifsc", "ifsccode", "swiftcode", "iban", "bic",
+                "loanid", "loannumber", "emi", "emiamount",
+                "transactionid", "transactiondate", "kyc",
+                "branchid", "branchcode", "routingnumber",
+                "overdraft", "overdraftlimit",
+            ])
         )
         finance_indicators = sum(
             1 for nc in norm_cols
@@ -1437,6 +1471,12 @@ class DomainClassifier:
             reasoning_steps.append(f"Finance-specific patterns found: {finance_pattern_count} types (GST/Invoice/Ledger/Vendor/TDS)")
         if banking_pattern_count > 0:
             reasoning_steps.append(f"Banking-specific patterns found: {banking_pattern_count} types (IFSC/SWIFT/Loan/EMI/KYC/Branch)")
+
+        # If we clearly see Finance patterns but *no* banking-specific patterns or indicators,
+        # then any weak Banking score that came only from generic aliases should be de-emphasised.
+        # This helps avoid "Banking vs Finance" confusion for pure accounting / ERP schemas.
+        if finance_pattern_count >= 1 and banking_pattern_count == 0 and banking_indicators == 0:
+            col_scores["Banking"] *= 0.3
         
         # Finance hard override rules (must come before Banking hints)
         # If we see clear Finance patterns, strongly boost Finance
@@ -1480,15 +1520,36 @@ class DomainClassifier:
             col_scores["Retail"] = col_scores.get("Retail", 0.0) * 1.5 + 6.0
             col_scores["Finance"] *= 0.5
         
-        # Pattern 3: Payroll + TDS/PF/ESI = Finance (not HR, not Banking)
+        # Pattern 3: Payroll + TDS/PF/ESI
+        # --------------------------------
+        # Old behaviour: always treated this as pure Finance (payroll engine),
+        # aggressively down‑ranking HR. This caused mis‑classification when
+        # users uploaded an HR‑centric schema that simply included payroll
+        # columns (employee master + payroll in one place).
+        #
+        # New behaviour:
+        # - If there is a STRONG HR core (employee/empid + HR indicators),
+        #   we treat this as a mixed HR + Finance schema:
+        #     • HR stays primary
+        #     • Finance gets a boost but is secondary
+        # - Only when there is NO strong HR core do we treat it as Finance‑primary.
         if any(k in joined_cols for k in ("payroll", "payrollmonth", "payroll_month")) and \
            any(k in joined_cols for k in ("tds", "tdsamt", "pf", "pfamt", "esi", "esiamt")):
             finance_hint = True
-            reasoning_steps.append("STRONG FINANCE: Payroll + TDS/PF/ESI → Finance domain (not Banking)")
-            col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 9.0
-            col_scores["HR"] *= 0.5  # Down-rank HR (payroll processing is Finance)
-            col_scores["Banking"] *= 0.3  # Down-rank Banking
-            col_scores["Other"] *= 0.5
+            if has_hr_core:
+                reasoning_steps.append(
+                    "MIXED HR/FINANCE: Payroll + TDS/PF/ESI with strong employee schema "
+                    "→ HR kept primary, Finance boosted as secondary"
+                )
+                # Modest Finance bump, do NOT punish HR.
+                col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.3 + 5.0
+                # Do not touch HR/Other/Banking here; final softmax will sort out percentages.
+            else:
+                reasoning_steps.append("STRONG FINANCE: Payroll + TDS/PF/ESI → Finance domain (not Banking)")
+                col_scores["Finance"] = col_scores.get("Finance", 0.0) * 1.8 + 9.0
+                col_scores["HR"] *= 0.5  # Down-rank HR (pure payroll processing is Finance)
+                col_scores["Banking"] *= 0.3  # Down-rank Banking
+                col_scores["Other"] *= 0.5
         
         # Pattern 4: Ledger + Journal + Voucher = Finance (not Banking)
         if any(k in joined_cols for k in ("ledger", "ledgerid", "ledgername")) and \
@@ -1588,7 +1649,6 @@ class DomainClassifier:
         hr_score = col_scores.get("HR", 0.0)
         
         if not used_ml:
-            
             # CRITICAL: Finance takes priority over Banking when Finance indicators are strong
             if finance_indicators >= 2 and finance_score > 0:
                 if banking_score > finance_score * 0.9:  # Banking is close to Finance
@@ -1610,6 +1670,25 @@ class DomainClassifier:
                 reasoning_steps.append(f"Finance priority: {finance_indicators} Finance indicators → Finance boosted, HR down-ranked")
                 col_scores["Finance"] = finance_score * 1.5 + 3.0
                 col_scores["HR"] *= 0.4
+
+            # ------------------------------------------------------------------
+            # HR vs Finance final override
+            # ------------------------------------------------------------------
+            # If we clearly see an employee‑centric HR schema (employee/empid etc.)
+            # and we DO NOT see core Finance artefacts (GST / invoices / ledgers /
+            # journals / vendor / AP/AR), prefer HR over Finance – even when
+            # payroll / TDS / PF / ESI fields are present.
+            if has_hr_core and not has_finance_core:
+                hr_before = col_scores.get("HR", 0.0)
+                fin_before = col_scores.get("Finance", 0.0)
+                # Only override when Finance is currently ahead or comparable
+                if fin_before > 0 and fin_before >= hr_before * 0.9:
+                    reasoning_steps.append(
+                        "HR priority override: strong employee‑centric schema with no core Finance artefacts "
+                        "→ HR treated as primary, Finance down‑ranked"
+                    )
+                    col_scores["HR"] = hr_before * 1.8 + 8.0
+                    col_scores["Finance"] = fin_before * 0.5
         
         # FIX-D: minimum score floor (only when we did not already decide via ML)
         if not used_ml and max(col_scores.values()) < MIN_SCORE_FLOOR:

@@ -354,7 +354,12 @@ class HRTimelineAnalyzer:
 
     def _find_event_name_col(self, df: pd.DataFrame) -> Optional[str]:
         """Detect column with event type as DATA (row values). Check row values match HR event patterns."""
-        candidates = ["event_name", "event_type", "action", "event", "step_name", "activity", "status", "activity_type"]
+        # Prefer obvious event columns by name first
+        candidates = [
+            "event_name", "event_type", "action", "event",
+            "step_name", "activity", "status", "activity_type",
+            "stage", "phase", "milestone", "event_description", "activity_name",
+        ]
         cols_lower = {c.lower(): c for c in df.columns}
         for cand in candidates:
             if cand in cols_lower:
@@ -380,9 +385,11 @@ class HRTimelineAnalyzer:
                         "exit", "resignation", "settlement",
                     ])
                 )
-                if valid >= min(2, len(vals)):
+                # Be tolerant: even 1 strong HR-like value is enough to treat this as event column
+                if valid >= 1:
                     return col
-        # Prefer event_type, action, activity over event_id
+        # Prefer event_type, action, activity over event_id by name even if we
+        # couldn't strongly classify by values.
         prefer = ["event_type", "event_name", "action", "activity", "step_name", "activity_type", "status"]
         for p in prefer:
             if p in cols_lower:
@@ -390,6 +397,25 @@ class HRTimelineAnalyzer:
                 sample = df[col].dropna().astype(str).head(20)
                 if len(sample) > 0:
                     return col
+        # Last-resort heuristic: scan ALL non-numeric columns and pick the first
+        # one whose values look like HR events.
+        for col in df.columns:
+            if df[col].dtype.kind in ("i", "u", "f", "b"):
+                continue
+            sample = df[col].dropna().astype(str).head(50)
+            if len(sample) == 0:
+                continue
+            vals = set(s.strip() for v in sample for s in str(v).split(",") if s.strip())
+            if not vals:
+                continue
+            hits = 0
+            for v in vals:
+                norm = self._normalize_event_from_data(v)
+                if norm in HR_EVENT_DISPLAY:
+                    hits += 1
+                    break
+            if hits:
+                return col
         for col in df.columns:
             cl = col.lower()
             if cl == "event_id":

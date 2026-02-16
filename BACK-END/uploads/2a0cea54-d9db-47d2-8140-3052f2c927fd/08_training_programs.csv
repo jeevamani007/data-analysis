@@ -1,0 +1,16 @@
+training_id,employee_id,training_name,training_category,start_date,end_date,duration_hours,completion_status,score,instructor_name,created_at,updated_at
+9001,1001,Leadership Excellence,Management,2024-01-08,2024-01-12,20,Completed,92,Sarah Mitchell,2024-01-05 09:00:00,2024-01-12 17:00:00
+9002,1003,Advanced Python Programming,Technical,2024-01-15,2024-01-26,40,Completed,88,David Chen,2024-01-10 10:00:00,2024-01-26 18:00:00
+9003,1005,HR Compliance Training,Compliance,2024-01-10,2024-01-11,8,Completed,95,Maria Garcia,2024-01-08 11:00:00,2024-01-11 16:00:00
+9004,1007,Cloud Architecture Fundamentals,Technical,2024-02-05,2024-02-16,35,In Progress,0,Robert Lee,2024-02-01 09:00:00,2024-02-16 10:30:00
+9005,1009,Digital Marketing Strategies,Marketing,2024-01-22,2024-02-02,30,Completed,86,Jennifer Wong,2024-01-18 10:00:00,2024-02-02 17:00:00
+9006,1010,Effective Communication Skills,Soft Skills,2024-01-29,2024-01-31,12,Completed,90,Amanda Taylor,2024-01-25 09:00:00,2024-01-31 15:00:00
+9007,1011,Financial Analysis Advanced,Finance,2024-02-01,2024-02-09,32,In Progress,0,Michael Brown,2024-01-28 10:00:00,2024-02-16 10:30:00
+9008,1012,Web Development Basics,Technical,2024-01-18,2024-01-25,28,Completed,82,Kevin Martinez,2024-01-15 09:00:00,2024-01-25 18:00:00
+9009,1013,Sales Negotiation Tactics,Sales,2024-02-08,2024-02-14,24,In Progress,0,Lisa Anderson,2024-02-05 10:00:00,2024-02-16 10:30:00
+9010,1014,Recruitment Best Practices,HR,2024-01-24,2024-01-26,16,Completed,93,Patricia Davis,2024-01-20 09:00:00,2024-01-26 16:00:00
+9011,1015,Content Creation Workshop,Marketing,2024-02-12,2024-02-16,20,In Progress,0,Thomas Wilson,2024-02-08 10:00:00,2024-02-16 10:30:00
+9012,1004,Brand Management,Marketing,2024-01-16,2024-01-19,16,Completed,89,Emily Johnson,2024-01-12 09:00:00,2024-01-19 17:00:00
+9013,1006,Financial Forecasting,Finance,2024-01-30,2024-02-06,28,Completed,91,James Thompson,2024-01-26 10:00:00,2024-02-06 18:00:00
+9014,1008,CRM Systems Training,Sales,2024-02-01,2024-02-05,20,Completed,87,Daniel White,2024-01-28 09:00:00,2024-02-05 17:00:00
+9015,1002,Employee Relations,HR,2024-01-22,2024-01-24,12,Completed,94,Nancy Harris,2024-01-18 10:00:00,2024-01-24 16:00:00

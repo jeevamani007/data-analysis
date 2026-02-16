@@ -1,0 +1,4 @@
+Customer_ID,Name,Age,Gender,City,State,Country,Email
+CUS001,Lisa Martin,30,Female,Salem,TN,India,lisa.martin@example.com
+CUS002,Scott Brown,26,Male,Chennai,TN,India,scott.brown@example.com
+CUS003,Manuel Wilcox,26,Male,Chennai,TN,India,manuel.wilcox@example.com

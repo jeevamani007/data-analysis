@@ -1,0 +1,11 @@
+leave_id,employee_id,leave_type,start_date,end_date,days_requested,status,reason,approved_by,created_at,updated_at
+6001,1003,Sick Leave,2024-01-15,2024-01-17,3,Approved,Medical appointment,1001,2024-01-10 10:00:00,2024-01-11 14:30:00
+6002,1005,Vacation,2024-02-05,2024-02-09,5,Approved,Family vacation,1001,2024-01-20 09:15:00,2024-01-22 11:00:00
+6003,1009,Sick Leave,2024-01-22,2024-01-22,1,Approved,Flu symptoms,1002,2024-01-22 08:00:00,2024-01-22 09:30:00
+6004,1012,Personal Leave,2024-02-12,2024-02-14,3,Pending,Personal matters,1001,2024-02-08 14:20:00,2024-02-08 14:20:00
+6005,1007,Vacation,2024-03-01,2024-03-08,8,Approved,Annual leave,1001,2024-01-25 10:45:00,2024-01-28 16:00:00
+6006,1010,Sick Leave,2024-01-28,2024-01-29,2,Approved,Doctor visit,1001,2024-01-27 15:30:00,2024-01-27 17:00:00
+6007,1004,Vacation,2024-02-20,2024-02-23,4,Approved,Short break,1002,2024-02-01 11:00:00,2024-02-03 10:15:00
+6008,1015,Personal Leave,2024-02-15,2024-02-15,1,Approved,Moving house,1002,2024-02-10 09:30:00,2024-02-11 13:45:00
+6009,1006,Vacation,2024-03-15,2024-03-22,8,Pending,Spring vacation,1004,2024-02-14 10:00:00,2024-02-14 10:00:00
+6010,1011,Sick Leave,2024-02-03,2024-02-05,3,Approved,Medical procedure,1004,2024-02-01 14:00:00,2024-02-02 09:00:00

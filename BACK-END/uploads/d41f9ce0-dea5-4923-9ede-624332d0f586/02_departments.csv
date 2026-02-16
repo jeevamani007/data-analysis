@@ -1,0 +1,6 @@
+department_id,department_name,location,manager_id,budget,created_at,updated_at
+1,Engineering,Building A Floor 3,1001,500000,2020-01-01 08:00:00,2024-02-16 10:30:00
+2,Human Resources,Building B Floor 1,1002,150000,2020-01-01 08:00:00,2024-02-16 10:30:00
+3,Marketing,Building A Floor 2,1004,250000,2020-01-01 08:00:00,2024-02-16 10:30:00
+4,Finance,Building B Floor 2,1006,200000,2020-01-01 08:00:00,2024-02-16 10:30:00
+5,Sales,Building C Floor 1,1008,350000,2020-01-01 08:00:00,2024-02-16 10:30:00
