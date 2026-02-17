@@ -1052,6 +1052,38 @@ class HRTimelineAnalyzer:
         
         return None
 
+    def _find_all_parseable_datetime_columns(self, df: pd.DataFrame) -> List[str]:
+        """
+        Find *all* parseable datetime columns. Supports "wide" HR tables where each event has its own timestamp column.
+        We keep this conservative by requiring HR timestamp-like patterns in the column name.
+        """
+        def is_parseable(col: str) -> bool:
+            try:
+                sample = df[col].dropna().head(20)
+                if len(sample) == 0:
+                    return False
+                parsed = pd.to_datetime(sample, errors="coerce")
+                return parsed.notna().sum() >= max(1, int(len(sample) * 0.3))
+            except Exception:
+                return False
+
+        out: List[str] = []
+        for col in df.columns:
+            cl = str(col).lower().replace("-", "_").replace(" ", "_")
+            # Avoid obvious ids
+            if cl.endswith("_id") or cl == "id":
+                continue
+            if any(pat in cl for pat in HR_EVENT_COLUMN_PATTERNS) or any(k in cl for k in ("date", "time", "timestamp", "_at", "created_at", "updated_at")):
+                if is_parseable(str(col)):
+                    out.append(str(col))
+        seen = set()
+        uniq: List[str] = []
+        for c in out:
+            if c not in seen:
+                seen.add(c)
+                uniq.append(c)
+        return uniq
+
     def _build_event_story(
         self,
         event_name: str,
@@ -1731,47 +1763,143 @@ class HRTimelineAnalyzer:
 
     def _table_to_events(self, table: TableAnalysis, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """Convert table rows to events. Event from event_name col (row data) or time column."""
-        cols = self._find_datetime_columns(df)
-        if not cols:
-            return []
-        date_col, time_col = cols
-        event_time_col = time_col if time_col else date_col
         df = df.copy()
+
+        # Wide-table mode: if there are multiple parseable datetime columns, treat each populated cell as an event.
+        wide_cols = self._find_all_parseable_datetime_columns(df)
+        # Detect event_name column early so we can still use it in wide mode
+        event_name_col = self._find_event_name_col(df)
 
         # Try parsing date column - handle numeric formats (YYYYMMDD, Unix timestamps)
         def parse_date_value(val):
             """Parse various date formats including numeric ones."""
             if pd.isna(val):
                 return pd.NaT
-            
             val_str = str(val).strip()
-            
             # Try YYYYMMDD format (8 digits)
             if val_str.isdigit() and len(val_str) == 8:
                 try:
                     return pd.to_datetime(val_str, format="%Y%m%d", errors="coerce")
-                except:
+                except Exception:
                     pass
-            
             # Try YYYYMM format (6 digits)
             if val_str.isdigit() and len(val_str) == 6:
                 try:
                     return pd.to_datetime(val_str, format="%Y%m", errors="coerce")
-                except:
+                except Exception:
                     pass
-            
             # Try Unix timestamp (10-13 digits)
             if val_str.isdigit() and 10 <= len(val_str) <= 13:
                 try:
                     ts = int(val_str)
                     if 946684800 <= ts <= 4102444800:  # Reasonable range
                         return pd.to_datetime(ts, unit='s', errors="coerce")
-                except:
+                except Exception:
                     pass
-            
-            # Try standard pandas parsing
             return pd.to_datetime(val_str, errors="coerce")
-        
+
+        # If we have 2+ datetime-like columns, run wide extraction.
+        if len(wide_cols) >= 2:
+            # Learn patterns from data (still useful for row-scan fallback)
+            self._learn_patterns_from_data(df)
+
+            user_col = self._find_user_col(df)
+            case_id_col = self._find_case_id_col(df)
+            file_name = getattr(table, "file_name", "") or f"{table.table_name}.csv"
+            events: List[Dict[str, Any]] = []
+            seen = set()  # (user_id, case_id, event, ts_str, table, source_row, time_col)
+
+            for idx, row in df.iterrows():
+                # Raw record for confidence + UI
+                raw_record = {}
+                for c in df.columns:
+                    if str(c).startswith("__"):
+                        continue
+                    v = row.get(c)
+                    raw_record[c] = "" if (v is None or (isinstance(v, float) and pd.isna(v))) else str(v)
+
+                user_id = None
+                if user_col and user_col in row.index and pd.notna(row[user_col]):
+                    user_id = str(row[user_col]).strip()
+                case_id_val = None
+                if case_id_col and case_id_col in row.index and pd.notna(row[case_id_col]):
+                    case_id_val = str(row[case_id_col]).strip()
+                if not user_id and case_id_val:
+                    user_id = case_id_val
+
+                source_row_display = str(int(idx) + 1) if str(idx).isdigit() else ""
+
+                for time_col_name in wide_cols:
+                    if time_col_name not in row.index:
+                        continue
+                    cell_val = row.get(time_col_name)
+                    if cell_val is None or (isinstance(cell_val, float) and pd.isna(cell_val)):
+                        continue
+                    ts = parse_date_value(cell_val)
+                    if ts is None or pd.isna(ts):
+                        continue
+
+                    # Event name: prefer explicit event_name column, else derive from the timestamp column name
+                    source = "wide_time_column"
+                    event_name = None
+                    if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
+                        maybe = self._normalize_event_from_data(row[event_name_col])
+                        if maybe and maybe in HR_EVENT_DISPLAY:
+                            event_name = maybe
+                            source = "event_column"
+                    if not event_name:
+                        event_name = self._time_column_to_hr_event(time_col_name)
+                        source = "column_name"
+                    # If column-name mapping is too generic, try row scan as a last improvement
+                    if not event_name or event_name == "Employee profile creation":
+                        scanned = self._scan_row_for_event(row, list(df.columns), df)
+                        if scanned:
+                            event_name = scanned
+                            source = "row_scan"
+
+                    confidence = self._calculate_event_confidence(event_name, source, event_name_col, time_col_name, raw_record)
+                    ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if hasattr(ts, "strftime") else str(ts)
+                    dedupe_key = (user_id or "unknown", case_id_val or "", event_name, ts_str, table.table_name, str(idx), time_col_name)
+                    if dedupe_key in seen:
+                        continue
+                    seen.add(dedupe_key)
+
+                    event_story = self._build_event_story(
+                        event_name=event_name,
+                        user_id=user_id or "unknown",
+                        ts_str=ts_str,
+                        table_name=table.table_name,
+                        file_name=file_name,
+                        source_row_display=source_row_display,
+                        raw_record=raw_record,
+                    )
+                    events.append({
+                        "user_id": user_id or case_id_val or "unknown",
+                        "_case_id": case_id_val,
+                        "event": event_name,
+                        "_event_time_column": time_col_name,
+                        "timestamp": ts,
+                        "timestamp_str": ts_str,
+                        "table_name": table.table_name,
+                        "file_name": file_name,
+                        "source_row": int(idx) if str(idx).isdigit() else str(idx),
+                        "raw_record": raw_record,
+                        "event_story": event_story,
+                        "confidence": confidence,
+                        "_detection_source": source,
+                    })
+
+            # Ensure chronological sort for downstream case split
+            events.sort(key=lambda e: e.get("timestamp") or pd.Timestamp.min)
+            return events
+
+        # Narrow/log mode (existing behavior): use one best datetime column per row
+        cols = self._find_datetime_columns(df)
+        if not cols:
+            return []
+        date_col, time_col = cols
+        event_time_col = time_col if time_col else date_col
+
         df["__dt"] = df[date_col].apply(parse_date_value)
         
         if time_col and time_col in df.columns:
@@ -1789,7 +1917,7 @@ class HRTimelineAnalyzer:
         self._learn_patterns_from_data(df)
 
         user_col = self._find_user_col(df)
-        event_name_col = self._find_event_name_col(df)
+        # event_name_col already detected above (kept for compatibility)
         case_id_col = self._find_case_id_col(df)
 
         events: List[Dict[str, Any]] = []

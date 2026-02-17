@@ -203,6 +203,98 @@ class InsuranceTimelineAnalyzer:
         if "Kyc" in normalized and "KYC" not in normalized:
             normalized = normalized.replace("Kyc", "KYC")
         return normalized
+    
+    def _scan_row_for_event_pattern(self, row: Any, columns: List[str]) -> Optional[str]:
+        """
+        Scan ALL cell values for insurance-event-like keywords.
+        This is intentionally lightweight (no hard schema): helps when event type
+        is embedded in status/remarks columns rather than a dedicated event column.
+        """
+        # Canonical events to look for (subset of step_order keywords)
+        keyword_map = {
+            "customer registered": "Customer Registered",
+            "registered": "Customer Registered",
+            "kyc": "KYC Completed",
+            "policy quoted": "Policy Quoted",
+            "quote": "Policy Quoted",
+            "policy purchased": "Policy Purchased",
+            "purchased": "Policy Purchased",
+            "activated": "Policy Activated",
+            "premium due": "Premium Due",
+            "premium paid": "Premium Paid",
+            "payment failed": "Payment Failed",
+            "failed": "Payment Failed",
+            "renewed": "Policy Renewed",
+            "expired": "Policy Expired",
+            "claim requested": "Claim Requested",
+            "claim registered": "Claim Registered",
+            "claim verified": "Claim Verified",
+            "claim assessed": "Claim Assessed",
+            "claim approved": "Claim Approved",
+            "claim rejected": "Claim Rejected",
+            "claim paid": "Claim Paid",
+            "nominee updated": "Nominee Updated",
+            "cancelled": "Policy Cancelled",
+            "canceled": "Policy Cancelled",
+            "closed": "Policy Closed",
+            "document submitted": "Document Submitted",
+            "document verified": "Document Verified",
+            "medical test scheduled": "Medical Test Scheduled",
+            "medical test completed": "Medical Test Completed",
+            "underwriting started": "Underwriting Started",
+            "underwriting completed": "Underwriting Completed",
+            "fraud check started": "Fraud Check Started",
+            "fraud check cleared": "Fraud Check Cleared",
+            "grace period started": "Grace Period Started",
+            "grace period ended": "Grace Period Ended",
+            "reinstatement requested": "Reinstatement Requested",
+            "reinstated": "Policy Reinstated",
+            "payout initiated": "Payout Initiated",
+            "payout completed": "Payout Completed",
+        }
+        for col in columns:
+            if str(col).startswith("__"):
+                continue
+            val = row.get(col)
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                continue
+            s = str(val).strip().lower()
+            if not s:
+                continue
+            # Quick filter for insurance context to avoid false positives
+            if not any(k in s for k in ("policy", "premium", "claim", "kyc", "nominee", "underwriting", "fraud", "payout", "grace", "document")):
+                continue
+            for k, ev in keyword_map.items():
+                if k in s:
+                    return ev
+        return None
+
+    def _find_all_parseable_datetime_columns(self, df: pd.DataFrame) -> List[str]:
+        """Find all parseable datetime columns (supports wide tables with many event timestamps)."""
+        def is_parseable(col: str) -> bool:
+            try:
+                sample = df[col].dropna().head(10)
+                if len(sample) == 0:
+                    return False
+                parsed = pd.to_datetime(sample, errors="coerce")
+                return parsed.notna().sum() >= max(1, int(len(sample) * 0.3))
+            except Exception:
+                return False
+        cols: List[str] = []
+        for col in df.columns:
+            cl = str(col).lower().replace("-", "_").replace(" ", "_")
+            # Prefer event-like timestamp columns; avoid pure numeric/id columns
+            if any(pat in cl for pat in INSURANCE_EVENT_COLUMN_PATTERNS) or any(k in cl for k in ("date", "time", "timestamp", "created_at", "updated_at", "_at")):
+                if is_parseable(str(col)):
+                    cols.append(str(col))
+        # De-dupe preserve order
+        seen = set()
+        out: List[str] = []
+        for c in cols:
+            if c not in seen:
+                seen.add(c)
+                out.append(c)
+        return out
 
     def _find_datetime_columns(self, df: pd.DataFrame) -> Optional[Tuple[str, Optional[str]]]:
         """Find (date_col, time_col). Supports date, time, AM/PM, years, seconds."""
@@ -328,14 +420,26 @@ class InsuranceTimelineAnalyzer:
 
         events: List[Dict[str, Any]] = []
         file_name = getattr(table, "file_name", "") or f"{table.table_name}.csv"
+        
+        # Wide-table support: if multiple datetime columns exist, emit one event per populated timestamp cell.
+        wide_cols = self._find_all_parseable_datetime_columns(df)
+        # Avoid double-counting the primary event_time_col in wide extraction
+        wide_cols = [c for c in wide_cols if c != event_time_col]
+        seen = set()  # (user_id, policy_id, event, timestamp_str, table, source_row)
 
         for idx, row in df.iterrows():
             ts = row["__dt"]
             if pd.isna(ts):
                 continue
+            # Layered event detection (narrow/log format row)
+            event_name = None
             if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
                 event_name = self._normalize_event_from_data(row[event_name_col])
-            else:
+            if not event_name:
+                scanned = self._scan_row_for_event_pattern(row, list(df.columns))
+                if scanned:
+                    event_name = scanned
+            if not event_name:
                 event_name = self._time_column_to_insurance_event(event_time_col)
 
             user_id = None
@@ -369,21 +473,63 @@ class InsuranceTimelineAnalyzer:
                 source_row_display=source_row_display,
                 raw_record=raw_record,
             )
-
-            events.append({
+            
+            base = {
                 "user_id": user_id or case_id_val or "unknown",
                 "_case_id": case_id_val,
                 "policy_id": policy_id or "",
-                "event": event_name,
-                "_event_time_column": event_time_col,
-                "timestamp": ts,
-                "timestamp_str": ts_str,
                 "table_name": table.table_name,
                 "file_name": file_name,
                 "source_row": int(idx) if str(idx).isdigit() else str(idx),
                 "raw_record": raw_record,
-                "event_story": event_story,
-            })
+            }
+            # Add the narrow/log-format event for the primary timestamp
+            dedupe_key = (base["user_id"], base["policy_id"], event_name, ts_str, base["table_name"], base["source_row"])
+            if dedupe_key not in seen:
+                seen.add(dedupe_key)
+                events.append({
+                    **base,
+                    "event": event_name,
+                    "_event_time_column": event_time_col,
+                    "timestamp": ts,
+                    "timestamp_str": ts_str,
+                    "event_story": event_story,
+                })
+            
+            # Wide-table events: additional timestamp columns -> their own events
+            for col in wide_cols:
+                if col not in row.index:
+                    continue
+                cell_val = row.get(col)
+                if cell_val is None or (isinstance(cell_val, float) and pd.isna(cell_val)):
+                    continue
+                extra_ts = pd.to_datetime(cell_val, errors="coerce")
+                if pd.isna(extra_ts):
+                    continue
+                extra_event = self._time_column_to_insurance_event(col)
+                extra_ts_str = extra_ts.strftime("%Y-%m-%d %H:%M:%S")
+                extra_story = self._build_event_story(
+                    event_name=extra_event,
+                    user_id=base["user_id"],
+                    policy_id=base["policy_id"],
+                    ts_str=extra_ts_str,
+                    table_name=table.table_name,
+                    file_name=file_name,
+                    source_row_display=source_row_display,
+                    raw_record=raw_record,
+                )
+                dedupe_key = (base["user_id"], base["policy_id"], extra_event, extra_ts_str, base["table_name"], base["source_row"])
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
+                events.append({
+                    **base,
+                    "event": extra_event,
+                    "_event_time_column": col,
+                    "timestamp": extra_ts,
+                    "timestamp_str": extra_ts_str,
+                    "event_story": extra_story,
+                })
         return events
 
     def _split_cases(self, all_events: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:

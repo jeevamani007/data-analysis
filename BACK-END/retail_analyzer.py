@@ -378,6 +378,33 @@ class RetailTimelineAnalyzer:
                 return (col, None)
         return None
 
+    def _find_all_parseable_datetime_columns(self, df: pd.DataFrame) -> List[str]:
+        """Find all parseable datetime columns (supports wide tables with many event timestamps)."""
+        def is_parseable(col: str) -> bool:
+            try:
+                sample = df[col].dropna().head(10)
+                if len(sample) == 0:
+                    return False
+                parsed = pd.to_datetime(sample, errors="coerce")
+                return parsed.notna().sum() >= max(1, int(len(sample) * 0.3))
+            except Exception:
+                return False
+
+        cols: List[str] = []
+        for col in df.columns:
+            cl = str(col).lower().replace("-", "_").replace(" ", "_")
+            # Prefer retail-observed event patterns; also accept generic timestamp-y columns
+            if any(pat in cl for pat in RETAIL_EVENT_COLUMN_PATTERNS) or any(k in cl for k in ("date", "time", "timestamp", "created_at", "updated_at", "_at")):
+                if is_parseable(str(col)):
+                    cols.append(str(col))
+        seen = set()
+        out: List[str] = []
+        for c in cols:
+            if c not in seen:
+                seen.add(c)
+                out.append(c)
+        return out
+
     # ------------------------------------------------------------------
     # Event inference
     # ------------------------------------------------------------------
@@ -656,6 +683,9 @@ class RetailTimelineAnalyzer:
 
         events: List[Dict[str, Any]] = []
         file_name = getattr(table, "file_name", "") or f"{table.table_name}.csv"
+        seen = set()  # (user_id, case_id, order_id, event, ts_str, table, source_row)
+        wide_cols = self._find_all_parseable_datetime_columns(df)
+        wide_cols = [c for c in wide_cols if c != event_time_col]
 
         for idx, row in df.iterrows():
             ts = row["__dt"]
@@ -735,23 +765,61 @@ class RetailTimelineAnalyzer:
                 source_row_display=source_row_display,
                 raw_record=raw_record,
             )
-
-            events.append(
-                {
-                    "user_id": user_id or case_id_val or "unknown",
-                    "_case_id": case_id_val,
-                    "order_id": order_id or "",
+            base = {
+                "user_id": user_id or case_id_val or "unknown",
+                "_case_id": case_id_val,
+                "order_id": order_id or "",
+                "table_name": table.table_name,
+                "file_name": file_name,
+                "source_row": int(idx) if str(idx).isdigit() else str(idx),
+                "raw_record": raw_record,
+            }
+            dedupe_key = (base["user_id"], base["_case_id"] or "", base["order_id"], event_name, ts_str, base["table_name"], base["source_row"])
+            if dedupe_key not in seen:
+                seen.add(dedupe_key)
+                events.append({
+                    **base,
                     "event": event_name,
                     "_event_time_column": event_time_col,
                     "timestamp": ts,
                     "timestamp_str": ts_str,
-                    "table_name": table.table_name,
-                    "file_name": file_name,
-                    "source_row": int(idx) if str(idx).isdigit() else str(idx),
-                    "raw_record": raw_record,
                     "event_story": event_story,
-                }
-            )
+                })
+
+            # Wide-table events: additional timestamp columns -> event derived from column name
+            for col in wide_cols:
+                if col not in row.index:
+                    continue
+                cell_val = row.get(col)
+                if cell_val is None or (isinstance(cell_val, float) and pd.isna(cell_val)):
+                    continue
+                extra_ts = pd.to_datetime(cell_val, errors="coerce")
+                if pd.isna(extra_ts):
+                    continue
+                extra_event = self._time_column_to_retail_event(col)
+                extra_ts_str = extra_ts.strftime("%Y-%m-%d %H:%M:%S")
+                extra_story = self._build_event_story(
+                    event_name=extra_event,
+                    user_id=base["user_id"],
+                    order_id=base["order_id"],
+                    ts_str=extra_ts_str,
+                    table_name=table.table_name,
+                    file_name=file_name,
+                    source_row_display=source_row_display,
+                    raw_record=raw_record,
+                )
+                dedupe_key = (base["user_id"], base["_case_id"] or "", base["order_id"], extra_event, extra_ts_str, base["table_name"], base["source_row"])
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
+                events.append({
+                    **base,
+                    "event": extra_event,
+                    "_event_time_column": col,
+                    "timestamp": extra_ts,
+                    "timestamp_str": extra_ts_str,
+                    "event_story": extra_story,
+                })
         return events
 
     # ------------------------------------------------------------------

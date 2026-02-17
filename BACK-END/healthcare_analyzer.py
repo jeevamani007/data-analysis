@@ -955,116 +955,110 @@ class HealthcareAnalyzer:
         For one table: find date/timestamp col, sort ascending, return list of records
         with date, time, table_name, file_name, column purposes (observed), and value explanations.
         """
-        cols = self._find_date_timestamp_columns(df)
-        if not cols:
+        # Wide-table support: `_find_date_timestamp_columns` already returns a *list* of candidates.
+        # We generate one event record per row per candidate datetime source, then sort globally.
+        candidates = self._find_date_timestamp_columns(df)
+        if not candidates:
             return []
-        date_col, time_col = cols[0]
-        event_time_col = time_col if time_col else date_col
-        df = df.copy()
-        df['__dt'] = pd.to_datetime(df[date_col], errors='coerce')
-        # Only combine date+time when we have SEPARATE columns (e.g. appointment_date + appointment_time)
-        # When date_col == time_col, the column already has full datetime - don't double-parse
-        if time_col and time_col in df.columns and time_col != date_col:
-            df['__date_str'] = df[date_col].astype(str).str.split().str[0]
-            df['__time_str'] = df[time_col].astype(str)
-            df['__dt'] = pd.to_datetime(df['__date_str'] + ' ' + df['__time_str'], errors='coerce')
-            # Fallback for 12-hour formats with AM/PM (e.g., "10:30 AM")
-            if df['__dt'].isna().any():
-                def _try_parse(row):
-                    if pd.notna(row['__dt']):
-                        return row['__dt']
-                    date_part = str(row['__date_str'])
-                    time_part = str(row['__time_str'])
-                    try:
-                        return pd.to_datetime(f"{date_part} {time_part}", format="%Y-%m-%d %I:%M %p", errors='coerce')
-                    except Exception:
-                        return pd.NaT
-                df['__dt'] = df.apply(_try_parse, axis=1)
-            df['__dt'] = df['__dt'].fillna(pd.to_datetime(df[date_col], errors='coerce'))
-        df = df.dropna(subset=['__dt'])
-        df = df.sort_values('__dt', ascending=True)
+
+        df_src = df.copy()
 
         # Observe and infer column purposes for all columns (no hardcoding)
-        skip_cols = {'__dt', '__date_str', '__time_str'}
-        data_cols = [c for c in df.columns if c not in skip_cols and not str(c).startswith('__')]
-        column_purposes = {}
+        skip_cols = set()
+        data_cols = [c for c in df_src.columns if c not in skip_cols and not str(c).startswith('__')]
+        column_purposes: Dict[str, Any] = {}
         for c in data_cols:
-            column_purposes[c] = self._infer_column_purpose(c, df[c], df)
+            column_purposes[c] = self._infer_column_purpose(c, df_src[c], df_src)
 
-        adm_col, dis_col = self._find_admission_discharge_columns(df)
-        appt_col = self._find_appointment_column(df)
-        table_workflow_role = self._identify_table_workflow_role(table_name, df)
+        adm_col, dis_col = self._find_admission_discharge_columns(df_src)
+        appt_col = self._find_appointment_column(df_src)
+        table_workflow_role = self._identify_table_workflow_role(table_name, df_src)
 
-        records = []
-        for row_idx, row in df.iterrows():
-            dt = row['__dt']
-            raw_record = {}
-            explained_record = {}
-            data_flow_parts = []
+        records: List[Dict[str, Any]] = []
+        seen = set()  # (row_idx, date_col, time_col, event_datetime)
 
+        for row_idx, row in df_src.iterrows():
+            # Build raw/explained record once per row (shared across all emitted events)
+            raw_record: Dict[str, str] = {}
+            explained_record: Dict[str, str] = {}
+            data_flow_parts: List[str] = []
             for c in data_cols:
                 v = row.get(c)
                 is_null = v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == ''
                 val_str = '' if is_null else str(v)
                 raw_record[c] = val_str
-                purpose_info = column_purposes[c]
+                purpose_info = column_purposes.get(c) or {}
                 expl = self._explain_value(v, purpose_info, c)
                 explained_record[c] = expl
                 if expl and expl != "Empty or not recorded":
-                    data_flow_parts.append(f"{purpose_info['purpose']}: {expl}")
+                    purp = purpose_info.get('purpose') or str(c)
+                    data_flow_parts.append(f"{purp}: {expl}")
 
             work_summary = self._build_work_summary(table_name, raw_record, column_purposes, file_name)
-            event_date = dt.strftime('%Y-%m-%d')
-            event_time = dt.strftime('%H:%M:%S')  # Always include full time for clarity
-            row_event_story = self._build_row_event_story(
-                table_name, raw_record, column_purposes, file_name,
-                event_date, event_time, table_workflow_role,
-            )
-            time_log_explanation = self._build_time_log_explanation(
-                event_date, event_time, row_event_story, table_name,
-            )
             cross_table_links = self._build_cross_table_links_for_record(raw_record, column_purposes)
+            patient_id = self._get_patient_id_from_record(raw_record, column_purposes)
 
             stay_duration = None
             if adm_col and dis_col and adm_col in row.index and dis_col in row.index:
                 stay_duration = self._calculate_stay_duration_explanation(row[adm_col], row[dis_col])
 
-            patient_id = self._get_patient_id_from_record(raw_record, column_purposes)
+            for date_col, time_col in candidates:
+                dt = self._extract_datetime(row, date_col, time_col, df_src)
+                if dt is None or pd.isna(dt):
+                    continue
+                # Use the DATE column name as the event-time source key (more informative than generic "time")
+                event_time_col = date_col
+                event_date = dt.strftime('%Y-%m-%d')
+                event_time = dt.strftime('%H:%M:%S')
+                event_datetime = f"{event_date} {event_time}"
 
-            rec = {
-                'table_name': table_name,
-                'file_name': file_name or f"{table_name}.csv",
-                '_event_time_column': event_time_col,
-                # Which row this event came from (helps “which table / which row” trace)
-                'source_row_index': int(row_idx) if str(row_idx).isdigit() else str(row_idx),
-                'source_row_number': int(row_idx) + 1 if str(row_idx).isdigit() else None,
-                'date': event_date,
-                'time': event_time,
-                'event_datetime': f"{event_date} {event_time}",
-                'datetime_sort': dt,
-                'record': raw_record,
-                'column_purposes': column_purposes,
-                'data_flow_explanation': " | ".join(data_flow_parts) if data_flow_parts else "Record at this date/time",
-                'value_explanations': explained_record,
-                'work_summary': work_summary,
-                'row_event_story': row_event_story,
-                'time_log_explanation': time_log_explanation,
-                'cross_table_links': cross_table_links,
-                'table_workflow_role': table_workflow_role,
-                '_patient_id': patient_id,
-                '_event_datetime': dt,
-                'patient_id': patient_id or 'unknown',
-            }
-            # Normalize datetime_sort to tz-naive so cross-table sort doesn't fail (tz-naive vs tz-aware)
-            if 'datetime_sort' in rec:
+                key = (str(row_idx), str(date_col), str(time_col or ''), event_datetime)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                row_event_story = self._build_row_event_story(
+                    table_name, raw_record, column_purposes, file_name,
+                    event_date, event_time, table_workflow_role,
+                )
+                time_log_explanation = self._build_time_log_explanation(
+                    event_date, event_time, row_event_story, table_name,
+                )
+
+                rec = {
+                    'table_name': table_name,
+                    'file_name': file_name or f"{table_name}.csv",
+                    '_event_time_column': event_time_col,
+                    'source_row_index': int(row_idx) if str(row_idx).isdigit() else str(row_idx),
+                    'source_row_number': int(row_idx) + 1 if str(row_idx).isdigit() else None,
+                    'date': event_date,
+                    'time': event_time,
+                    'event_datetime': event_datetime,
+                    'datetime_sort': dt,
+                    'record': raw_record,
+                    'column_purposes': column_purposes,
+                    'data_flow_explanation': " | ".join(data_flow_parts) if data_flow_parts else "Record at this date/time",
+                    'value_explanations': explained_record,
+                    'work_summary': work_summary,
+                    'row_event_story': row_event_story,
+                    'time_log_explanation': time_log_explanation,
+                    'cross_table_links': cross_table_links,
+                    'table_workflow_role': table_workflow_role,
+                    '_patient_id': patient_id,
+                    '_event_datetime': dt,
+                    'patient_id': patient_id or 'unknown',
+                }
                 rec['datetime_sort'] = self._normalize_tz_naive(rec['datetime_sort'])
-            if adm_col and adm_col in row.index:
-                rec['_admission_datetime'] = pd.to_datetime(row[adm_col], errors='coerce')
-            if appt_col and appt_col in row.index:
-                rec['_appointment_datetime'] = pd.to_datetime(row[appt_col], errors='coerce')
-            if stay_duration:
-                rec['stay_duration'] = stay_duration
-            records.append(rec)
+                if adm_col and adm_col in row.index:
+                    rec['_admission_datetime'] = pd.to_datetime(row[adm_col], errors='coerce')
+                if appt_col and appt_col in row.index:
+                    rec['_appointment_datetime'] = pd.to_datetime(row[appt_col], errors='coerce')
+                if stay_duration:
+                    rec['stay_duration'] = stay_duration
+                records.append(rec)
+
+        # Sort ascending by datetime (tz-safe key)
+        records.sort(key=lambda r: pd.Timestamp(r.get('datetime_sort') or pd.Timestamp.min).value if r.get('datetime_sort') is not None else 0)
         return records
 
     def _time_column_to_event_name(self, col_name: str) -> str:

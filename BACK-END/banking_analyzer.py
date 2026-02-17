@@ -13,7 +13,7 @@ from models import TableAnalysis
 
 SESSION_START = {'login', 'session_start'}
 SESSION_END = {'logout', 'session_end'}
-PRE_LOGIN_EVENTS = {'open', 'created'}
+PRE_LOGIN_EVENTS = {'open', 'created', 'updated'}
 MIDDLE_EVENTS = {
     'credit', 'deposit', 'withdraw', 'debit', 'refund',
     'invalid_balance', 'negative_balance', 'invalid', 'negative',
@@ -39,6 +39,8 @@ EVENT_MAP = {
     'upi_collect': 'upi_credit',
     'emi_pay': 'emi_payment',
     'emi_due': 'emi_due',
+    # common master-table lifecycle terms
+    'updated': 'updated', 'update': 'updated', 'modified': 'updated', 'modification': 'updated',
 }
 
 # Time formats to try (with and without AM/PM)
@@ -100,6 +102,8 @@ def _normalize_event(val: Any) -> Optional[str]:
         return 'open'
     if has_phrase('created', 'creation', 'account creation'):
         return 'created'
+    if has_phrase('updated', 'update', 'modified', 'modification', 'last updated'):
+        return 'updated'
 
     # --- Credit / deposit (money coming in) ---
     if has_token('cr', 'crd', 'credit') or (has_phrase('credit') and not has_phrase('card')):
@@ -285,6 +289,10 @@ class BankingAnalyzer:
             return 'created'
         if 'join' in c or 'joined' in c or 'signup' in c or 'sign_up' in c or 'register' in c or 'registered' in c:
             return 'created'
+        # Account/profile updated
+        if 'updated' in c or 'modified' in c or 'modification' in c or 'last_update' in c or 'lastupdated' in c:
+            if re.search(r'date|time|stamp|at', c):
+                return 'updated'
         if re.search(r'\bopen\b', c) and re.search(r'date|time|stamp', c):
             return 'open'
         if re.search(r'txn|transaction', c) and re.search(r'date|time|stamp', c):
@@ -296,6 +304,34 @@ class BankingAnalyzer:
         if 'balance' in c and (re.search(r'check|inquiry', c) or c == 'balance'):
              return 'check_balance'
         return None
+
+    def _find_parseable_timestamp_columns(self, df: pd.DataFrame) -> List[Tuple[str, str]]:
+        """
+        Find all parseable timestamp-like columns and their inferred purposes.
+        This supports "wide" tables where a single row contains many event timestamps
+        (created_at, updated_at, login_time, logout_time, etc.).
+        """
+        out: List[Tuple[str, str]] = []
+        for col in df.columns:
+            purpose = self._infer_time_purpose(str(col))
+            if not purpose:
+                continue
+            sample = df[col].dropna().head(3)
+            if sample.empty:
+                continue
+            # Accept column if at least 1 sample parses (be tolerant for sparse event columns)
+            parsed_any = any(pd.notna(_parse_datetime_cell(v)) for v in sample.tolist())
+            if parsed_any:
+                out.append((str(col), purpose))
+        # De-dupe, preserve order
+        seen = set()
+        uniq: List[Tuple[str, str]] = []
+        for col, pur in out:
+            key = (col, pur)
+            if key not in seen:
+                seen.add(key)
+                uniq.append((col, pur))
+        return uniq
 
     def _find_date_time_pair(self, df: pd.DataFrame, base: str) -> Tuple[Optional[str], Optional[str]]:
         """Find (date_col, time_col) pair for base like open, created, transaction. Date+time or single timestamp."""
@@ -430,7 +466,7 @@ class BankingAnalyzer:
                 events['login'].append(name)
             elif purpose == 'logout':
                 events['logout'].append(name)
-            elif purpose in ('open', 'created'):
+            elif purpose in ('open', 'created', 'updated'):
                 events['account_open'].append(name)
 
             # Deposit / credit columns - require banking context OR explicit timestamp keywords
@@ -569,7 +605,14 @@ class BankingAnalyzer:
                     logout_event_col = c
                     break
 
-        activities = []
+        # Wide-table support: also extract additional timestamp columns (created/updated/login/logout/open)
+        parseable_ts_cols = self._find_parseable_timestamp_columns(df)
+        # Avoid double counting the main timestamp columns already used
+        main_cols = {str(c) for c in [date_col, time_col, alt_logout_col] if c}
+        parseable_ts_cols = [(c, p) for (c, p) in parseable_ts_cols if c not in main_cols]
+
+        activities: List[Dict[str, Any]] = []
+        seen_events = set()  # (user_id/account_id/event,timestamp_str,table,row) to prevent duplicates
         for idx, row in df.iterrows():
             ts = get_ts(row, date_col, time_col)
             if pd.isna(ts):
@@ -589,7 +632,22 @@ class BankingAnalyzer:
                         activities.append(make_act(row, logout_ts, 'logout', idx))
                 continue
 
+            # 0) Highest priority: scan row values for event patterns if no event_col exists.
+            #    This helps when the file has no explicit event/type column, but event words appear in remarks/status.
             event = None
+            if not event_col:
+                scanned = None
+                for c in df.columns:
+                    if str(c).startswith('__'):
+                        continue
+                    val = row.get(c)
+                    ev_guess = _normalize_event(val)
+                    if ev_guess in (SESSION_START | SESSION_END | PRE_LOGIN_EVENTS | MIDDLE_EVENTS | {'credit', 'debit', 'deposit', 'withdraw', 'refund', 'transfer', 'upi_debit', 'upi_credit', 'emi_payment', 'emi_due', 'check_balance', 'invalid_balance', 'negative_balance', 'updated'}):
+                        scanned = ev_guess
+                        break
+                if scanned:
+                    event = scanned
+
             if event_col and event_col in row.index:
                 event = _normalize_event(row[event_col])
                 raw = str(row[event_col] or '').strip().upper()
@@ -620,13 +678,40 @@ class BankingAnalyzer:
 
             if event:
                 found_event_types.add(event)
-                activities.append(make_act(row, ts, event, idx))
+                act = make_act(row, ts, event, idx)
+                dedupe_key = (act.get('user_id'), act.get('account_id'), act.get('event'), act.get('timestamp_str'), table_name, act.get('source_row'))
+                if dedupe_key not in seen_events:
+                    seen_events.add(dedupe_key)
+                    activities.append(act)
 
             if alt_logout_col and alt_logout_col in row.index:
                 logout_ts = _parse_datetime_cell(row[alt_logout_col])
                 if pd.notna(logout_ts):
                     found_event_types.add('logout')
-                    activities.append(make_act(row, logout_ts, 'logout', idx))
+                    act = make_act(row, logout_ts, 'logout', idx)
+                    dedupe_key = (act.get('user_id'), act.get('account_id'), act.get('event'), act.get('timestamp_str'), table_name, act.get('source_row'))
+                    if dedupe_key not in seen_events:
+                        seen_events.add(dedupe_key)
+                        activities.append(act)
+
+            # Wide-table: emit additional events from other timestamp columns (created/updated/login/logout/open).
+            for extra_col, extra_purpose in parseable_ts_cols:
+                if extra_col not in row.index:
+                    continue
+                extra_ts = _parse_datetime_cell(row.get(extra_col))
+                if pd.isna(extra_ts):
+                    continue
+                extra_event = extra_purpose
+                # Map to canonical event names (keep banking internal names)
+                if extra_event == 'transaction':
+                    extra_event = 'credit'
+                if extra_event:
+                    found_event_types.add(extra_event)
+                    act = make_act(row, extra_ts, extra_event, idx)
+                    dedupe_key = (act.get('user_id'), act.get('account_id'), act.get('event'), act.get('timestamp_str'), table_name, act.get('source_row'))
+                    if dedupe_key not in seen_events:
+                        seen_events.add(dedupe_key)
+                        activities.append(act)
 
         # Build map of event_type -> [columns used]
         # This reflects strictly what was used to generate the Case ID data
@@ -666,6 +751,7 @@ class BankingAnalyzer:
             ui_bucket = ev
             if ev == 'created': ui_bucket = 'account_open'
             if ev == 'open': ui_bucket = 'account_open'
+            if ev == 'updated': ui_bucket = 'account_open'
             if ev == 'invalid_balance': ui_bucket = 'failed'
             if ev == 'negative_balance': ui_bucket = 'failed'
             
@@ -927,6 +1013,8 @@ class BankingAnalyzer:
             return 'account open'
         if ev == 'created':
             return 'created'
+        if ev == 'updated':
+            return 'updated'
         if ev in ('credit', 'deposit'):
             return 'credit'
         if ev in ('debit', 'withdraw'):
@@ -998,6 +1086,7 @@ class BankingAnalyzer:
             'logout': 'Logout',
             'created': 'Created Account',
             'open': 'Created Account',
+            'updated': 'Updated',
             'credit': 'Credit',
             'deposit': 'Deposit',
             'debit': 'Withdrawal Transaction',
@@ -1005,6 +1094,12 @@ class BankingAnalyzer:
             'refund': 'Refund',
             'invalid_balance': 'Failed Transaction',
             'negative_balance': 'Failed Transaction',
+            'check_balance': 'Check Balance',
+            'transfer': 'Transfer',
+            'upi_debit': 'UPI Debit',
+            'upi_credit': 'UPI Credit',
+            'emi_payment': 'EMI Payment',
+            'emi_due': 'EMI Due',
         }
         
         # Build case paths with timing information
@@ -1023,7 +1118,8 @@ class BankingAnalyzer:
             
             for i, activity in enumerate(activities):
                 event = activity.get('event', '')
-                event_display = event_display_map.get(event, event.title())
+                # Default display: make underscores readable
+                event_display = event_display_map.get(event, event.replace('_', ' ').title())
                 ts_str = activity.get('timestamp_str', '')
                 
                 # Parse timestamp
