@@ -455,19 +455,6 @@ class DataSynthesisEngine:
                 inferred = _infer_type(s)
                 null_pct = float(s.isna().mean() * 100.0)
 
-                # Categorical detection
-                is_cat = _is_categorical(s, inferred)
-                cat_vals: List[Any] = []
-                if is_cat:
-                    # Keep original values (including numeric categories)
-                    non_null = s.dropna()
-                    # Use stable ordering by frequency, then value
-                    try:
-                        vc = non_null.value_counts().head(200)
-                        cat_vals = vc.index.tolist()
-                    except Exception:
-                        cat_vals = list(non_null.unique())[:200]
-
                 num_min = num_max = None
                 dt_min = dt_max = None
                 pattern_type = None
@@ -494,6 +481,36 @@ class DataSynthesisEngine:
                     non_null = s.dropna().astype(str)
                     sample_vals = non_null.head(50).tolist()
                     pattern_type = _detect_string_pattern(sample_vals, col)
+
+                # Categorical detection (after we know pattern_type so we can
+                # avoid treating identity-like strings as small categorical sets).
+                is_cat = _is_categorical(s, inferred)
+                cat_vals: List[Any] = []
+                if is_cat:
+                    # For columns that look like identities / personal data
+                    # (names, usernames, emails, phones, account numbers, codes),
+                    # we prefer pattern-based generators instead of simply
+                    # re-sampling the original distinct values. This keeps
+                    # synthetic data fresh and less copy-like.
+                    if inferred == "string" and pattern_type in {
+                        "username",
+                        "name",
+                        "email",
+                        "phone_number",
+                        "account_number",
+                        "uuid",
+                        "code",
+                    }:
+                        is_cat = False
+                    else:
+                        # Keep original values (including numeric categories)
+                        non_null_cat = s.dropna()
+                        # Use stable ordering by frequency, then value
+                        try:
+                            vc = non_null_cat.value_counts().head(200)
+                            cat_vals = vc.index.tolist()
+                        except Exception:
+                            cat_vals = list(non_null_cat.unique())[:200]
 
                 cols.append(
                     ColumnProfile(
@@ -635,20 +652,91 @@ class DataSynthesisEngine:
         out: List[Any] = []
         used: set = set()
 
-        # For numeric PKs, generate beyond observed max to avoid collisions.
-        if inferred_type in ("integer", "float"):
+        # For INTEGER PKs, try to stay within the original numeric pattern/range
+        # whenever there is enough free space, and always avoid collisions with
+        # both original values and already-generated ones.
+        if inferred_type == "integer":
+            coerced = pd.to_numeric(df_series, errors="coerce")
+            if not coerced.notna().any():
+                # Fallback: simple sequential IDs starting at 1
+                current = 1
+                for _ in range(n):
+                    sv = str(current)
+                    while sv in original_values or sv in used:
+                        current += 1
+                        sv = str(current)
+                    used.add(sv)
+                    out.append(current)
+                    current += 1
+                return out
+
+            ints = coerced.dropna().astype(int)
+            mn = int(ints.min())
+            mx = int(ints.max())
+            range_size = mx - mn + 1
+            distinct_original = len(set(ints.tolist()))
+            free_slots = max(0, range_size - distinct_original)
+
+            # Strategy 1: if there is enough unused capacity inside [mn, mx],
+            # fill from that range to preserve digit-length / approximate pattern.
+            if free_slots >= n and range_size <= 10 * max(n, 1) and range_size <= 200_000:
+                for v in range(mn, mx + 1):
+                    sv = str(v)
+                    if sv in original_values or sv in used:
+                        continue
+                    used.add(sv)
+                    out.append(v)
+                    if len(out) >= n:
+                        break
+                if len(out) >= n:
+                    return out
+                # If we somehow didn't fill enough (unlikely), fall through to Strategy 2.
+
+            # Strategy 2: if range is large but sparse, sample randomly inside [mn, mx].
+            if free_slots >= n and range_size > 200_000:
+                attempts = 0
+                max_attempts = n * 50
+                while len(out) < n and attempts < max_attempts:
+                    v = random.randint(mn, mx)
+                    sv = str(v)
+                    if sv in original_values or sv in used:
+                        attempts += 1
+                        continue
+                    used.add(sv)
+                    out.append(v)
+                if len(out) >= n:
+                    return out
+                # Not enough space / too dense – fall through.
+
+            # Strategy 3: not enough free room in the original range – continue
+            # the sequence just above the observed max value to guarantee
+            # uniqueness while still keeping similar magnitude.
+            current = mx + 1
+            for _ in range(n):
+                sv = str(current)
+                while sv in original_values or sv in used:
+                    current += 1
+                    sv = str(current)
+                used.add(sv)
+                out.append(current)
+                current += 1
+            return out
+
+        # For FLOAT PKs, generate beyond observed max to avoid collisions.
+        if inferred_type == "float":
             coerced = pd.to_numeric(df_series, errors="coerce")
             mx = float(coerced.max()) if coerced.notna().any() else 0.0
-            start = int(mx) + 10_000
-            for i in range(n):
-                v = start + i
-                # Ensure not present (string compare to cover mixed types)
+            start = mx + 10_000.0
+            current = start
+            for _ in range(n):
+                v = current
                 sv = str(v)
                 while sv in original_values or sv in used:
-                    v += 1
+                    v += 1.0
                     sv = str(v)
                 used.add(sv)
-                out.append(int(v) if inferred_type == "integer" else float(v))
+                out.append(float(v))
+                current = v + 1.0
             return out
 
         # For date/timestamp PKs (rare): use timestamp-like UUID suffix to ensure uniqueness.

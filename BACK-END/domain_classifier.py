@@ -42,11 +42,6 @@ _GENERIC_TOKENS: frozenset[str] = frozenset({
     "location", "worksite", "shift", "attendance",
     # salary alone is an HR column — only Finance when payroll context exists
     "salary",
-    # FIX-A: Government/civic tokens -- must NOT trigger Banking alone
-    "citizen", "aadhaar", "pan", "voter", "ration",
-    "scheme", "beneficiary", "district", "state", "taluk", "village",
-    "ward", "block", "constituency", "panchayat",
-    "subsidy", "entitlement", "welfare",
 })
 
 # Strong HR indicators used for negative rules (see FIX-G)
@@ -227,10 +222,34 @@ _HR_ALIASES: dict[str, str] = {
     "revrid": "reviewerid", "revr": "reviewerid",
 }
 
+_GOVERNMENT_ALIASES: dict[str, str] = {
+    # Core citizen identity documents
+    "aadhaarno": "aadhaar",
+    "aadhaar_id": "aadhaar",
+    "aadharno": "aadhaar",
+    "aadhar_id": "aadhaar",
+    "panno": "pan",
+    "pan_no": "pan",
+    "voterid": "voter",
+    "voter_no": "voter",
+    "rationno": "ration",
+    "rationcardno": "ration",
+    # Scheme / beneficiary abbreviations
+    "bnf_id": "beneficiaryid",
+    "bnfid": "beneficiaryid",
+    "schmcd": "scheme_code",
+    "schmid": "scheme_id",
+    "distcd": "district_code",
+    "statecd": "state_code",
+    "blkcd": "block_code",
+    "wardcd": "ward_code",
+}
+
 _ALL_ALIASES: dict[str, dict[str, str]] = {
     "Banking": _BANKING_ALIASES, "Finance": _FINANCE_ALIASES,
     "Insurance": _INSURANCE_ALIASES, "Healthcare": _HEALTHCARE_ALIASES,
     "Retail": _RETAIL_ALIASES, "HR": _HR_ALIASES,
+    "Government": _GOVERNMENT_ALIASES,
 }
 
 
@@ -736,7 +755,59 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
     ),
 
     DomainConfig(
-        name="Other", ml_label=6,
+        name="Government", ml_label=6,
+        exclusive_keywords=[
+            "aadhaar", "aadhaarno", "aadharno",
+            "pan", "panno",
+            "voter", "voterid",
+            "ration", "rationcard",
+            "scheme", "scheme_code", "schemeid",
+            "beneficiary", "beneficiaryid",
+            "district", "district_code",
+            "state", "state_code",
+            "taluk", "village",
+            "ward", "block", "block_name",
+            "constituency", "panchayat",
+            "subsidy", "entitlement", "welfare",
+        ],
+        shared_keywords=[
+            "citizen", "household", "familyid",
+            "kyc", "kycstatus",
+            "grievance", "complaint",
+            "application_no", "registration_no",
+        ],
+        combo_rules=[
+            {"citizen", "aadhaar"},
+            {"citizen", "pan"},
+            {"beneficiary", "scheme"},
+            {"beneficiary", "district"},
+            {"beneficiary", "state"},
+            {"scheme", "subsidy"},
+            {"scheme", "welfare"},
+            {"district", "block", "village"},
+            {"district", "panchayat", "ward"},
+        ],
+        value_keywords=[
+            "ration card", "aadhaar", "aadhar",
+            "voter id", "pan card",
+            "govt scheme", "government scheme",
+            "yojana", "pension scheme", "scholarship scheme",
+            "beneficiary", "subsidy", "welfare scheme",
+            "gram panchayat", "municipality", "corporation",
+        ],
+        ml_samples=[
+            "citizen_id aadhaar_no voter_id pan_no ration_card scheme_code",
+            "beneficiary_id district_code state_code block_name panchayat",
+            "household_id ration_card_no aadhaar_head_of_family village ward block district",
+            "scheme_id scheme_name subsidy_amount beneficiary_id sanction_date",
+            "application_no registration_no applicant_name aadhaar_no scheme_code status",
+            "pension_id beneficiary_id aadhaar_no bank_account_ifsc pension_amount",
+            "complaint_id grievance_type citizen_id ward_no resolution_status",
+        ],
+    ),
+
+    DomainConfig(
+        name="Other", ml_label=7,
         exclusive_keywords=[],
         shared_keywords=[
             "studentid", "ticketid", "vehicleid", "deviceid",
@@ -751,9 +822,6 @@ DOMAIN_CONFIGS: list[DomainConfig] = [
             "property_id address bedrooms area listing_date",
             "post_id likes shares platform published_at",
             "shipment_id origin destination carrier estimated_delivery",
-            # FIX-A: government/civic schemas
-            "citizen_id aadhaar_no voter_id pan_no ration_card scheme_code",
-            "beneficiary_id district_code state_code block_name panchayat",
         ],
     ),
 ]
@@ -1762,7 +1830,8 @@ class DomainClassifier:
         colors = {
             "Banking": "#0F766E", "Finance": "#4F46E5",
             "Insurance": "#7C3AED", "Healthcare": "#14B8A6",
-            "Retail": "#F59E0B", "HR": "#EC4899", "Other": "#64748B",
+            "Retail": "#F59E0B", "HR": "#EC4899",
+            "Government": "#22C55E", "Other": "#64748B",
         }
         return {
             "percentages": pcts,
@@ -1941,6 +2010,8 @@ class DomainClassifier:
                            "a <strong>Retail-related</strong> database"),
             "HR":         ("an <strong>HR / Human Resources</strong> database",
                            "an <strong>HR-related</strong> database"),
+            "Government": ("a <strong>Government / Public Sector</strong> database",
+                           "a <strong>Government-related</strong> database"),
             "Other":      ("a <strong>General / Other</strong> domain database",
                            "a database with <strong>mixed or unclear characteristics</strong>"),
         }

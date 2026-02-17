@@ -19,6 +19,13 @@ from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 
 from models import TableAnalysis
+from dynamic_event_detector import (
+    find_best_timestamp_column,
+    scan_row_for_event_patterns,
+    detect_datetime_columns_by_type,
+    infer_event_from_datetime_column,
+    infer_event_from_numeric_column
+)
 
 
 FINANCE_CASE_GAP_HOURS = 24.0
@@ -272,6 +279,12 @@ class FinanceTimelineAnalyzer:
         date_candidates = [c for c in df.columns if any(k in c.lower() for k in ["date", "time", "timestamp"]) and is_parseable(c)]
         if date_candidates:
             return (date_candidates[0], None)
+        
+        # ENHANCED: Use data type detection when column name matching fails
+        dt_result = find_best_timestamp_column(df, exclude_dob=True)
+        if dt_result:
+            return dt_result
+        
         for col in df.columns:
             if is_parseable(col):
                 return (col, None)
@@ -427,11 +440,29 @@ class FinanceTimelineAnalyzer:
             if pd.isna(ts):
                 continue
             # 1) event_name column value; 2) scan ALL row data for event pattern (not column-only)
+            # ENHANCED: Use dynamic detector for better pattern matching
             if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
                 event_name = self._normalize_event_from_data(row[event_name_col])
             else:
-                scanned = self._scan_row_for_event(row, list(df.columns))
-                event_name = scanned if scanned else self._time_column_to_finance_event(event_time_col)
+                # Build finance keywords set
+                finance_keywords = {
+                    'customer registered', 'kyc', 'account opened', 'account closed', 'login', 'logout',
+                    'deposit', 'withdrawal', 'transfer', 'payment', 'loan', 'policy', 'premium', 'claim',
+                    'application', 'proposal', 'verified', 'beneficiary', 'coverage', 'installment'
+                }
+                
+                scanned = scan_row_for_event_patterns(row, list(df.columns), finance_keywords, domain='finance')
+                if scanned:
+                    event_name = scanned
+                else:
+                    scanned = self._scan_row_for_event(row, list(df.columns))
+                    event_name = scanned if scanned else self._time_column_to_finance_event(event_time_col)
+                    
+                    # ENHANCED: Try dynamic detector if column name doesn't give event
+                    if not event_name or event_name in ("Other", "Unknown"):
+                        inferred = infer_event_from_datetime_column(event_time_col, domain='finance')
+                        if inferred:
+                            event_name = inferred
 
             user_id = None
             if user_col and user_col in row.index and pd.notna(row[user_col]):

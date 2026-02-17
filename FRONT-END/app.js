@@ -50,135 +50,27 @@ let sessionId = null;
 let analysisResults = null;
 let dateColumnInfo = null;
 
-// Retail Event Explanations (column-observed from user files)
-const RETAIL_EVENT_EXPLANATIONS = {
-    'Customer Visit': 'Customer visited the store or site',
-    'Product View': 'Customer viewed a product',
-    'Product Search': 'Customer searched for products',
-    'Add To Cart': 'Customer added product to cart',
-    'Remove From Cart': 'Customer removed product from cart',
-    'Apply Coupon': 'Customer applied a coupon or discount',
-    'Checkout Started': 'Customer started checkout',
-    'Address Entered': 'Customer entered delivery address',
-    'Payment Selected': 'Customer selected payment method',
-    'Payment Success': 'Payment succeeded',
-    'Payment Failed': 'Payment failed',
-    'Order Placed': 'Customer placed order',
-    'Order Confirmed': 'Order was confirmed',
-    'Invoice Generated': 'Invoice was generated for the order',
-    'Order Packed': 'Shop packed the product',
-    'Order Shipped': 'Order handed over to courier',
-    'Out For Delivery': 'Courier on the way to customer',
-    'Order Delivered': 'Product reached customer',
-    'Order Cancelled': 'Order was cancelled',
-    'Return Initiated': 'Customer requested a return',
-    'Return Received': 'Returned product was received',
-    'Refund Processed': 'Refund was processed',
-    'User Signed Up': 'Customer created account',
-    'User Logged In': 'Customer logged in',
-    'User Logged Out': 'Customer signed out',
-    // Legacy
-    'Product Viewed': 'Customer viewed a product',
-    'Added to Cart': 'Customer added product to cart',
-    'Removed from Cart': 'Customer removed product from cart',
-    'Order Created': 'Customer placed order',
-    'Payment Initiated': 'Customer started payment',
-    'Payment Completed': 'Payment succeeded',
-    'Out for Delivery': 'Courier on the way to customer',
-    'Return Requested': 'Return requested',
-    'Product Returned': 'Product was returned',
-    'Refund Initiated': 'Refund started',
-    'Refund Completed': 'Refund completed'
-};
+// ---------------------------------------------------------------------------
+// Event explanation helpers (NO hardcoded domain event lists).
+// Prefer backend-provided per-activity fields (event_story / explanation) so the UI
+// always reflects uploaded data dynamically.
+// ---------------------------------------------------------------------------
 
-// Insurance Event Explanations (column-observed from user files, 40 events)
-const INSURANCE_EVENT_EXPLANATIONS = {
-    'Customer Registered': 'Customer registered for insurance',
-    'KYC Completed': 'KYC verification completed',
-    'Policy Quoted': 'Policy quote generated',
-    'Policy Purchased': 'Policy was purchased',
-    'Policy Activated': 'Policy became active',
-    'Premium Due': 'Premium payment due',
-    'Premium Paid': 'Premium payment received',
-    'Payment Failed': 'Payment failed',
-    'Policy Renewed': 'Policy was renewed',
-    'Policy Expired': 'Policy expired',
-    'Claim Requested': 'Claim was requested',
-    'Claim Registered': 'Claim registered in system',
-    'Claim Verified': 'Claim verified',
-    'Claim Assessed': 'Claim assessed',
-    'Claim Approved': 'Claim approved',
-    'Claim Rejected': 'Claim rejected',
-    'Claim Paid': 'Claim payment disbursed',
-    'Nominee Updated': 'Nominee details updated',
-    'Policy Cancelled': 'Policy cancelled',
-    'Policy Closed': 'Policy closed',
-    'Document Submitted': 'Document submitted for verification',
-    'Document Verified': 'Document verification completed',
-    'Medical Test Scheduled': 'Medical test scheduled',
-    'Medical Test Completed': 'Medical test completed',
-    'Risk Assessed': 'Risk assessment completed',
-    'Underwriting Started': 'Underwriting process started',
-    'Underwriting Completed': 'Underwriting completed',
-    'Premium Calculated': 'Premium amount calculated',
-    'Auto Debit Enabled': 'Auto debit enabled for premium',
-    'Auto Debit Disabled': 'Auto debit disabled',
-    'Reminder Sent': 'Premium reminder sent',
-    'Grace Period Started': 'Grace period started',
-    'Grace Period Ended': 'Grace period ended',
-    'Policy Suspended': 'Policy suspended',
-    'Reinstatement Requested': 'Reinstatement requested',
-    'Policy Reinstated': 'Policy reinstated',
-    'Payout Initiated': 'Payout initiated',
-    'Payout Completed': 'Payout completed',
-    'Fraud Check Started': 'Fraud check started',
-    'Fraud Check Cleared': 'Fraud check cleared'
-};
+function _storyCore(story) {
+    if (!story || typeof story !== 'string') return '';
+    const core = story.split('[')[0]; // strip "[table · file · row]" suffix if present
+    return (core || '').trim();
+}
 
-// Finance Event Explanations (40 events – observed from columns + row data across DB)
-const FINANCE_EVENT_EXPLANATIONS = {
-    'Customer Registered': 'Customer registered',
-    'KYC Completed': 'KYC verification completed',
-    'Account Opened': 'Account opened',
-    'Account Closed': 'Account closed',
-    'Login': 'User logged in',
-    'Logout': 'User logged out',
-    'Deposit': 'Deposit recorded',
-    'Withdrawal': 'Withdrawal recorded',
-    'Transfer Initiated': 'Transfer initiated',
-    'Transfer Completed': 'Transfer completed',
-    'Payment Initiated': 'Payment initiated',
-    'Payment Success': 'Payment successful',
-    'Payment Failed': 'Payment failed',
-    'Loan Applied': 'Loan application submitted',
-    'Loan Approved': 'Loan approved',
-    'Loan Disbursed': 'Loan disbursed',
-    'Policy Purchased': 'Policy purchased',
-    'Premium Paid': 'Premium paid',
-    'Claim Requested': 'Claim requested',
-    'Claim Paid': 'Claim paid',
-    'Application Submitted': 'Application submitted',
-    'Application Reviewed': 'Application reviewed',
-    'Proposal Generated': 'Proposal generated',
-    'Proposal Accepted': 'Proposal accepted',
-    'Identity Verified': 'Identity verified',
-    'Address Verified': 'Address verified',
-    'Income Verified': 'Income verified',
-    'Beneficiary Added': 'Beneficiary added',
-    'Beneficiary Updated': 'Beneficiary updated',
-    'Coverage Activated': 'Coverage activated',
-    'Coverage Changed': 'Coverage changed',
-    'Installment Generated': 'Installment generated',
-    'Installment Paid': 'Installment paid',
-    'Penalty Applied': 'Penalty applied',
-    'Discount Applied': 'Discount applied',
-    'Case Escalated': 'Case escalated',
-    'Case Resolved': 'Case resolved',
-    'Support Ticket Created': 'Support ticket created',
-    'Support Ticket Closed': 'Support ticket closed',
-    'Account Frozen': 'Account frozen'
-};
-
+function getActivityExplanation(activity) {
+    if (!activity || typeof activity !== 'object') return '';
+    const expl = (activity.explanation || '').toString().trim();
+    if (expl) return expl;
+    const story = _storyCore(activity.event_story || activity.story || '');
+    if (story) return story;
+    const ev = (activity.event || activity.event_name || activity.type || '').toString().trim();
+    return ev || '';
+}
 
 // Diagram State for Interactivity
 window.diagramState = {
@@ -1195,6 +1087,26 @@ function renderUnifiedTreeSankey(flowData) {
         return '';
     }
 
+    // Dynamic: reuse the generic Sankey renderer so UI reflects backend events only.
+    // No predefined event lists or fixed x/y positions in the frontend.
+    const filterLabel = (flowData && flowData.filterLabel) ? flowData.filterLabel : '';
+    const diagramTitle = filterLabel ? (filterLabel + ' – Unified Sankey') : 'Unified Sankey';
+    const diagramHTML = (typeof renderSankeyDiagramSVG === 'function') ? renderSankeyDiagramSVG(flowData) : '';
+    return `
+        <section id="unified-tree-sankey-section" style="margin-bottom: 1.5rem;">
+            <h2 style="font-size: 1.6rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center;">
+                ${diagramTitle}
+            </h2>
+            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem; text-align: center;">
+                Rendered directly from backend event flows (no predefined event lists).
+            </p>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 16px; padding: 1.5rem;">
+                ${diagramHTML}
+            </div>
+        </section>
+    `;
+
+    /* Legacy fixed-position renderer (no longer used)
     const casePaths = flowData.case_paths || [];
 
     // Build unified event list similar to the filtered/tree diagram
@@ -1616,6 +1528,7 @@ function renderUnifiedTreeSankey(flowData) {
             </div>
         </section>
     `;
+*/
 }
 
 // Render Unified Case Flow Diagram – use the TRUE horizontal Sankey layout
@@ -2275,8 +2188,8 @@ function renderMergedCaseFlowDiagram(flowData) {
         });
         eventTypesSingle.push('End');
 
-        // Fixed positions to create a domain-aware tree layout (no duplicate nodes)
-        const fixedPositionsSingle = {
+        // Legacy fixed positions (no longer used) — keep commented out to avoid hardcoding.
+        /* const fixedPositionsSingle = {
             'Process': { x: 50, y: 250 },
             'Created Account': { x: 400, y: 150 },
             'Account Open': { x: 400, y: 150 },
@@ -2337,7 +2250,7 @@ function renderMergedCaseFlowDiagram(flowData) {
             'Discount Applied': { x: 800, y: 850 }, 'Case Escalated': { x: 920, y: 850 },
             'Case Resolved': { x: 80, y: 1000 }, 'Support Ticket Created': { x: 200, y: 1000 },
             'Support Ticket Closed': { x: 320, y: 1000 }, 'Account Frozen': { x: 440, y: 1000 }
-        };
+        }; */
 
         const boxWidth = 210;
         const boxHeight = 90;
@@ -4971,79 +4884,47 @@ function showRetailAnalysisResults(profile) {
             </section>
 
             ${(function () {
-                // Build the detected events set from all case activities
-                var detectedEvents = new Set();
-                caseDetails.forEach(function (c) {
+                // Dynamic event list: show only what backend detected (no predefined retail event sets).
+                var stats = {}; // ev -> {count, example}
+                (caseDetails || []).forEach(function (c) {
                     (c.activities || []).forEach(function (a) {
-                        if (a.event) detectedEvents.add(a.event);
+                        var ev = (a && a.event) ? String(a.event) : '';
+                        if (!ev) return;
+                        if (!stats[ev]) stats[ev] = { count: 0, example: '' };
+                        stats[ev].count += 1;
+                        if (!stats[ev].example) {
+                            stats[ev].example = getActivityExplanation(a) || ev;
+                        }
                     });
                 });
 
-                // Define event explanations by category
-                var eventExplanations = RETAIL_EVENT_EXPLANATIONS;
+                var events = Object.keys(stats);
+                events.sort(function (a, b) {
+                    return (stats[b].count || 0) - (stats[a].count || 0) || a.localeCompare(b);
+                });
 
-                // Group events by category (column-observed)
-                var categories = [
-                    {
-                        label: 'Customer Side Events',
-                        icon: '👤',
-                        color: '#3B82F6',
-                        events: ['Customer Visit', 'Product View', 'Product Search', 'Add To Cart', 'Remove From Cart', 'Apply Coupon', 'User Signed Up', 'User Logged In', 'User Logged Out']
-                    },
-                    {
-                        label: 'Checkout & Payment',
-                        icon: '🧾',
-                        color: '#F59E0B',
-                        events: ['Checkout Started', 'Address Entered', 'Payment Selected', 'Payment Success', 'Payment Failed', 'Order Placed', 'Order Confirmed', 'Invoice Generated']
-                    },
-                    {
-                        label: 'Fulfillment Events',
-                        icon: '📦',
-                        color: '#22C55E',
-                        events: ['Order Packed', 'Order Shipped', 'Out For Delivery', 'Order Delivered', 'Order Cancelled']
-                    },
-                    {
-                        label: 'Returns & Refunds',
-                        icon: '↩️',
-                        color: '#EF4444',
-                        events: ['Return Initiated', 'Return Received', 'Refund Processed']
-                    }
-                ];
-
-                // Build HTML for each category that has detected events
                 var html = '<section style="margin-bottom: 2.5rem;">';
-                html += '<h2 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--text-primary);">Retail Event Steps Explained</h2>';
-                html += '<p style="color: var(--text-muted); margin-bottom: 1.25rem; font-size: 0.95rem;">Each step in the workflow represents a specific action. Here are the events detected in your data:</p>';
-                html += '<div style="display: flex; flex-direction: column; gap: 1.25rem;">';
+                html += '<h2 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--text-primary);">Events Detected (from your data)</h2>';
+                html += '<p style="color: var(--text-muted); margin-bottom: 1.25rem; font-size: 0.95rem;">These event steps come directly from backend analysis of your uploaded tables (no predefined retail workflow).</p>';
 
-                var hasAnyCategory = false;
-                categories.forEach(function (cat) {
-                    var foundEvents = cat.events.filter(function (ev) { return detectedEvents.has(ev); });
-                    if (foundEvents.length === 0) return;
-                    hasAnyCategory = true;
-
-                    html += '<div style="background: #fefce8; border: 1px solid ' + cat.color + '33; border-radius: 12px; padding: 1rem 1.25rem;">';
-                    html += '<div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">';
-                    html += '<span style="font-size: 1.1rem;">' + cat.icon + '</span>';
-                    html += '<h3 style="font-size: 1.05rem; font-weight: 700; color: ' + cat.color + '; margin: 0;">' + cat.label + '</h3>';
-                    html += '</div>';
-                    html += '<div style="display: flex; flex-direction: column; gap: 0.5rem;">';
-
-                    foundEvents.forEach(function (ev) {
-                        var explanation = eventExplanations[ev] || ev;
-                        html += '<div style="display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0.75rem; background: white; border-radius: 8px; border-left: 3px solid ' + cat.color + ';">';
-                        html += '<span style="font-weight: 700; color: ' + cat.color + '; min-width: 140px; flex-shrink: 0;">' + ev + '</span>';
-                        html += '<span style="color: #475569; flex: 1;">' + explanation + '</span>';
-                        html += '</div>';
-                    });
-
-                    html += '</div></div>';
-                });
-
-                if (!hasAnyCategory) {
-                    html += '<div style="color: var(--text-muted); font-size: 0.95rem;">No standard retail events detected in the data.</div>';
+                if (!events.length) {
+                    html += '<div style="color: var(--text-muted); font-size: 0.95rem;">No events were detected in case activities.</div>';
+                    html += '</section>';
+                    return html;
                 }
 
+                html += '<div style="display: flex; flex-direction: column; gap: 0.5rem;">';
+                events.forEach(function (ev) {
+                    var ex = stats[ev].example || ev;
+                    var count = stats[ev].count || 0;
+                    html += '<div style="display:flex; align-items:flex-start; gap:0.75rem; padding:0.6rem 0.8rem; background:#fffbeb; border:1px solid rgba(245,158,11,0.25); border-left:3px solid #F59E0B; border-radius:10px;">';
+                    html += '<div style="min-width: 180px; flex-shrink:0;">';
+                    html += '<div style="font-weight:800; color:#92400e;">' + ev + '</div>';
+                    html += '<div style="font-size:0.8rem; color:#9a3412;">' + count + ' occurrence' + (count !== 1 ? 's' : '') + '</div>';
+                    html += '</div>';
+                    html += '<div style="color:#475569; font-size:0.9rem; line-height:1.35;">' + ex + '</div>';
+                    html += '</div>';
+                });
                 html += '</div></section>';
                 return html;
             })()}
@@ -5482,8 +5363,7 @@ window.showFinanceCaseDetails = function (caseIndex) {
         const rawPreview = typeof raw === 'object' && Object.keys(raw).length
             ? Object.entries(raw).slice(0, 5).map(function (kv) { return kv[0] + ': ' + (kv[1] || ''); }).join('; ')
             : '';
-        let explanation = FINANCE_EVENT_EXPLANATIONS[ev];
-        if (!explanation) explanation = ev;
+        let explanation = getActivityExplanation(a) || ev;
         html += `
             <div style="padding: 0.6rem 0.8rem; background: #eef2ff; border-left: 3px solid #4F46E5; border-radius: 8px; font-size: 0.9rem;">
                 <div style="display: flex; flex-direction: column; margin-bottom: 0.3rem;">
@@ -5546,9 +5426,7 @@ window.showInsuranceCaseDetails = function (caseIndex) {
         const rawPreview = typeof raw === 'object' && Object.keys(raw).length
             ? Object.entries(raw).slice(0, 5).map(function (kv) { return kv[0] + ': ' + (kv[1] || ''); }).join('; ')
             : '';
-        let explanation = INSURANCE_EVENT_EXPLANATIONS[ev];
-        if (!explanation && story && typeof story === 'string') explanation = story.split('[')[0].trim();
-        if (!explanation) explanation = ev;
+        let explanation = getActivityExplanation(a) || ev;
         html += `
             <div style="padding: 0.6rem 0.8rem; background: #f5f3ff; border-left: 3px solid #7C3AED; border-radius: 8px; font-size: 0.9rem;">
                 <div style="display: flex; flex-direction: column; margin-bottom: 0.3rem;">
@@ -5609,12 +5487,8 @@ window.showRetailCaseDetails = function (caseIndex) {
             .map(function (k) { return k + ': ' + rec[k]; })
             .join(' · ');
 
-        // Robust explanation: lookup -> fallback to story core -> fallback to event name
-        let explanation = RETAIL_EVENT_EXPLANATIONS[ev];
-        if (!explanation && story && typeof story === 'string') {
-            explanation = story.split('[')[0].trim();
-        }
-        if (!explanation) explanation = ev;
+        // Explanation: backend-provided event_story/explanation, fallback to event name.
+        let explanation = getActivityExplanation(a) || ev;
 
         html += `
             <div style="padding: 0.6rem 0.8rem; background: #fffbeb; border-left: 3px solid #F59E0B; border-radius: 8px; font-size: 0.9rem;">

@@ -9,6 +9,12 @@ import pandas as pd
 from typing import Dict, Any, List, Tuple, Optional
 from models import TableAnalysis
 import re
+from dynamic_event_detector import (
+    find_best_timestamp_column,
+    scan_row_for_event_patterns,
+    detect_datetime_columns_by_type,
+    infer_event_from_datetime_column
+)
 
 
 # Columns to EXCLUDE - these are date of birth, not event dates
@@ -309,7 +315,12 @@ class HealthcareAnalyzer:
             if 'bill_date' in col.lower() and is_parseable(col):
                 return [(col, None)]
 
-        # 6. Fallback: any date/timestamp column
+        # 6. ENHANCED: Use data type detection when column name matching fails
+        dt_result = find_best_timestamp_column(df, exclude_dob=True)
+        if dt_result:
+            return [dt_result]
+        
+        # 7. Fallback: any date/timestamp column
         candidates = []
         for col in df.columns:
             if self._is_dob_column(col):
@@ -1164,10 +1175,28 @@ class HealthcareAnalyzer:
 
         # 1) FIRST: Scan row data values for event patterns (actual data, not column names)
         #    This catches events that might be in status columns, description fields, etc.
+        # ENHANCED: Use dynamic detector for better pattern matching
         if raw:
             columns_list = list(raw.keys())
             # Create a simple row-like object for scanning
             row_data = {col: raw.get(col, '') for col in columns_list}
+            
+            # Build healthcare keywords set
+            healthcare_keywords = {
+                'patient registered', 'appointment', 'doctor assigned', 'admission', 'discharge',
+                'lab test', 'lab result', 'prescription', 'pharmacy', 'insurance', 'billing',
+                'payment', 'treatment', 'procedure', 'login', 'logout', 'followup'
+            }
+            
+            # Use dynamic detector - create a Series-like object
+            row_series = pd.Series(row_data)
+            scanned_event = scan_row_for_event_patterns(
+                row_series, columns_list, healthcare_keywords, domain='healthcare'
+            )
+            if scanned_event:
+                return scanned_event
+            
+            # Fallback to original method
             scanned_event = self._scan_row_for_event_pattern(row_data, columns_list)
             if scanned_event:
                 return scanned_event
@@ -1181,6 +1210,11 @@ class HealthcareAnalyzer:
         # 3) Otherwise, try deriving from the time column name (register_time, bill_time, etc.).
         if time_col:
             event = self._time_column_to_event_name(time_col)
+            # ENHANCED: Try dynamic detector if column name doesn't give event
+            if not event or event in ('Other', 'Unknown'):
+                inferred = infer_event_from_datetime_column(time_col, domain='healthcare')
+                if inferred:
+                    event = inferred
             if event and event not in ('Other', 'Unknown'):
                 return event
 

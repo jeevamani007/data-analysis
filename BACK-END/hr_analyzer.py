@@ -16,6 +16,12 @@ from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 
 from models import TableAnalysis
+from dynamic_event_detector import (
+    find_best_timestamp_column,
+    scan_row_for_event_patterns,
+    detect_datetime_columns_by_type,
+    infer_event_from_datetime_column
+)
 
 
 HR_CASE_GAP_HOURS = 24.0
@@ -233,10 +239,11 @@ class HRTimelineAnalyzer:
         self.observed_patterns: Dict[str, Dict[str, Any]] = {}  # column_name -> {patterns}
         self.value_to_event_map: Dict[str, str] = {}  # observed_value -> event_name
 
-    def _time_column_to_hr_event(self, col_name: str) -> str:
-        """Derive event from timestamp column name with confidence scoring."""
+    def _time_column_to_hr_event(self, col_name: str) -> Optional[str]:
+        """Derive event from timestamp column name with confidence scoring.
+        Returns None instead of default to let caller decide fallback."""
         if not col_name or not str(col_name).strip():
-            return "Employee profile creation"
+            return None
         c = str(col_name).lower().replace("-", "_").replace(" ", "_")
         for suf in ["_time", "_date", "_timestamp", "_at", "_datetime"]:
             if c.endswith(suf):
@@ -415,8 +422,8 @@ class HRTimelineAnalyzer:
             if "employee_status" in c and "closed" in c:
                 return "Employee status closed"
         
-        # Default fallback only if no specific pattern matched
-        return "Employee profile creation"
+        # Return None if no specific pattern matched - let caller decide fallback
+        return None
 
     def _find_user_col(self, df: pd.DataFrame) -> Optional[str]:
         """Dynamically detect user/employee column based on data patterns, not hardcoded names."""
@@ -625,7 +632,7 @@ class HRTimelineAnalyzer:
                 low_vals = [v.lower().replace(" ", "_").replace("-", "_") for v in vals]
                 valid = sum(
                     1 for v, lv in zip(vals, low_vals)
-                    if self._normalize_event_from_data(v) in HR_EVENT_DISPLAY
+                    if (self._normalize_event_from_data(v) or "") in HR_EVENT_DISPLAY
                     or any(tok in lv for tok in [
                         "recruitment", "job", "candidate", "interview", "offer",
                         "onboarding", "employee_profile", "joining", "induction", "document",
@@ -684,14 +691,23 @@ class HRTimelineAnalyzer:
             if cand in cols_lower:
                 return cols_lower[cand]
         return None
+    
+    def _find_status_col(self, df: pd.DataFrame) -> Optional[str]:
+        """Detect generic status column (status, state, stage, etc.)."""
+        for col in df.columns:
+            cl = col.lower()
+            if "status" in cl or "state" in cl or "stage" in cl:
+                return col
+        return None
 
-    def _normalize_event_from_data(self, val: Any) -> str:
-        """Normalize event name from row data using learned patterns first, then fallback."""
+    def _normalize_event_from_data(self, val: Any) -> Optional[str]:
+        """Normalize event name from row data using learned patterns first, then fallback.
+        Returns None instead of default if no match found - caller should handle fallback."""
         if val is None or (isinstance(val, float) and pd.isna(val)):
-            return "Employee profile creation"
+            return None
         s = str(val).strip()
         if not s:
-            return "Employee profile creation"
+            return None
         
         # FIRST: Check learned patterns from actual data (data-driven)
         val_normalized = s.lower().strip()
@@ -705,8 +721,16 @@ class HRTimelineAnalyzer:
         if matched and matched != "Employee profile creation":
             return matched
         
+        # Handle camelCase/PascalCase: "SalaryUpdated" -> "salary_updated"
+        import re
+        # Split camelCase/PascalCase into words
+        camel_case_split = re.sub(r'([a-z])([A-Z])', r'\1_\2', s)
+        # Also handle sequences of capitals: "HRDiscussion" -> "HR_Discussion"
+        camel_case_split = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1_\2', camel_case_split)
+        
         # SECOND: Direct exact match against HR events
         low = s.lower().replace(" ", "_").replace("-", "_").replace("/", "_")
+        low_camel = camel_case_split.lower().replace(" ", "_").replace("-", "_").replace("/", "_")
         for disp in HR_EVENT_DISPLAY:
             key = disp.lower().replace(" ", "_").replace("/", "_").replace("&", "_")
             if key == low:
@@ -768,6 +792,8 @@ class HRTimelineAnalyzer:
             "monthly_payroll": "Monthly payroll initiated",
             "attendance_locked": "Attendance locked",
             "salary_calculated": "Salary calculated",
+            "salary_updated": "Increment approved",  # SalaryUpdated -> Increment approved
+            "salary_update": "Increment approved",
             "tax_calculated": "Tax calculated",
             "deduction_applied": "Deduction applied",
             "bonus_allocated": "Bonus allocated",
@@ -815,13 +841,17 @@ class HRTimelineAnalyzer:
             "employee_status_closed": "Employee status closed",
         }
         
-        # Check variant map
+        # Check variant map with both original and camelCase-normalized versions
         if low in variant_map:
             return variant_map[low]
+        if low_camel in variant_map:
+            return variant_map[low_camel]
         
-        # Check if any variant key is contained in the input
+        # Check if any variant key is contained in the input (both versions)
         for variant, display_name in variant_map.items():
             if variant in low or low in variant:
+                return display_name
+            if variant in low_camel or low_camel in variant:
                 return display_name
         
         # Last resort: check if any display name key matches
@@ -830,8 +860,8 @@ class HRTimelineAnalyzer:
             if key in low or low in key:
                 return disp
         
-        # Default fallback
-        return "Employee profile creation"
+        # No match found - return None to let caller decide fallback
+        return None
 
     def _find_datetime_columns(self, df: pd.DataFrame) -> Optional[Tuple[str, Optional[str]]]:
         """Find (date_col, time_col). More lenient detection for HR domain files."""
@@ -1202,7 +1232,7 @@ class HRTimelineAnalyzer:
                             return matched
                         
                         normalized = self._normalize_event_from_data(s)
-                        if normalized in HR_EVENT_DISPLAY and normalized != "Employee profile creation":
+                        if normalized and normalized in HR_EVENT_DISPLAY and normalized != "Employee profile creation":
                             return normalized
                         # Try partial matching
                         low = s.lower().replace(" ", "_").replace("-", "_")
@@ -1241,7 +1271,7 @@ class HRTimelineAnalyzer:
             # Check if value looks like an event
             # Try direct normalization first
             normalized = self._normalize_event_from_data(s)
-            if normalized in HR_EVENT_DISPLAY and normalized != "Employee profile creation":
+            if normalized and normalized in HR_EVENT_DISPLAY and normalized != "Employee profile creation":
                 return normalized
             
             # Validate that text is likely an HR event
@@ -1839,23 +1869,55 @@ class HRTimelineAnalyzer:
                     if ts is None or pd.isna(ts):
                         continue
 
-                    # Event name: prefer explicit event_name column, else derive from the timestamp column name
+                    # Event name: prefer explicit event_name/event_type column FIRST (highest priority)
                     source = "wide_time_column"
                     event_name = None
                     if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
-                        maybe = self._normalize_event_from_data(row[event_name_col])
-                        if maybe and maybe in HR_EVENT_DISPLAY:
-                            event_name = maybe
-                            source = "event_column"
+                        val_str = str(row[event_name_col]).strip()
+                        if val_str:
+                            # Try normalization first (handles camelCase like "SalaryUpdated")
+                            maybe = self._normalize_event_from_data(val_str)
+                            if maybe and maybe in HR_EVENT_DISPLAY and maybe != "Employee profile creation":
+                                event_name = maybe
+                                source = "event_column"
+                            else:
+                                # Try pattern matching
+                                matched = self._match_value_to_event(val_str)
+                                if matched and matched != "Employee profile creation":
+                                    event_name = matched
+                                    source = "event_column_pattern"
+                    # OBSERVE ALL COLUMNS AND VALUES - scan row data before falling back to column name
+                    # Only if event_type column didn't give us a valid event
+                    if not event_name or event_name == "Employee profile creation":
+                        # Build HR keywords set
+                        hr_keywords = {
+                            'job requisition', 'job posting', 'candidate application', 'interview', 'offer letter',
+                            'employee profile', 'employee id', 'document', 'background verification', 'joining',
+                            'clock in', 'clock out', 'shift', 'leave', 'overtime', 'salary', 'payroll',
+                            'performance', 'goal', 'review', 'promotion', 'training', 'resignation', 'exit'
+                        }
+                        
+                        scanned = scan_row_for_event_patterns(row, list(df.columns), hr_keywords, domain='hr')
+                        if scanned:
+                            event_name = scanned
+                            source = "row_scan_dynamic"
+                        else:
+                            scanned = self._scan_row_for_event(row, list(df.columns), df)
+                            if scanned:
+                                event_name = scanned
+                                source = "row_scan"
+                    
+                    # If still no event from data, try column name patterns
+                    if not event_name:
+                        derived = self._derive_event_from_columns(row, list(df.columns), df)
+                        if derived:
+                            event_name = derived
+                            source = "column_pattern"
+                    
+                    # Last resort: derive from timestamp column name
                     if not event_name:
                         event_name = self._time_column_to_hr_event(time_col_name)
                         source = "column_name"
-                    # If column-name mapping is too generic, try row scan as a last improvement
-                    if not event_name or event_name == "Employee profile creation":
-                        scanned = self._scan_row_for_event(row, list(df.columns), df)
-                        if scanned:
-                            event_name = scanned
-                            source = "row_scan"
 
                     confidence = self._calculate_event_confidence(event_name, source, event_name_col, time_col_name, raw_record)
                     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if hasattr(ts, "strftime") else str(ts)
@@ -1917,7 +1979,8 @@ class HRTimelineAnalyzer:
         self._learn_patterns_from_data(df)
 
         user_col = self._find_user_col(df)
-        # event_name_col already detected above (kept for compatibility)
+        # Detect event_name/event_type column (CRITICAL - must be detected before processing rows)
+        event_name_col = self._find_event_name_col(df)
         case_id_col = self._find_case_id_col(df)
 
         events: List[Dict[str, Any]] = []
@@ -1935,58 +1998,122 @@ class HRTimelineAnalyzer:
                 v = row.get(c)
                 raw_record[c] = "" if (v is None or (isinstance(v, float) and pd.isna(v))) else str(v)
             
-            # Dynamic event detection: Try multiple sources in order
+            # Dynamic event detection: OBSERVE ALL COLUMNS AND VALUES FIRST
+            # Priority: Explicit event columns (event_type) > Actual data values > Column names > Defaults
             source = "unknown"
             event_name = None
             
-            # 1) Check explicit event_name column
+            # STEP 0: Check explicit event_name/event_type column FIRST (highest priority - explicit event data)
+            # This MUST be checked BEFORE any other scanning to prioritize explicit event columns
             if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
-                event_name = self._normalize_event_from_data(row[event_name_col])
-                if event_name and event_name in HR_EVENT_DISPLAY:
-                    source = "event_column"
+                val_str = str(row[event_name_col]).strip()
+                if val_str and val_str.lower() not in ("", "null", "none", "na", "n/a"):
+                    # Try normalization first (handles camelCase like "SalaryUpdated")
+                    normalized = self._normalize_event_from_data(val_str)
+                    if normalized and normalized in HR_EVENT_DISPLAY and normalized != "Employee profile creation":
+                        event_name = normalized
+                        source = "event_column"
+                    else:
+                        # Try pattern matching
+                        matched = self._match_value_to_event(val_str)
+                        if matched and matched != "Employee profile creation":
+                            event_name = matched
+                            source = "event_column_pattern"
+                    # If we found a valid event from event_type column, skip other scanning
+                    if event_name and event_name != "Employee profile creation":
+                        # We have a valid event from explicit column - skip to final validation
+                        pass
             
-            # 2) Scan ALL row data for event patterns (most thorough)
-            if not event_name or event_name == "Employee profile creation":
-                scanned = self._scan_row_for_event(row, list(df.columns), df)
-                if scanned:
+            # STEP 1: Scan ALL row values across ALL columns (observe actual data)
+            # This catches events in ANY column, not just event_name column
+            # Only do this if event_type column didn't give us a valid event
+            if not event_name:
+                hr_keywords = {
+                    'job requisition', 'job posting', 'candidate application', 'interview', 'offer letter',
+                    'employee profile', 'employee id', 'document', 'background verification', 'joining',
+                    'clock in', 'clock out', 'shift', 'leave', 'overtime', 'salary', 'payroll',
+                    'performance', 'goal', 'review', 'promotion', 'training', 'resignation', 'exit'
+                }
+                
+                # Try dynamic detector first (scans all columns)
+                scanned = scan_row_for_event_patterns(row, list(df.columns), hr_keywords, domain='hr')
+                if scanned and scanned != "Employee profile creation":
                     event_name = scanned
-                    source = "row_scan"
+                    source = "row_scan_dynamic"
+                
+                # Also try comprehensive row scan
+                if not event_name:
+                    scanned = self._scan_row_for_event(row, list(df.columns), df)
+                    if scanned and scanned != "Employee profile creation":
+                        event_name = scanned
+                        source = "row_scan"
             
-            # 3) Derive from column name patterns + row values
-            if not event_name or event_name == "Employee profile creation":
-                # Try to derive event from column names and their values
+            # STEP 2: Check ALL non-date, non-ID columns for event-like values
+            # Scan every column value, not just event_name column
+            if not event_name:
+                for col in df.columns:
+                    if col.startswith("__"):
+                        continue
+                    col_lower = col.lower()
+                    # Skip date/time/timestamp columns and pure ID columns
+                    if any(k in col_lower for k in ["date", "time", "timestamp", "_at"]):
+                        continue
+                    if col_lower.endswith("_id") or col_lower == "id":
+                        continue
+                    
+                    val = row.get(col)
+                    if val is None or (isinstance(val, float) and pd.isna(val)):
+                        continue
+                    
+                    val_str = str(val).strip()
+                    if not val_str:
+                        continue
+                    
+                    # Skip pure numeric IDs (long numbers)
+                    if val_str.isdigit() and len(val_str) > 10:
+                        continue
+                    
+                    # Try to match this value to an HR event
+                    # Use pattern matching first (more flexible)
+                    matched = self._match_value_to_event(val_str)
+                    if matched and matched != "Employee profile creation":
+                        event_name = matched
+                        source = f"column_value_scan_{col}"
+                        break
+                    
+                    # Try normalization
+                    normalized = self._normalize_event_from_data(val_str)
+                    if normalized and normalized in HR_EVENT_DISPLAY and normalized != "Employee profile creation":
+                        event_name = normalized
+                        source = f"column_value_normalize_{col}"
+                        break
+            
+            # STEP 3: Already checked event_type column in STEP 0 - skip here to avoid duplicate
+            
+            # STEP 4: Derive from column name patterns + row values (observe column+value combinations)
+            if not event_name:
                 derived = self._derive_event_from_columns(row, list(df.columns), df)
                 if derived:
                     event_name = derived
                     source = "column_pattern"
             
-            # 4) Derive from timestamp column name (fallback)
-            if not event_name or event_name == "Employee profile creation":
-                event_name = self._time_column_to_hr_event(event_time_col)
-                source = "column_name"
-            
-            # 5) Last resort: Use first non-date, non-ID column value as event hint
-            if not event_name or event_name == "Employee profile creation":
-                for col in df.columns:
-                    if col.startswith("__"):
-                        continue
-                    col_lower = col.lower()
-                    if any(k in col_lower for k in ["date", "time", "timestamp", "_id", "_code"]):
-                        continue
-                    val = row.get(col)
-                    if val is not None and not (isinstance(val, float) and pd.isna(val)):
-                        val_str = str(val).strip()
-                        if val_str and not val_str.isdigit() and len(val_str) < 50:
-                            # Try to normalize this value
-                            normalized = self._normalize_event_from_data(val_str)
-                            if normalized and normalized in HR_EVENT_DISPLAY:
-                                event_name = normalized
-                                source = "value_fallback"
-                                break
-            
-            # Final fallback: Use table name or generic event
+            # STEP 5: Derive from timestamp column name (fallback - only if no event found from data)
             if not event_name:
-                # Try to infer from table name
+                event_name = self._time_column_to_hr_event(event_time_col)
+                # If it defaults to "Employee profile creation", try dynamic detector
+                if not event_name or event_name == "Employee profile creation":
+                    inferred = infer_event_from_datetime_column(event_time_col, domain='hr')
+                    if inferred and inferred != "Employee profile creation":
+                        event_name = inferred
+                # Only use column name if it's not the default fallback
+                if event_name and event_name != "Employee profile creation":
+                    source = "column_name"
+                else:
+                    # Don't use "Employee profile creation" from column name - try other sources first
+                    event_name = None
+            
+            # STEP 6: Last resort - table name inference (ONLY if truly no event detected)
+            if not event_name:
                 table_name_lower = table.table_name.lower()
                 if "attendance" in table_name_lower:
                     event_name = "Clock-in"
@@ -1998,9 +2125,47 @@ class HRTimelineAnalyzer:
                     event_name = "Goal creation"
                 elif "exit" in table_name_lower or "resignation" in table_name_lower:
                     event_name = "Resignation submitted"
+                elif "interview" in table_name_lower:
+                    event_name = "Interview scheduled"
+                elif "offer" in table_name_lower:
+                    event_name = "Offer letter generated"
+                elif "leave" in table_name_lower:
+                    event_name = "Leave application submitted"
+                elif "promotion" in table_name_lower:
+                    event_name = "Promotion initiated"
+                elif "increment" in table_name_lower or "salary" in table_name_lower:
+                    event_name = "Increment initiated"
+                elif "candidate" in table_name_lower:
+                    event_name = "Candidate application received"
+                elif "job" in table_name_lower or "requisition" in table_name_lower:
+                    event_name = "Job Requisition creation"
                 else:
-                    event_name = "Employee profile creation"  # Last resort
-                source = "table_name_fallback"
+                    # Check if we can infer anything from column names before defaulting
+                    col_names_lower = " ".join([c.lower() for c in df.columns])
+                    if "join" in col_names_lower or "joining" in col_names_lower:
+                        event_name = "Joining date confirmation"
+                    elif "document" in col_names_lower:
+                        event_name = "Document submission"
+                    elif "background" in col_names_lower or "verification" in col_names_lower:
+                        event_name = "Background verification"
+                    elif "salary" in col_names_lower and ("update" in col_names_lower or "increment" in col_names_lower):
+                        event_name = "Increment approved"
+                    elif "status" in col_names_lower:
+                        # Check status column value if available
+                        status_col = self._find_status_col(df)
+                        if status_col and status_col in row.index:
+                            status_val = str(row[status_col]).strip().lower()
+                            if status_val and status_val not in ("", "null", "none", "na"):
+                                # Try to derive event from status
+                                normalized = self._normalize_event_from_data(status_val)
+                                if normalized and normalized in HR_EVENT_DISPLAY and normalized != "Employee profile creation":
+                                    event_name = normalized
+                                    source = "status_column"
+                    # Only use Employee profile creation if we truly have NO other information
+                    if not event_name:
+                        event_name = "Employee profile creation"  # Absolute last resort
+                if not source or source == "unknown":
+                    source = "table_name_fallback"
             
             # Calculate confidence
             confidence = self._calculate_event_confidence(event_name, source, event_name_col, event_time_col, raw_record)

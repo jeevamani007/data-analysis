@@ -23,6 +23,12 @@ from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 
 from models import TableAnalysis
+from dynamic_event_detector import (
+    find_best_timestamp_column,
+    scan_row_for_event_patterns,
+    detect_datetime_columns_by_type,
+    infer_event_from_datetime_column
+)
 
 
 INSURANCE_CASE_GAP_HOURS = 24.0
@@ -327,6 +333,12 @@ class InsuranceTimelineAnalyzer:
         date_candidates = [c for c in df.columns if any(k in c.lower() for k in ["date", "time", "timestamp"]) and is_parseable(c)]
         if date_candidates:
             return (date_candidates[0], None)
+        
+        # ENHANCED: Use data type detection when column name matching fails
+        dt_result = find_best_timestamp_column(df, exclude_dob=True)
+        if dt_result:
+            return dt_result
+        
         for col in df.columns:
             if is_parseable(col):
                 return (col, None)
@@ -432,15 +444,33 @@ class InsuranceTimelineAnalyzer:
             if pd.isna(ts):
                 continue
             # Layered event detection (narrow/log format row)
+            # ENHANCED: Use dynamic detector for better pattern matching
             event_name = None
             if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
                 event_name = self._normalize_event_from_data(row[event_name_col])
             if not event_name:
-                scanned = self._scan_row_for_event_pattern(row, list(df.columns))
+                # Build insurance keywords set
+                insurance_keywords = {
+                    'customer registered', 'kyc', 'policy quoted', 'policy purchased', 'policy activated',
+                    'premium due', 'premium paid', 'payment failed', 'policy renewed', 'policy expired',
+                    'claim requested', 'claim registered', 'claim verified', 'claim assessed',
+                    'claim approved', 'claim rejected', 'claim paid', 'nominee updated', 'policy cancelled'
+                }
+                
+                scanned = scan_row_for_event_patterns(row, list(df.columns), insurance_keywords, domain='insurance')
                 if scanned:
                     event_name = scanned
+                else:
+                    scanned = self._scan_row_for_event_pattern(row, list(df.columns))
+                    if scanned:
+                        event_name = scanned
             if not event_name:
                 event_name = self._time_column_to_insurance_event(event_time_col)
+                # ENHANCED: Try dynamic detector if column name doesn't give event
+                if not event_name or event_name in ("Other", "Unknown"):
+                    inferred = infer_event_from_datetime_column(event_time_col, domain='insurance')
+                    if inferred:
+                        event_name = inferred
 
             user_id = None
             if user_col and user_col in row.index and pd.notna(row[user_col]):

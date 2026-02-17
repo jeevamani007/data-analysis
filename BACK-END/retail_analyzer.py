@@ -23,6 +23,13 @@ from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 
 from models import TableAnalysis
+from dynamic_event_detector import (
+    find_best_timestamp_column,
+    scan_row_for_event_patterns,
+    detect_datetime_columns_by_type,
+    infer_event_from_datetime_column,
+    infer_event_from_numeric_column
+)
 
 
 RETAIL_CASE_GAP_HOURS = 24.0  # fallback gap-based split if needed
@@ -326,6 +333,7 @@ class RetailTimelineAnalyzer:
         """
         Find (date_col, time_col) for EVENT TIME – when the retail action happened.
         Prefers columns with date/time/timestamp/created/order/payment semantics.
+        ENHANCED: Uses data type detection when column name matching fails.
         """
 
         def is_parseable(col: str) -> bool:
@@ -372,7 +380,12 @@ class RetailTimelineAnalyzer:
             time_col = time_candidates[0] if time_candidates else None
             return (date_col, time_col if time_col in df.columns else None)
 
-        # 3) Fallback: any parseable column
+        # 3) ENHANCED: Use data type detection when column name matching fails
+        dt_result = find_best_timestamp_column(df, exclude_dob=True)
+        if dt_result:
+            return dt_result
+
+        # 4) Fallback: any parseable column
         for col in df.columns:
             if is_parseable(col):
                 return (col, None)
@@ -463,7 +476,7 @@ class RetailTimelineAnalyzer:
             'Payment Selected': ['payment selected', 'payment method', 'select payment', 'payment choose', 'payment option'],
             'Payment Success': ['payment success', 'payment successful', 'paid', 'payment completed', 'payment succeed', 'payment success', 'transaction success'],
             'Payment Failed': ['payment failed', 'payment fail', 'payment error', 'transaction failed', 'payment declined', 'payment reject'],
-            'Order Placed': ['order placed', 'order created', 'order', 'placed order', 'new order', 'order new', 'order submit'],
+            'Order Placed': ['order placed', 'order created', 'order', 'placed order', 'new order', 'order new', 'order submit', 'customer placed order'],
             'Order Confirmed': ['order confirmed', 'confirmed', 'order confirmation', 'confirm order'],
             'Invoice Generated': ['invoice', 'invoice generated', 'invoice created', 'bill generated', 'bill created'],
             'Order Packed': ['packed', 'order packed', 'packing', 'pack order', 'order packing'],
@@ -494,6 +507,58 @@ class RetailTimelineAnalyzer:
                 for pattern in patterns:
                     if pattern in val_str:
                         return event_name
+        
+        return None
+    
+    def _derive_event_from_columns(self, row: Any, columns: List[str], df: pd.DataFrame, status_col: Optional[str]) -> Optional[str]:
+        """Derive event from column name patterns combined with their values."""
+        # Check status column + value combinations
+        if status_col and status_col in row.index:
+            status_val = self._get_status_value(row, status_col)
+            if status_val:
+                normalized = self._normalize_event_from_data(status_val)
+                if normalized and normalized in self.step_order:
+                    return normalized
+        
+        # Check other columns for event-like patterns
+        for col in columns:
+            if col.startswith("__"):
+                continue
+            col_lower = col.lower()
+            val = row.get(col)
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                continue
+            
+            val_str = str(val).strip().lower()
+            if not val_str or val_str.isdigit():
+                continue
+            
+            # Check column + value combinations
+            if "order" in col_lower:
+                if "placed" in val_str or "created" in val_str or "new" in val_str:
+                    return "Order Placed"
+                elif "confirmed" in val_str:
+                    return "Order Confirmed"
+                elif "shipped" in val_str or "ship" in val_str:
+                    return "Order Shipped"
+                elif "delivered" in val_str or "delivery" in val_str:
+                    return "Order Delivered"
+                elif "cancelled" in val_str or "canceled" in val_str:
+                    return "Order Cancelled"
+            
+            if "payment" in col_lower:
+                if "success" in val_str or "paid" in val_str or "completed" in val_str:
+                    return "Payment Success"
+                elif "failed" in val_str or "fail" in val_str:
+                    return "Payment Failed"
+                elif "selected" in val_str or "method" in val_str:
+                    return "Payment Selected"
+            
+            if "cart" in col_lower:
+                if "add" in val_str or "added" in val_str:
+                    return "Add To Cart"
+                elif "remove" in val_str or "removed" in val_str:
+                    return "Remove From Cart"
         
         return None
 
@@ -691,31 +756,159 @@ class RetailTimelineAnalyzer:
             ts = row["__dt"]
             if pd.isna(ts):
                 continue
-            # 1) FIRST: Scan row data values for event patterns (actual data, not column names)
-            #    This catches events that might be in status columns, description fields, etc.
-            scanned_event = self._scan_row_for_event_pattern(row, list(df.columns))
-            if scanned_event:
-                event_name = scanned_event  # Already in canonical format
-            # 2) SECOND: Check event_name column if available (data value)
-            elif event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
-                event_name = self._normalize_event_from_data(row[event_name_col])
-                # Normalize to canonical if needed
-                if event_name and event_name not in self.step_order:
-                    event_name = self._normalize_legacy_event(event_name)
-            # 3) THIRD: Derive from time column name
-            else:
-                event_name = self._time_column_to_retail_event(event_time_col)
-                if not event_name or event_name in ("Other", "Unknown"):
-                    event_name = self._infer_event_for_row(table.table_name, df, row, status_col)
-                    event_name = self._normalize_legacy_event(event_name)
+            # OBSERVE ALL COLUMNS AND VALUES FIRST - Priority: Explicit event columns > Data values > Column names > Defaults
+            event_name = None
+            source = "unknown"
             
-            # Ensure event_name is never None or empty and is in canonical format - critical for Sankey diagram
+            # STEP 0: Check explicit event_name/event_type column FIRST (highest priority - explicit event data)
+            # This MUST be checked BEFORE any other scanning to prioritize explicit event columns
+            if event_name_col and event_name_col in row.index and pd.notna(row[event_name_col]):
+                val_str = str(row[event_name_col]).strip()
+                if val_str and val_str.lower() not in ("", "null", "none", "na", "n/a"):
+                    # Try normalization first (handles camelCase like "OrderPlaced")
+                    normalized = self._normalize_event_from_data(val_str)
+                    if normalized and normalized in self.step_order:
+                        event_name = normalized
+                        source = "event_column"
+                    else:
+                        # Try legacy normalization
+                        legacy_normalized = self._normalize_legacy_event(normalized) if normalized else None
+                        if legacy_normalized and legacy_normalized in self.step_order:
+                            event_name = legacy_normalized
+                            source = "event_column"
+            
+            # STEP 1: Scan ALL row values across ALL columns (observe actual data)
+            # Only do this if event_type column didn't give us a valid event
+            if not event_name:
+                retail_keywords = {
+                    'customer visit', 'product view', 'product search', 'add to cart', 'remove from cart',
+                    'checkout', 'payment', 'order placed', 'customer placed order', 'order created', 'order confirmed', 
+                    'order shipped', 'order delivered', 'return', 'refund', 'login', 'logout', 'signup', 'sign up'
+                }
+                
+                # Try dynamic detector (scans all columns)
+                scanned_event = scan_row_for_event_patterns(row, list(df.columns), retail_keywords, domain='retail')
+                if scanned_event:
+                    event_name = scanned_event
+                    source = "row_scan_dynamic"
+                
+                # Also try comprehensive row scan
+                if not event_name:
+                    scanned_event = self._scan_row_for_event_pattern(row, list(df.columns))
+                    if scanned_event:
+                        event_name = scanned_event  # Already in canonical format
+                        source = "row_scan"
+            
+            # STEP 2: Check ALL non-date, non-ID columns for event-like values
+            # Scan every column value systematically, not just event_name column
+            if not event_name:
+                for col in df.columns:
+                    if col.startswith("__"):
+                        continue
+                    col_lower = col.lower()
+                    # Skip date/time/timestamp columns and pure ID columns
+                    if any(k in col_lower for k in ["date", "time", "timestamp", "_at"]):
+                        continue
+                    if col_lower.endswith("_id") or col_lower == "id" or "order_no" in col_lower:
+                        continue
+                    
+                    val = row.get(col)
+                    if val is None or (isinstance(val, float) and pd.isna(val)):
+                        continue
+                    
+                    val_str = str(val).strip()
+                    if not val_str:
+                        continue
+                    
+                    # Skip pure numeric IDs (long numbers)
+                    if val_str.isdigit() and len(val_str) > 10:
+                        continue
+                    
+                    # Try to normalize this value
+                    normalized = self._normalize_event_from_data(val_str)
+                    if normalized and normalized in self.step_order:
+                        event_name = normalized
+                        break
+                    
+                    # Try legacy normalization
+                    legacy_normalized = self._normalize_legacy_event(normalized) if normalized else None
+                    if legacy_normalized and legacy_normalized in self.step_order:
+                        event_name = legacy_normalized
+                        break
+            
+            # STEP 3: Already checked event_type column in STEP 0 - skip here to avoid duplicate
+            
+            # STEP 4: Check status column and other event-related columns
+            if not event_name:
+                # Check status column value
+                if status_col and status_col in row.index:
+                    status_val = self._get_status_value(row, status_col)
+                    if status_val:
+                        normalized = self._normalize_event_from_data(status_val)
+                        if normalized and normalized in self.step_order:
+                            event_name = normalized
+                            source = "status_column"
+                        elif normalized:
+                            # Try legacy normalization
+                            legacy_normalized = self._normalize_legacy_event(normalized)
+                            if legacy_normalized and legacy_normalized in self.step_order:
+                                event_name = legacy_normalized
+                                source = "status_column"
+            
+            # STEP 5: Derive from column name patterns + row values (observe column+value combinations)
+            if not event_name:
+                derived = self._derive_event_from_columns(row, list(df.columns), df, status_col)
+                if derived:
+                    event_name = derived
+                    source = "column_pattern"
+            
+            # STEP 6: Derive from time column name (fallback - only if no event found from data)
+            if not event_name:
+                event_name = self._time_column_to_retail_event(event_time_col)
+                # ENHANCED: Try dynamic detector if column name doesn't give event
+                if not event_name or event_name in ("Other", "Unknown", "Order Placed"):
+                    inferred = infer_event_from_datetime_column(event_time_col, domain='retail')
+                    if inferred and inferred != "Order Placed":
+                        event_name = inferred
+                # Only use column name if it's not the default fallback
+                if event_name and event_name != "Order Placed":
+                    source = "column_name"
+                else:
+                    # Don't use "Order Placed" from column name - try other sources first
+                    event_name = None
+            
+            # STEP 7: Infer from table/row context (ONLY if truly no event detected)
+            if not event_name:
+                inferred = self._infer_event_for_row(table.table_name, df, row, status_col)
+                if inferred:
+                    event_name = self._normalize_legacy_event(inferred)
+                    source = "table_inference"
+            
+            # STEP 8: Final fallback - ensure event_name is never None (ONLY if truly no event detected)
             if not event_name or not str(event_name).strip() or event_name in ("Other", "Unknown", "None"):
-                # Final fallback: use table name or generic retail event
-                event_name = self._infer_event_for_row(table.table_name, df, row, status_col)
-                event_name = self._normalize_legacy_event(event_name)
-                if not event_name or not str(event_name).strip():
-                    event_name = "Order Placed"  # Safe default for retail
+                # Check column names for hints before defaulting
+                col_names_lower = " ".join([c.lower() for c in df.columns])
+                if "checkout" in col_names_lower:
+                    event_name = "Checkout Started"
+                elif "payment" in col_names_lower:
+                    event_name = "Payment Success"
+                elif "ship" in col_names_lower or "delivery" in col_names_lower:
+                    event_name = "Order Shipped"
+                elif "cart" in col_names_lower:
+                    event_name = "Add To Cart"
+                elif "view" in col_names_lower:
+                    event_name = "Product View"
+                elif "login" in col_names_lower or "signin" in col_names_lower:
+                    event_name = "User Logged In"
+                elif "signup" in col_names_lower or "register" in col_names_lower:
+                    event_name = "User Signed Up"
+                elif "order" in col_names_lower and ("placed" in col_names_lower or "created" in col_names_lower):
+                    # If we see order-related columns, it's likely Order Placed
+                    event_name = "Order Placed"
+                else:
+                    event_name = "Order Placed"  # Absolute last resort
+                if not source or source == "unknown":
+                    source = "fallback"
             
             # Final validation: ensure event is in canonical step_order list
             # This ensures consistency across all events for Sankey diagram

@@ -10,6 +10,13 @@ from typing import Dict, List, Optional, Tuple, Any
 import re
 import pandas as pd
 from models import TableAnalysis
+from dynamic_event_detector import (
+    find_best_timestamp_column,
+    scan_row_for_event_patterns,
+    detect_datetime_columns_by_type,
+    infer_event_from_datetime_column,
+    infer_event_from_numeric_column
+)
 
 SESSION_START = {'login', 'session_start'}
 SESSION_END = {'logout', 'session_end'}
@@ -535,6 +542,15 @@ class BankingAnalyzer:
         amount_col = self._find_amount_col(df)
         date_col, time_col, ts_purpose, alt_logout_col = self._find_timestamp_cols(df)
 
+        # ENHANCED: If no timestamp found by column name, try data type detection
+        if not date_col:
+            dt_result = find_best_timestamp_column(df, exclude_dob=True)
+            if dt_result:
+                date_col, time_col = dt_result
+                # Infer purpose from column name
+                if date_col:
+                    ts_purpose = self._infer_time_purpose(date_col) or 'event'
+
         if not date_col:
             return [], {}
 
@@ -634,19 +650,43 @@ class BankingAnalyzer:
 
             # 0) Highest priority: scan row values for event patterns if no event_col exists.
             #    This helps when the file has no explicit event/type column, but event words appear in remarks/status.
+            # ENHANCED: Use dynamic detector for better pattern matching
             event = None
             if not event_col:
-                scanned = None
-                for c in df.columns:
-                    if str(c).startswith('__'):
-                        continue
-                    val = row.get(c)
-                    ev_guess = _normalize_event(val)
-                    if ev_guess in (SESSION_START | SESSION_END | PRE_LOGIN_EVENTS | MIDDLE_EVENTS | {'credit', 'debit', 'deposit', 'withdraw', 'refund', 'transfer', 'upi_debit', 'upi_credit', 'emi_payment', 'emi_due', 'check_balance', 'invalid_balance', 'negative_balance', 'updated'}):
-                        scanned = ev_guess
-                        break
+                # Build event keywords set for banking domain
+                banking_keywords = {
+                    'login', 'logout', 'credit', 'debit', 'deposit', 'withdraw', 'withdrawal',
+                    'refund', 'transfer', 'upi', 'emi', 'balance', 'check_balance',
+                    'invalid', 'negative', 'failed', 'declined', 'blocked', 'open', 'created', 'updated'
+                }
+                
+                # Use dynamic detector to scan row
+                scanned = scan_row_for_event_patterns(row, list(df.columns), banking_keywords, domain='banking')
                 if scanned:
-                    event = scanned
+                    # Normalize to banking event names
+                    event = _normalize_event(scanned)
+                
+                # Fallback: original scanning method
+                if not event:
+                    scanned = None
+                    for c in df.columns:
+                        if str(c).startswith('__'):
+                            continue
+                        val = row.get(c)
+                        ev_guess = _normalize_event(val)
+                        if ev_guess in (SESSION_START | SESSION_END | PRE_LOGIN_EVENTS | MIDDLE_EVENTS | {'credit', 'debit', 'deposit', 'withdraw', 'refund', 'transfer', 'upi_debit', 'upi_credit', 'emi_payment', 'emi_due', 'check_balance', 'invalid_balance', 'negative_balance', 'updated'}):
+                            scanned = ev_guess
+                            break
+                    if scanned:
+                        event = scanned
+                
+                # ENHANCED: If still no event, check numeric columns for amount-related events
+                if not event and amount_col and amount_col in row.index:
+                    amt_val = row.get(amount_col)
+                    if amt_val is not None and not (isinstance(amt_val, float) and pd.isna(amt_val)):
+                        inferred = infer_event_from_numeric_column(amount_col, amt_val, domain='banking')
+                        if inferred:
+                            event = inferred
 
             if event_col and event_col in row.index:
                 event = _normalize_event(row[event_col])
@@ -662,19 +702,27 @@ class BankingAnalyzer:
                 elif raw in ('CHECK_BALANCE', 'BALANCE_INQUIRY', 'BALANCE_CHECK', 'CHECK BALANCE', 'BALANCE'):
                     event = 'check_balance'
             if not event:
+                # ENHANCED: Try to infer from datetime column name using dynamic detector
+                if date_col:
+                    inferred = infer_event_from_datetime_column(date_col, domain='banking')
+                    if inferred:
+                        # Normalize to banking event names
+                        event = _normalize_event(inferred.lower())
+                
                 # Fallback when there is no explicit event/transaction-type column.
                 # Only trust clear purposes; do NOT default everything to "credit"
                 # for generic timestamps like "DateJoined" or "StartDate".
-                if ts_purpose in ('login', 'logout', 'open', 'created'):
-                    event = ts_purpose
-                elif ts_purpose == 'transaction':
-                    # Generic transaction timestamp without type: treat as credit by default
-                    # so that pure transaction tables still produce sessions.
-                    event = 'credit'
-                else:
-                    # Unknown / generic "event" timestamps are ignored to avoid
-                    # fabricating static "credit" steps from master/profile tables.
-                    event = None
+                if not event:
+                    if ts_purpose in ('login', 'logout', 'open', 'created'):
+                        event = ts_purpose
+                    elif ts_purpose == 'transaction':
+                        # Generic transaction timestamp without type: treat as credit by default
+                        # so that pure transaction tables still produce sessions.
+                        event = 'credit'
+                    else:
+                        # Unknown / generic "event" timestamps are ignored to avoid
+                        # fabricating static "credit" steps from master/profile tables.
+                        event = None
 
             if event:
                 found_event_types.add(event)
