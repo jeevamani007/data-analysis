@@ -86,6 +86,26 @@ synthesis_engine = DataSynthesisEngine()
 # Store session data (in production, use proper session management)
 sessions = {}
 
+def _ensure_session_loaded(session_id: str) -> None:
+    """
+    Ensure `sessions[session_id]` exists.
+    The current implementation stores session state in-memory, which is lost
+    on server restart / --reload. Since uploaded CSVs are persisted on disk
+    under uploads/{session_id}, we can reconstruct the session on-demand.
+    """
+    if session_id in sessions:
+        return
+    session_dir = UPLOAD_DIR / session_id
+    if not session_dir.exists() or not session_dir.is_dir():
+        return
+    csv_files = sorted([p.name for p in session_dir.glob("*.csv")])
+    if not csv_files:
+        return
+    sessions[session_id] = {
+        "files": csv_files,
+        "directory": str(session_dir),
+    }
+
 
 
 
@@ -155,6 +175,7 @@ async def analyze_database(session_id: str):
         AnalysisResponse with complete database profile
     """
     # Get session
+    _ensure_session_loaded(session_id)
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -579,6 +600,7 @@ async def detect_date_columns(session_id: str):
     Returns:
         List of date column candidates with confidence scores and intelligent questions
     """
+    _ensure_session_loaded(session_id)
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -650,6 +672,7 @@ async def _analyze_accounts_deprecated(session_id: str, date_column: str = None,
     """
     from fastapi import Query
     
+    _ensure_session_loaded(session_id)
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -900,6 +923,7 @@ async def analyze_credit(session_id: str):
     from credit_analyzer import CreditTimeSlotAnalyzer
     
     # Get session
+    _ensure_session_loaded(session_id)
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -977,6 +1001,7 @@ async def synthesize_database(session_id: str, num_rows: int = 100):
         Dictionary with schema analysis and synthetic data
     """
     # Get session
+    _ensure_session_loaded(session_id)
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -1001,16 +1026,44 @@ async def synthesize_database(session_id: str, num_rows: int = 100):
         all_relationships = relationship_detector.detect_relationships(tables, dataframes)
         
         # Convert relationships to dict format for synthesis engine
+        # IMPORTANT:
+        # `SyntheticDataGenerator` expects FK relationships in this direction:
+        #   child_table.child_fk_col  ->  parent_table.parent_pk_col
+        #
+        # RelationshipDetector currently stores FK relationships in the opposite
+        # direction (parent -> child) in several cases. If we pass those through
+        # unmodified, the synthesizer's topological sort and FK sampling break,
+        # causing PK pools to be missing and FK columns to degrade to NULL.
         relationships_dict = []
         for rel in all_relationships:
-            relationships_dict.append({
+            rel_dict = {
                 'source_table': rel.source_table,
                 'target_table': rel.target_table,
                 'source_column': rel.source_column,
                 'target_column': rel.target_column,
                 'relationship_type': rel.relationship_type,
-                'is_foreign_key': rel.is_foreign_key
-            })
+                'is_foreign_key': rel.is_foreign_key,
+                'is_primary_key': rel.is_primary_key,
+                'confidence': rel.confidence,
+            }
+            if rel.is_foreign_key:
+                # Normalize to (child -> parent). RelationshipDetector's FK
+                # relationships use:
+                #   source_table/source_column = parent PK
+                #   target_table/target_column = child FK
+                relationships_dict.append({
+                    'source_table': rel_dict['target_table'],
+                    'source_column': rel_dict['target_column'],
+                    'target_table': rel_dict['source_table'],
+                    'target_column': rel_dict['source_column'],
+                    'relationship_type': rel_dict['relationship_type'],
+                    'is_foreign_key': True,
+                    'confidence': rel_dict.get('confidence', 0.0),
+                })
+            else:
+                # Non-FK relationships are not used for referential integrity in
+                # synthesis; we keep them out to avoid incorrect ordering edges.
+                pass
         
         # Generate synthetic data
         result = synthesis_engine.synthesize_database(

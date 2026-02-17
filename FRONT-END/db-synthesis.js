@@ -46,6 +46,20 @@ async function generateSyntheticData(profileIndex, numRows = 100) {
         });
 
         if (!response.ok) {
+            // FastAPI returns 404 {"detail":"Session not found"} when the backend
+            // has restarted (e.g., --reload) and lost in-memory session state.
+            if (response.status === 404) {
+                let detail = '';
+                try {
+                    const errJson = await response.json();
+                    detail = errJson && errJson.detail ? String(errJson.detail) : '';
+                } catch (e) {
+                    // ignore parse errors
+                }
+                if (detail.toLowerCase().includes('session')) {
+                    throw new Error('Session expired (backend restarted). Please re-upload your files and try again.');
+                }
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
