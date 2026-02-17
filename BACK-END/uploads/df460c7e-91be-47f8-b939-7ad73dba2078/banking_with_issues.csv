@@ -1,0 +1,11 @@
+account_number,customer_id,account_type,account_status,opening_balance
+ACC1001,CUST001,Savings,Active,10000
+ACC1002,CUST002,Current,Active,5000
+ACC1003,CUST003,Savings,Active,15000
+ACC1004,CUST004,Current,Inactive,3000
+ACC1005,CUST005,Savings,Active,8000
+ACC1006,CUST006,Savings,Active,12000
+ACC1007,CUST007,Current,Active,6000
+ACC1008,CUST008,Savings,Inactive,4000
+ACC1009,CUST009,Savings,Active,9000
+ACC1010,CUST010,Current,Active,7000

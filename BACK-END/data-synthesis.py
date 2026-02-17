@@ -2,13 +2,14 @@
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Set
 from pathlib import Path
 import random
 import string
 from datetime import datetime, timedelta
 import re
 from faker import Faker
+from difflib import SequenceMatcher
 
 
 # ---------------------------------------------------------------------------
@@ -51,12 +52,15 @@ class SchemaAnalyzer:
 
     def analyze_schema(self, session_dir: Path, files: List[str]) -> Dict[str, Any]:
         schema = {}
+        dataframes: Dict[str, pd.DataFrame] = {}  # Store dataframes for FK validation
+        
         # ── Pass 1: analyse each table ──────────────────────────────────────────
         for filename in files:
             file_path = session_dir / filename
             table_name = filename.replace(".csv", "").replace("_", " ").title()
             try:
                 df = pd.read_csv(file_path)
+                dataframes[table_name] = df  # Store for validation
                 table_schema = self._analyze_table_schema(df, table_name)
 
                 # Store the REAL PK values ONLY for pattern inference.
@@ -76,50 +80,164 @@ class SchemaAnalyzer:
             except Exception as e:
                 print(f"Error analyzing {filename}: {e}")
 
-        # ── Pass 2: auto-detect FK relationships by column-name matching ─────────
+        # ── Pass 2: Enhanced FK relationship detection ────────────────────────────
+        # Uses both column-name matching AND value-based validation with similarity scoring
         auto_relationships: List[Dict[str, Any]] = []
-        pk_index: Dict[str, str] = {}
+        
+        # Build PK index with multiple name variations
+        pk_index: Dict[str, Tuple[str, str]] = {}  # col_name_lower -> (table_name, pk_col_name)
         for tname, tschema in schema.items():
             pk = tschema.get("primary_key", "")
             if pk:
-                pk_index[pk.lower()] = tname
+                pk_lower = pk.lower()
+                pk_index[pk_lower] = (tname, pk)
+                # Also index common variations (id, _id, etc.)
+                if pk_lower.endswith("_id"):
+                    base = pk_lower[:-3]  # Remove "_id"
+                    pk_index[base + "id"] = (tname, pk)
+                    pk_index[base] = (tname, pk)
+                elif pk_lower == "id":
+                    # Index common FK patterns that might reference this
+                    for suffix in ["_id", "_code", "_key", "_number"]:
+                        pk_index["id" + suffix] = (tname, pk)
 
+        def _column_name_similarity(name1: str, name2: str) -> float:
+            """Calculate similarity between two column names"""
+            return SequenceMatcher(None, name1.lower(), name2.lower()).ratio()
+
+        def _validate_fk_relationship(
+            parent_schema: Dict[str, Any],
+            parent_pk_col: str,
+            child_col_info: Dict[str, Any],
+            parent_df: Optional[pd.DataFrame],
+            child_df: Optional[pd.DataFrame],
+        ) -> Tuple[bool, float]:
+            """
+            Validate FK relationship using actual data overlap.
+            Returns (is_valid, confidence_score)
+            """
+            if parent_df is not None and child_df is not None:
+                # Try to load actual data for validation
+                try:
+                    parent_vals = set(parent_df[parent_pk_col].dropna().astype(str).unique())
+                    child_vals = set(child_df[child_col_info["column_name"]].dropna().astype(str).unique())
+                    
+                    if len(parent_vals) == 0 or len(child_vals) == 0:
+                        return False, 0.0
+                    
+                    # Calculate overlap
+                    overlap = parent_vals & child_vals
+                    overlap_pct = len(overlap) / max(len(child_vals), 1)
+                    
+                    # Require at least 30% overlap for FK relationship
+                    if overlap_pct < 0.30:
+                        return False, overlap_pct
+                    
+                    # Check if child values are subset of parent (strong FK indicator)
+                    is_subset = len(child_vals - parent_vals) == 0
+                    confidence = overlap_pct * (1.2 if is_subset else 0.8)
+                    
+                    return True, min(confidence, 1.0)
+                except Exception:
+                    pass
+            
+            # Fallback: use sample values from schema
+            parent_col_meta = next(
+                (c for c in parent_schema["columns"] if c["column_name"] == parent_pk_col),
+                None,
+            )
+            if not parent_col_meta:
+                return False, 0.0
+            
+            parent_vals = set(str(v) for v in parent_col_meta.get("all_sample_values", []) if v is not None)
+            child_vals = set(str(v) for v in child_col_info.get("all_sample_values", []) if v is not None)
+            
+            if not parent_vals or not child_vals:
+                return False, 0.0
+            
+            overlap = parent_vals & child_vals
+            overlap_pct = len(overlap) / max(len(child_vals), 1)
+            
+            # Require at least 50% overlap when using sample values
+            if overlap_pct < 0.50:
+                return False, overlap_pct
+            
+            return True, min(overlap_pct, 1.0)
+
+        # Use loaded dataframes for FK validation
         for tname, tschema in schema.items():
             for col_info in tschema["columns"]:
-                col_name  = col_info["column_name"]
+                col_name = col_info["column_name"]
                 col_lower = col_name.lower()
+                
                 if col_name == tschema.get("primary_key"):
                     continue
+                
+                # Check exact match first
                 if col_lower in pk_index:
-                    parent_table = pk_index[col_lower]
+                    parent_table, parent_pk_name = pk_index[col_lower]
                     if parent_table != tname:
                         parent_schema = schema[parent_table]
-                        parent_pk_name = parent_schema.get("primary_key", "")
-                        parent_col_meta = next(
-                            (c for c in parent_schema["columns"] if c["column_name"] == parent_pk_name),
-                            None,
+                        parent_df = dataframes.get(parent_table)
+                        child_df = dataframes.get(tname)
+                        
+                        is_valid, confidence = _validate_fk_relationship(
+                            parent_schema, parent_pk_name, col_info, parent_df, child_df
                         )
-
-                        def _values_look_compatible(
-                            parent_meta: Optional[Dict[str, Any]],
-                            child_meta: Dict[str, Any],
-                        ) -> bool:
-                            if not parent_meta:
-                                return True
-                            parent_vals = set(str(v) for v in parent_meta.get("all_sample_values", []) if v is not None)
-                            child_vals  = set(str(v) for v in child_meta.get("all_sample_values", []) if v is not None)
-                            if not parent_vals or not child_vals:
-                                return True
-                            return len(parent_vals & child_vals) > 0
-
-                        if _values_look_compatible(parent_col_meta, col_info):
+                        
+                        if is_valid:
                             auto_relationships.append({
-                                "source_table":  tname,
+                                "source_table": tname,
                                 "source_column": col_name,
-                                "target_table":  parent_table,
-                                "target_column": col_name,
+                                "target_table": parent_table,
+                                "target_column": parent_pk_name,
                                 "auto_detected": True,
+                                "confidence": confidence,
                             })
+                        continue
+                
+                # Check similarity-based matching for variations (cust_id vs customer_id)
+                best_match: Optional[Tuple[str, str, float]] = None
+                best_score = 0.0
+                
+                for pk_name_lower, (parent_table, parent_pk_name) in pk_index.items():
+                    if parent_table == tname:
+                        continue
+                    
+                    similarity = _column_name_similarity(col_lower, pk_name_lower)
+                    # Also check if column name contains table name pattern
+                    parent_table_lower = parent_table.lower().replace(" ", "_")
+                    if parent_table_lower in col_lower or any(
+                        word in col_lower for word in parent_table_lower.split("_") if len(word) > 3
+                    ):
+                        similarity += 0.2
+                    
+                    if similarity > best_score and similarity > 0.6:  # Threshold for similarity
+                        best_score = similarity
+                        best_match = (parent_table, parent_pk_name, similarity)
+                
+                if best_match:
+                    parent_table, parent_pk_name, similarity = best_match
+                    parent_schema = schema[parent_table]
+                    parent_df = dataframes.get(parent_table)
+                    child_df = dataframes.get(tname)
+                    
+                    is_valid, confidence = _validate_fk_relationship(
+                        parent_schema, parent_pk_name, col_info, parent_df, child_df
+                    )
+                    
+                    # Combine name similarity with value overlap confidence
+                    combined_confidence = (similarity * 0.4) + (confidence * 0.6)
+                    
+                    if is_valid and combined_confidence > 0.5:
+                        auto_relationships.append({
+                            "source_table": tname,
+                            "source_column": col_name,
+                            "target_table": parent_table,
+                            "target_column": parent_pk_name,
+                            "auto_detected": True,
+                            "confidence": combined_confidence,
+                        })
 
         schema["__auto_relationships__"] = auto_relationships  # type: ignore[assignment]
         return schema
@@ -244,24 +362,50 @@ class SchemaAnalyzer:
 
             # Detect date/time/timestamp stored as strings (e.g., "eventtimestamp",
             # "eventstamp", etc.).
-            # We use BOTH column name and sample values so we don't misclassify
-            # random strings that happen to be parseable.
+            # STRICT: Require BOTH column name AND high parseability to avoid misclassification
             looks_like_datetime_name = any(
                 k in col_lower
-                for k in ["date", "time", "timestamp", "eventtime", "event_time", "stamp"]
+                for k in ["date", "time", "timestamp", "eventtime", "event_time", "stamp", "created", "updated", "modified"]
             )
             if looks_like_datetime_name and sample_values:
                 try:
                     parsed = pd.to_datetime(sample_values, errors="coerce")
                     good = parsed.notna().sum()
-                    if good >= max(3, int(len(sample_values) * 0.6)):
-                        has_time = any(":" in v or "T" in v for v in sample_values if v)
-                        col_info["pattern_type"] = "datetime_string"
-                        col_info["pattern_details"] = {
-                            "min_date": str(parsed.min()),
-                            "max_date": str(parsed.max()),
-                            "has_time": has_time,
-                        }
+                    total = len(sample_values)
+                    
+                    # Require at least 80% parseability AND minimum 5 samples
+                    if total >= 5 and good >= max(5, int(total * 0.8)):
+                        # Additional validation: check if parsed dates are reasonable
+                        # (not all same value, within reasonable range)
+                        valid_dates = parsed[parsed.notna()]
+                        if len(valid_dates) > 0:
+                            date_range = (valid_dates.max() - valid_dates.min()).days
+                            # Reject if all dates are identical or suspiciously clustered
+                            if date_range > 0 or len(valid_dates) == 1:
+                                # Check for numeric-like dates that might be misclassified
+                                # (e.g., "20240201" could be account number)
+                                numeric_like = sum(1 for v in sample_values[:10] if v and v.replace("-", "").replace("/", "").isdigit() and len(v.replace("-", "").replace("/", "")) >= 8)
+                                # If >50% are pure numeric 8+ digits, be more cautious
+                                if numeric_like / min(10, total) > 0.5:
+                                    # Require even higher parseability for numeric-like
+                                    if good < int(total * 0.95):
+                                        pass  # Skip datetime classification
+                                    else:
+                                        has_time = any(":" in v or "T" in v for v in sample_values if v)
+                                        col_info["pattern_type"] = "datetime_string"
+                                        col_info["pattern_details"] = {
+                                            "min_date": str(parsed.min()),
+                                            "max_date": str(parsed.max()),
+                                            "has_time": has_time,
+                                        }
+                                else:
+                                    has_time = any(":" in v or "T" in v for v in sample_values if v)
+                                    col_info["pattern_type"] = "datetime_string"
+                                    col_info["pattern_details"] = {
+                                        "min_date": str(parsed.min()),
+                                        "max_date": str(parsed.max()),
+                                        "has_time": has_time,
+                                    }
                 except Exception:
                     # Fallback to normal string handling if we cannot safely parse
                     pass
@@ -290,22 +434,31 @@ class SchemaAnalyzer:
             elif any(k in col_lower for k in ["churn", "churn_risk"]):
                 col_info["pattern_type"] = "churn_risk"
 
-            elif any(k in col_lower for k in ["account", "acc", "id", "number", "num"]):
-                if all(
-                    v.isdigit() or (v.replace("-", "").replace("_", "").isdigit())
-                    for v in sample_values[:5] if v
-                ):
-                    col_info["pattern_type"] = "account_number"
-                    col_info["pattern_details"] = {
-                        "format": "numeric",
-                        "has_separators": any("-" in v or "_" in v for v in sample_values[:5]),
-                    }
-                elif all(re.match(r"^[A-Z0-9-]+$", v.upper()) for v in sample_values[:5] if v):
-                    col_info["pattern_type"] = "account_number"
-                    col_info["pattern_details"] = {
-                        "format": "alphanumeric",
-                        "has_separators": any("-" in v or "_" in v for v in sample_values[:5]),
-                    }
+            elif any(k in col_lower for k in ["account", "acc", "number", "num"]):
+                # STRICT: Require column name to explicitly suggest account/number
+                # AND values must match pattern consistently
+                if len(sample_values) >= 3:
+                    numeric_count = sum(1 for v in sample_values[:10] if v and (v.isdigit() or v.replace("-", "").replace("_", "").isdigit()))
+                    alphanumeric_count = sum(1 for v in sample_values[:10] if v and re.match(r"^[A-Z0-9-]+$", v.upper()))
+                    
+                    # Require at least 70% consistency
+                    if numeric_count >= int(len(sample_values[:10]) * 0.7):
+                        # Additional check: avoid misclassifying dates (YYYYMMDD format)
+                        date_like = sum(1 for v in sample_values[:10] 
+                                      if v and len(v.replace("-", "").replace("/", "")) == 8 
+                                      and v.replace("-", "").replace("/", "").isdigit())
+                        if date_like / max(1, len(sample_values[:10])) < 0.5:  # Not mostly dates
+                            col_info["pattern_type"] = "account_number"
+                            col_info["pattern_details"] = {
+                                "format": "numeric",
+                                "has_separators": any("-" in v or "_" in v for v in sample_values[:5]),
+                            }
+                    elif alphanumeric_count >= int(len(sample_values[:10]) * 0.7):
+                        col_info["pattern_type"] = "account_number"
+                        col_info["pattern_details"] = {
+                            "format": "alphanumeric",
+                            "has_separators": any("-" in v or "_" in v for v in sample_values[:5]),
+                        }
 
             elif any(k in col_lower for k in ["phone", "mobile", "tel", "contact"]):
                 phone_pattern = re.compile(r"^[\d\s\-\+\(\)]+$")
@@ -348,6 +501,12 @@ class SyntheticDataGenerator:
         self.pk_values: Dict[str, List[Any]] = {}
         self.faker = Faker()
         self._row_genders: Dict[str, List[str]] = {}
+        # Track unique values for fields that should be unique
+        self._unique_values: Dict[str, Set[Any]] = {}  # column_path -> set of values
+        # Track entity lifecycles for re-join scenarios
+        self._entity_lifecycles: Dict[str, Dict[Any, List[Dict[str, Any]]]] = {}  # table -> {entity_id -> [events]}
+        # Track temporal constraints (e.g., order_date >= customer_join_date)
+        self._temporal_constraints: List[Dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -385,6 +544,10 @@ class SyntheticDataGenerator:
         # immediately after they are generated so child tables can reference them.
         self.pk_values = {}
         self._row_genders = {}
+        # Reset tracking dictionaries for uniqueness and constraints
+        self._unique_values = {}
+        self._entity_lifecycles = {}
+        self._temporal_constraints = []
 
         if num_rows_per_table is None:
             num_rows_per_table = {}
@@ -499,12 +662,23 @@ class SyntheticDataGenerator:
                         f"({len(self.pk_values[ref_table])} synthetic parent IDs available)"
                     )
                 else:
-                    # ASCII-only arrow for Windows console compatibility
+                    # FIX: Instead of generating stand-alone values (which breaks RI),
+                    # use NULL values or defer generation. This prevents silent referential
+                    # integrity violations.
                     print(
-                        f"  [FK warning] {table_name}.{col_name} -> {ref_table}.{ref_col}: "
-                        f"parent PK pool not available; generating stand-alone values."
+                        f"  [FK ERROR] {table_name}.{col_name} -> {ref_table}.{ref_col}: "
+                        f"parent PK pool not available. This breaks referential integrity. "
+                        f"Using NULL values to maintain data integrity."
                     )
-                    values = self._generate_column_values(col_info, num_rows)
+                    # Use NULL values (safer than wrong values that break RI)
+                    null_pct = col_info.get("null_percentage", 0)
+                    num_nulls = int((null_pct / 100) * num_rows)
+                    # Fill remaining with NULLs to maintain integrity
+                    values = [None] * num_rows
+                    # Note: In production, consider:
+                    # - Deferring this table's generation until parent is ready
+                    # - Re-running FK resolution after all tables are generated
+                    # - Raising an exception to force proper topological ordering
 
             elif col_name == pk_column:
                 # Generate brand-new synthetic IDs using the real CSV values
@@ -577,7 +751,147 @@ class SyntheticDataGenerator:
                         for s, o in zip(data[spend_key], ord_vals)
                     ]
 
+        # BUSINESS RULE VALIDATION: Enforce temporal constraints
+        self._enforce_temporal_constraints(table_name, data, relationships)
+        
+        # ENTITY LIFECYCLE: Track entity events for re-join scenarios
+        self._track_entity_lifecycle(table_name, data, pk_column)
+
         return pd.DataFrame(data)
+    
+    def _track_entity_lifecycle(
+        self,
+        table_name: str,
+        data: Dict[str, List[Any]],
+        pk_column: Optional[str],
+    ) -> None:
+        """
+        Track entity lifecycle events to handle re-join scenarios.
+        This allows tracking when entities exit and re-enter the system.
+        """
+        if not pk_column or pk_column not in data:
+            return
+        
+        if table_name not in self._entity_lifecycles:
+            self._entity_lifecycles[table_name] = {}
+        
+        pk_values = data[pk_column]
+        
+        # Detect status/state columns that indicate lifecycle events
+        status_cols = []
+        date_cols = []
+        for col_name in data.keys():
+            col_lower = col_name.lower()
+            if any(k in col_lower for k in ["status", "state", "active", "inactive", "closed"]):
+                status_cols.append(col_name)
+            if any(k in col_lower for k in ["date", "time", "created", "updated"]):
+                try:
+                    if data[col_name][0] is not None:
+                        pd.to_datetime(str(data[col_name][0]))
+                        date_cols.append(col_name)
+                except Exception:
+                    pass
+        
+        # Track lifecycle events for each entity
+        for idx, pk_val in enumerate(pk_values):
+            if pk_val is None:
+                continue
+            
+            if pk_val not in self._entity_lifecycles[table_name]:
+                self._entity_lifecycles[table_name][pk_val] = []
+            
+            event = {
+                "table": table_name,
+                "entity_id": pk_val,
+                "index": idx,
+            }
+            
+            # Add status if available
+            for status_col in status_cols:
+                if status_col in data and idx < len(data[status_col]):
+                    event["status"] = data[status_col][idx]
+            
+            # Add date if available
+            for date_col in date_cols:
+                if date_col in data and idx < len(data[date_col]):
+                    try:
+                        event["date"] = pd.to_datetime(str(data[date_col][idx]))
+                    except Exception:
+                        pass
+            
+            self._entity_lifecycles[table_name][pk_val].append(event)
+    
+    def _enforce_temporal_constraints(
+        self,
+        table_name: str,
+        data: Dict[str, List[Any]],
+        relationships: List[Dict[str, Any]],
+    ) -> None:
+        """
+        Enforce business rules like: order_date >= customer_join_date
+        """
+        # Detect date columns in current table
+        date_columns = {}
+        for col_name, values in data.items():
+            col_lower = col_name.lower()
+            if any(k in col_lower for k in ["date", "time", "created", "updated", "join", "order"]):
+                # Check if values look like dates
+                if values and values[0] is not None:
+                    try:
+                        pd.to_datetime(str(values[0]))
+                        date_columns[col_name] = values
+                    except Exception:
+                        pass
+        
+        # Check relationships to find parent tables with join dates
+        for rel in relationships:
+            if rel.get("source_table") == table_name:
+                parent_table = rel.get("target_table")
+                parent_pk_col = rel.get("target_column")
+                child_fk_col = rel.get("source_column")
+                
+                # Check if parent table has a join_date column
+                if parent_table in self.generated_data:
+                    parent_df = self.generated_data[parent_table]
+                    parent_join_col = None
+                    for col in parent_df.columns:
+                        if "join" in col.lower() and "date" in col.lower():
+                            parent_join_col = col
+                            break
+                    
+                    # If parent has join_date, enforce constraint on order_date or similar
+                    if parent_join_col:
+                        for child_date_col in date_columns:
+                            if "order" in child_date_col.lower() or "transaction" in child_date_col.lower():
+                                # Get parent join dates for each FK reference
+                                parent_join_dates = {}
+                                for idx, fk_val in enumerate(data.get(child_fk_col, [])):
+                                    if fk_val is not None:
+                                        # Find parent row with this PK
+                                        parent_rows = parent_df[parent_df[parent_pk_col] == fk_val]
+                                        if len(parent_rows) > 0:
+                                            join_date_str = parent_rows.iloc[0][parent_join_col]
+                                            if join_date_str:
+                                                try:
+                                                    parent_join_dates[idx] = pd.to_datetime(join_date_str)
+                                                except Exception:
+                                                    pass
+                                
+                                # Enforce: child_date >= parent_join_date
+                                child_dates = date_columns[child_date_col]
+                                for idx, child_date_str in enumerate(child_dates):
+                                    if child_date_str and idx in parent_join_dates:
+                                        try:
+                                            child_date = pd.to_datetime(child_date_str)
+                                            parent_join = parent_join_dates[idx]
+                                            if child_date < parent_join:
+                                                # Adjust child date to be >= parent join date
+                                                # Add random days between 0 and 365
+                                                days_offset = random.randint(0, 365)
+                                                adjusted_date = parent_join + timedelta(days=days_offset)
+                                                data[child_date_col][idx] = adjusted_date.strftime("%Y-%m-%d")
+                                        except Exception:
+                                            pass
 
     def _find_foreign_key(
         self,
@@ -826,17 +1140,41 @@ class SyntheticDataGenerator:
         pattern_details = col_info.get("pattern_details", {})
         data_type       = col_info["data_type"]
         has_separators  = pattern_details.get("has_separators", False)
+        
+        # ENFORCE UNIQUENESS for account numbers
+        column_key = f"account_number"
+        if column_key not in self._unique_values:
+            self._unique_values[column_key] = set()
+        
+        seen = self._unique_values[column_key]
+        values = []
+        attempts = 0
+        max_attempts = num_rows * 50
 
         if data_type == "integer":
             min_val = int(col_info.get("min_value") or 10000000)
             max_val = int(col_info.get("max_value") or 999999999999)
-            return [str(random.randint(min_val, max_val)) for _ in range(num_rows)]
+            while len(values) < num_rows and attempts < max_attempts:
+                attempts += 1
+                acc = str(random.randint(min_val, max_val))
+                if acc not in seen:
+                    seen.add(acc)
+                    values.append(acc)
+            # Fallback with suffix
+            while len(values) < num_rows:
+                idx = len(values)
+                acc = str(min_val + idx)
+                if acc not in seen:
+                    seen.add(acc)
+                    values.append(acc)
+            return values
 
         fmt     = pattern_details.get("format", "alphanumeric")
         min_len = col_info.get("min_length") or 8
         max_len = col_info.get("max_length") or 16
-        values  = []
-        for _ in range(num_rows):
+        
+        while len(values) < num_rows and attempts < max_attempts:
+            attempts += 1
             length = random.randint(min_len, max_len)
             if fmt == "numeric":
                 acc = "".join(random.choices(string.digits, k=length))
@@ -844,7 +1182,27 @@ class SyntheticDataGenerator:
                 acc = "".join(random.choices(string.ascii_uppercase + string.digits, k=length))
             if has_separators and random.random() < 0.5:
                 acc = "-".join(acc[j : j + 4] for j in range(0, len(acc), 4))
-            values.append(acc)
+            
+            if acc not in seen:
+                seen.add(acc)
+                values.append(acc)
+        
+        # Fallback: add suffix if needed
+        while len(values) < num_rows:
+            idx = len(values)
+            length = max(min_len, 10)  # Ensure enough space for suffix
+            if fmt == "numeric":
+                base = "".join(random.choices(string.digits, k=length-4))
+                acc = f"{base}{idx:04d}"
+            else:
+                base = "".join(random.choices(string.ascii_uppercase + string.digits, k=length-4))
+                acc = f"{base}{idx:04d}"
+            if has_separators:
+                acc = "-".join(acc[j : j + 4] for j in range(0, len(acc), 4))
+            if acc not in seen:
+                seen.add(acc)
+                values.append(acc)
+        
         return values
 
     # ------------------------------------------------------------------
@@ -852,12 +1210,37 @@ class SyntheticDataGenerator:
     # ------------------------------------------------------------------
 
     def _generate_phone_number_values(self, col_info: Dict[str, Any], num_rows: int) -> List[str]:
+        # ENFORCE UNIQUENESS for phone numbers
+        column_key = f"phone_number"
+        if column_key not in self._unique_values:
+            self._unique_values[column_key] = set()
+        
+        seen = self._unique_values[column_key]
         values = []
-        for _ in range(num_rows):
+        attempts = 0
+        max_attempts = num_rows * 20
+        
+        while len(values) < num_rows and attempts < max_attempts:
+            attempts += 1
             npa  = random.randint(200, 999)
             nxx  = random.randint(200, 999)
             subs = random.randint(1000, 9999)
-            values.append(f"({npa}) {nxx}-{subs}")
+            phone = f"({npa}) {nxx}-{subs}"
+            
+            if phone not in seen:
+                seen.add(phone)
+                values.append(phone)
+        
+        # Fallback: add suffix if we run out of unique combinations
+        while len(values) < num_rows:
+            idx = len(values)
+            npa  = random.randint(200, 999)
+            nxx  = random.randint(200, 999)
+            phone = f"({npa}) {nxx}-{idx:04d}"
+            if phone not in seen:
+                seen.add(phone)
+                values.append(phone)
+        
         return values
 
     # ------------------------------------------------------------------

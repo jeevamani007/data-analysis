@@ -1,0 +1,5 @@
+product_name,customer_id,customer_name,quantity,unit_price,total_amount,tax_amount,net_amount,transaction_date
+Laptop,CUST001,John Doe,1,1200,1200,180,1380,2023-01-05
+Mouse,CUST002,Jane Smith,2,25,50,7.5,57.5,2023-01-05
+Keyboard,CUST003,Bob Johnson,1,75,75,11.25,86.25,2023-01-06
+Monitor,CUST004,Alice Brown,1,300,300,45,345,2023-01-06

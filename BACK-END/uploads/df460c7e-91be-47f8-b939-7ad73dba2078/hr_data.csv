@@ -1,0 +1,4 @@
+employee_id,employee_name,department,designation,salary,joining_date,phone,email
+EMP001,John Doe,IT,Software Engineer,75000,2022-01-15,9876543210,john.doe@company.com
+EMP002,Jane Smith,HR,HR Manager,85000,2021-05-20,9876543211,jane.smith@company.com
+EMP003,Bob Johnson,Finance,Accountant,65000,2020-03-10,9876543212,bob.johnson@company.com

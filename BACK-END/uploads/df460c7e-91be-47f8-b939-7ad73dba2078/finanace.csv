@@ -1,0 +1,11 @@
+loan_id,customer_id,account_number,loan_type,loan_amount,loan_status
+LN001,CUST001,ACC1001,Home Loan,500000,Active
+LN002,CUST002,ACC1002,Personal Loan,200000,Active
+LN003,CUST003,ACC1003,Education Loan,300000,Closed
+LN004,CUST004,ACC1004,Car Loan,400000,Active
+LN005,CUST005,ACC1005,Home Loan,600000,Active
+LN006,CUST006,ACC1006,Personal Loan,150000,Closed
+LN007,CUST007,ACC1007,Car Loan,350000,Active
+LN008,CUST008,ACC1008,Education Loan,250000,Active
+LN009,CUST009,ACC1009,Home Loan,450000,Active
+LN010,CUST010,ACC1010,Personal Loan,180000,Active
