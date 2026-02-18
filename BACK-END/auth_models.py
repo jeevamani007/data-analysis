@@ -35,6 +35,26 @@ class VerifyOtpRequest(BaseModel):
     otp: str = Field(..., pattern=r"^\d{6}$", description="6-digit OTP code")
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Request a password reset OTP (forgot password)"""
+    email: EmailStr = Field(..., description="User email address")
+
+
+class ForgotPasswordVerifyRequest(BaseModel):
+    """Verify password reset OTP (forgot password)"""
+    email: EmailStr = Field(..., description="User email address")
+    otp: str = Field(..., pattern=r"^\d{6}$", description="6-digit OTP code")
+
+
+class ForgotPasswordResetRequest(BaseModel):
+    """Reset password using an OTP (forgot password)"""
+    email: EmailStr = Field(..., description="User email address")
+    otp: str = Field(..., pattern=r"^\d{6}$", description="6-digit OTP code")
+    # Keep consistent with signup/login: 4-digit PIN
+    new_password: str = Field(..., min_length=4, max_length=4, description="New password (exactly 4 digits: 0-9 only)")
+    confirm_password: str = Field(..., min_length=4, max_length=4, description="Confirm password (exactly 4 digits: 0-9 only)")
+
+
 class TokenResponse(BaseModel):
     """Token response model"""
     access_token: str

@@ -98,3 +98,28 @@ def send_verification_email(*, to_email: str, verify_url: str, otp_code: str | N
         print(f"[Email] Verification for {to_email}: {verify_url}" + (f" (OTP: {otp_code})" if otp_code else ""))
 
 
+def send_password_reset_email(*, to_email: str, otp_code: str) -> None:
+    """
+    Send an OTP for password reset (forgot password).
+    """
+    subject = "Password reset OTP"
+    html = f"""
+    <div style="font-family: Inter, Arial, sans-serif; background:#F1F5F9; padding:24px;">
+      <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:16px; padding:24px;">
+        <h2 style="margin:0 0 8px; color:#0F172A;">Reset your password</h2>
+        <p style="margin:0 0 16px; color:#334155;">Use the OTP below to reset your password. This code expires soon.</p>
+        <div style="margin:16px 0 0; padding:12px; background:#F8FAFC; border:1px dashed #CBD5E1; border-radius:12px;">
+          <div style="font-size:22px; letter-spacing:4px; font-weight:800; color:#0F172A;">{otp_code}</div>
+        </div>
+        <p style="margin:16px 0 0; color:#64748B; font-size:13px;">
+          If you didn’t request a password reset, you can ignore this email.
+        </p>
+      </div>
+    </div>
+    """.strip()
+    text = f"Your password reset OTP is: {otp_code}\n\nIf you didn’t request this, ignore this email."
+    sent = send_email_smtp(to_email=to_email, subject=subject, html_body=html, text_body=text)
+    if not sent:
+        print(f"[Email] Password reset OTP for {to_email}: {otp_code}")
+
+

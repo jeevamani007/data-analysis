@@ -11,17 +11,30 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from database import SessionLocal
-from db_table import User, LoginLog, EmailVerificationToken
+from db_table import User, LoginLog, EmailVerificationToken, PasswordResetOTPToken
 from auth_models import (
-    UserSignupRequest, UserLoginRequest, TokenResponse, 
-    UserResponse, MessageResponse, LoginLogResponse, ResendVerificationRequest, VerifyOtpRequest
+    UserSignupRequest,
+    UserLoginRequest,
+    TokenResponse,
+    UserResponse,
+    MessageResponse,
+    LoginLogResponse,
+    ResendVerificationRequest,
+    VerifyOtpRequest,
+    ForgotPasswordRequest,
+    ForgotPasswordVerifyRequest,
+    ForgotPasswordResetRequest,
 )
 from auth_utils import (
-    hash_password, verify_password, create_access_token, 
-    verify_token, get_current_user_id, generate_email_verification_token
+    hash_password,
+    verify_password,
+    create_access_token,
+    verify_token,
+    get_current_user_id,
+    generate_email_verification_token,
 )
 from config import APP_BASE_URL
-from email_service import send_verification_email
+from email_service import send_verification_email, send_password_reset_email
 import hashlib
 import secrets
 
@@ -417,6 +430,182 @@ async def verify_otp(req: VerifyOtpRequest, db: Session = Depends(get_db)):
         latest_token.used_at = _utcnow()
     db.commit()
     return MessageResponse(success=True, message="Email verified successfully. You can login now.")
+
+
+@router.post("/forgot-password/request", response_model=MessageResponse)
+async def forgot_password_request(
+    req: ForgotPasswordRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Request a password reset OTP (forgot password).
+
+    Response is always generic to avoid email enumeration.
+    """
+    user = db.query(User).filter(User.email == req.email).first()
+    if not user:
+        # Explicit feedback: email is not registered
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is not registered. Please sign up first.",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User account is inactive.",
+        )
+
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is not verified. Please verify your email before resetting password.",
+        )
+
+    # Invalidate previous unused reset tokens for this user/email
+    db.query(PasswordResetOTPToken).filter(
+        PasswordResetOTPToken.user_id == user.id,
+        PasswordResetOTPToken.email == user.email,
+        PasswordResetOTPToken.is_used.is_(False),
+    ).update(
+        {
+            "is_used": True,
+            "used_at": _utcnow(),
+        },
+        synchronize_session=False,
+    )
+
+    otp_code = f"{secrets.randbelow(1_000_000):06d}"
+    otp_expires_at = _utcnow() + timedelta(minutes=15)
+    otp_hash = hashlib.sha256(otp_code.encode("utf-8")).hexdigest()
+
+    reset_row = PasswordResetOTPToken(
+        user_id=user.id,
+        email=user.email,
+        code_hash=otp_hash,
+        expires_at=otp_expires_at,
+        request_ip=get_client_ip(request),
+        user_agent=request.headers.get("user-agent", "unknown"),
+    )
+    db.add(reset_row)
+    db.commit()
+
+    # Send OTP email in background
+    try:
+        background_tasks.add_task(
+            send_password_reset_email,
+            to_email=user.email,
+            otp_code=otp_code,
+        )
+    except Exception as e:
+        # Email delivery failures should not leak existence of account.
+        print(f"Warning: Failed to queue password reset email: {e}")
+
+    return MessageResponse(
+        success=True,
+        message="OTP has been sent to your registered email address.",
+    )
+
+
+@router.post("/forgot-password/reset", response_model=TokenResponse)
+async def forgot_password_reset(
+    req: ForgotPasswordResetRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Reset password using a valid OTP and immediately log the user in.
+    """
+    user = db.query(User).filter(User.email == req.email).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email or OTP",
+        )
+
+    # Basic password validation (keep in sync with signup/login 4‑digit PIN rule)
+    if req.new_password != req.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password and confirm password do not match",
+        )
+    if not req.new_password.isdigit() or len(req.new_password) != 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be exactly 4 digits (numbers 0-9 only)",
+        )
+
+    # Find latest unused reset token
+    row = (
+        db.query(PasswordResetOTPToken)
+        .filter(
+            PasswordResetOTPToken.user_id == user.id,
+            PasswordResetOTPToken.email == user.email,
+            PasswordResetOTPToken.is_used.is_(False),
+        )
+        .order_by(PasswordResetOTPToken.created_at.desc())
+        .first()
+    )
+
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP not found or already used. Please request a new OTP.",
+        )
+
+    if row.expires_at and _as_utc_aware(row.expires_at) < _utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP expired. Please request a new OTP.",
+        )
+
+    otp_hash = hashlib.sha256(req.otp.encode("utf-8")).hexdigest()
+    if otp_hash != row.code_hash:
+        row.attempt_count = (row.attempt_count or 0) + 1
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP. Please try again.",
+        )
+
+    # Mark token as used and record verification
+    now = _utcnow()
+    row.verified_at = now
+    row.is_used = True
+    row.used_at = now
+
+    # Update password
+    user.password_hash = hash_password(req.new_password)
+
+    db.commit()
+
+    # Create access token (same behavior as /login)
+    access_token = create_access_token(
+        data={"user_id": user.id, "email": user.email, "username": user.username}
+    )
+
+    # Log successful "login" via password reset
+    ip_address = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "unknown")
+    login_log = LoginLog(
+        user_id=user.id,
+        email=user.email,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        login_status="success",
+    )
+    db.add(login_log)
+    db.commit()
+
+    return TokenResponse(
+        access_token=access_token,
+        user_id=user.id,
+        email=user.email,
+        username=user.username,
+        expires_in=60 * 24 * 60,  # 24 hours in seconds
+    )
 
 
 @router.get("/verify-email", response_class=HTMLResponse)

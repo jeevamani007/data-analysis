@@ -85,6 +85,37 @@ class EmailOTPToken(Base):
         return f"<EmailOTPToken(id={self.id}, user_id={self.user_id}, is_used={self.is_used})>"
 
 
+class PasswordResetOTPToken(Base):
+    """
+    Stores OTP codes for password reset (forgot password).
+
+    Notes:
+    - We store only a sha256 hash of the OTP (never store OTP plaintext).
+    - We record created/verified/used timestamps for auditing.
+    """
+    __tablename__ = "password_reset_otp_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+
+    code_hash = Column(String(64), nullable=False, index=True)  # sha256 hex
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    is_used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+
+    attempt_count = Column(Integer, default=0, nullable=False)
+    request_ip = Column(String(45), nullable=True)  # IPv6 support
+    user_agent = Column(Text, nullable=True)
+
+    def __repr__(self):
+        return f"<PasswordResetOTPToken(id={self.id}, user_id={self.user_id}, is_used={self.is_used})>"
+
+
 # Create all tables
 def create_tables():
     """Create all database tables"""
