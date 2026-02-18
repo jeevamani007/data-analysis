@@ -279,7 +279,21 @@
 
                 <div id="verifyHint" style="display:none; margin-top: 1rem; padding: 1rem; background: var(--info-light); border: 1px solid var(--info); border-radius: var(--radius); color: var(--text-secondary); font-size: 0.9rem;">
                     <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">Email verification required</div>
-                    <div style="margin-bottom: 0.75rem;">Please verify your email to login. If you didn’t receive the email, resend it.</div>
+                    <div style="margin-bottom: 0.75rem;">Please verify your email to login. Use the link/OTP from your email. If you didn’t receive it, resend.</div>
+
+                    <div style="display:flex; gap:0.6rem; align-items:center; margin: 0.75rem 0;">
+                        <input
+                            id="otpInput"
+                            class="form-input"
+                            style="flex: 1; padding: 0.85rem 1rem;"
+                            placeholder="Enter OTP (6 digits)"
+                            inputmode="numeric"
+                            autocomplete="one-time-code"
+                            maxlength="6"
+                        />
+                        <button id="verifyOtpBtn" type="button" class="btn-secondary" style="padding: 0.85rem 1rem; font-size: 0.9rem; white-space:nowrap;">Verify OTP</button>
+                    </div>
+
                     <button id="resendBtn" type="button" class="btn-secondary" style="padding: 0.7rem 1rem; font-size: 0.9rem;">Resend verification email</button>
                 </div>
 
@@ -331,6 +345,8 @@
         const successMessage = document.getElementById('successMessage');
         const verifyHint = document.getElementById('verifyHint');
         const resendBtn = document.getElementById('resendBtn');
+        const otpInput = document.getElementById('otpInput');
+        const verifyOtpBtn = document.getElementById('verifyOtpBtn');
 
         function showError(message) {
             errorMessage.textContent = message;
@@ -440,6 +456,51 @@
                 } finally {
                     resendBtn.disabled = false;
                     resendBtn.textContent = 'Resend verification email';
+                }
+            });
+        }
+
+        if (otpInput) {
+            otpInput.addEventListener('input', (e) => {
+                // digits only, max 6
+                let v = String(e.target.value || '').replace(/[^0-9]/g, '');
+                if (v.length > 6) v = v.substring(0, 6);
+                e.target.value = v;
+            });
+        }
+
+        if (verifyOtpBtn) {
+            verifyOtpBtn.addEventListener('click', async () => {
+                const email = document.getElementById('email').value.trim();
+                const otp = (otpInput && otpInput.value) ? otpInput.value.trim() : '';
+                if (!email) {
+                    showError('Enter your email first.');
+                    return;
+                }
+                if (!/^[0-9]{6}$/.test(otp)) {
+                    showError('Enter the 6-digit OTP from your email.');
+                    return;
+                }
+                verifyOtpBtn.disabled = true;
+                verifyOtpBtn.textContent = 'Verifying...';
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, otp })
+                    });
+                    const payload = await res.json().catch(() => ({}));
+                    if (res.ok && payload.success) {
+                        showSuccess(payload.message || 'Email verified. Please login.');
+                        if (verifyHint) verifyHint.style.display = 'none';
+                    } else {
+                        showError(payload.detail || payload.message || 'OTP verification failed.');
+                    }
+                } catch (e) {
+                    showError('Network error verifying OTP. Please try again.');
+                } finally {
+                    verifyOtpBtn.disabled = false;
+                    verifyOtpBtn.textContent = 'Verify OTP';
                 }
             });
         }

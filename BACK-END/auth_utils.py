@@ -25,14 +25,37 @@ ALGORITHM = JWT_ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 
 
+def _ensure_bcrypt_password_length_ok(password: str) -> None:
+    """
+    bcrypt has a hard limit of 72 *bytes* (not characters).
+    passlib/bcrypt may raise at runtime if this is exceeded, which otherwise
+    surfaces as a 500. Convert that into a clean 400.
+    """
+    try:
+        byte_len = len((password or "").encode("utf-8"))
+    except Exception:
+        # Defensive: if encoding fails for some reason, reject as bad input.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password encoding",
+        )
+
+    if byte_len > BCRYPT_MAX_PASSWORD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password cannot be longer than {BCRYPT_MAX_PASSWORD_BYTES} bytes",
+        )
+
+
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt"""
-    # Password is validated to be exactly 4 digits (4 bytes), so no bcrypt limit issues
+    _ensure_bcrypt_password_length_ok(password)
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
+    _ensure_bcrypt_password_length_ok(plain_password)
     return pwd_context.verify(plain_password, hashed_password)
 
 

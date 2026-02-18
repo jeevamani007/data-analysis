@@ -406,7 +406,15 @@ async def analyze_database(session_id: str):
                     else:
                         print(f"[HR Analysis] No usable HR events found in cluster {i+1}")
                 except Exception as he:
-                    print(f"[HR Analysis] Error in cluster {i+1}: {str(he)}")
+                    import traceback
+                    tb = traceback.format_exc()
+                    print(f"[HR Analysis] Error in cluster {i+1}: {str(he)}\n{tb}")
+                    # Return a structured failure so the UI can show a useful message/diagnostics.
+                    hr_analysis_result = {
+                        "success": False,
+                        "error": f"HR analysis crashed: {str(he)}",
+                        "traceback": tb,
+                    }
 
             # Create profile (sanitize dicts so numpy types serialize to JSON)
             profile = DatabaseProfile(

@@ -10,13 +10,23 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env from BACK-END directory (same folder as this file)
-_ENV_PATH = Path(__file__).parent / ".env"
+# Load environment in a dev-friendly order:
+# - Load BACK-END/sample.env first (defaults, override=False)
+# - Then load BACK-END/.env (local overrides, override=True)
+# - Finally, allow project-root .env (override=True)
+_BACKEND_DIR = Path(__file__).parent
+_SAMPLE_ENV_PATH = _BACKEND_DIR / "sample.env"
+_ENV_PATH = _BACKEND_DIR / ".env"
+
+if _SAMPLE_ENV_PATH.exists():
+    load_dotenv(dotenv_path=_SAMPLE_ENV_PATH, override=False)
+
 if _ENV_PATH.exists():
-    load_dotenv(dotenv_path=_ENV_PATH)
+    # override=True so local .env wins over sample.env and any existing process env
+    load_dotenv(dotenv_path=_ENV_PATH, override=True)
 else:
     # Also allow loading from project root .env (optional)
-    load_dotenv()
+    load_dotenv(override=True)
 
 
 def _get(name: str, default: str | None = None) -> str | None:
@@ -54,5 +64,15 @@ SMTP_USER = _get("SMTP_USER")
 SMTP_PASS = _get("SMTP_PASS")
 SMTP_FROM = _get("SMTP_FROM", SMTP_USER or "")
 SMTP_TLS = (_get("SMTP_TLS", "true") or "true").lower() in ("1", "true", "yes", "y")
+
+# Convenience + safer defaults:
+# Many providers (including Gmail) authenticate with the account email, which often
+# matches SMTP_FROM. If SMTP_USER is omitted but SMTP_FROM exists, fall back to it.
+if (not SMTP_USER) and SMTP_FROM:
+    SMTP_USER = SMTP_FROM
+
+# If a password is provided but user is missing, email will fail anyway; warn early.
+if SMTP_PASS and not SMTP_USER:
+    print("[Config] Warning: SMTP_PASS is set but SMTP_USER is missing. SMTP login will fail.")
 
 

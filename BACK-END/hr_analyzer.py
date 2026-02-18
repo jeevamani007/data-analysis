@@ -14,6 +14,7 @@ Goal:
 from typing import Dict, List, Any, Optional, Tuple
 
 import pandas as pd
+import re
 
 from models import TableAnalysis
 from dynamic_event_detector import (
@@ -220,6 +221,23 @@ HR_EVENT_DISPLAY = [
     "Full & Final settlement completed",
     "Employee status closed",
 ]
+
+def _normalize_datetime_text(v: Any) -> str:
+    """
+    Normalize common timestamp strings seen in uploads so pandas can parse them.
+    Example: '2023-10-25 | 10:48:35' -> '2023-10-25 10:48:35'
+    """
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    s = str(v).strip()
+    if not s:
+        return ""
+    # Common separators found in real CSVs
+    s = s.replace("|", " ")
+    s = s.replace("T", " ")
+    # Collapse repeated whitespace
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 class HRTimelineAnalyzer:
@@ -839,6 +857,13 @@ class HRTimelineAnalyzer:
             "access_removal": "Access removal",
             "full_final_settlement": "Full & Final settlement initiated",
             "employee_status_closed": "Employee status closed",
+            # Attendance punch patterns (common in real datasets)
+            "punched_in": "Clock-in",
+            "punched_out": "Clock-out",
+            "punch_in": "Clock-in",
+            "punch_out": "Clock-out",
+            "check_in": "Clock-in",
+            "check_out": "Clock-out",
         }
         
         # Check variant map with both original and camelCase-normalized versions
@@ -872,11 +897,16 @@ class HRTimelineAnalyzer:
                 sample = df[col].dropna().head(20)  # Check more samples
                 if len(sample) == 0:
                     return False
+                # Normalize common timestamp strings (e.g., '2023-10-25 | 10:48:35')
+                sample_norm = sample.astype(str).map(_normalize_datetime_text)
+                sample_norm = sample_norm[sample_norm != ""]
+                if len(sample_norm) == 0:
+                    return False
                 
                 # Check for numeric-like date formats FIRST (YYYYMMDD, YYYYMM, Unix timestamps)
                 numeric_date_count = 0
-                for v in sample:
-                    v_str = str(v).strip()
+                for v_str in sample_norm.head(20):
+                    v_str = str(v_str).strip()
                     # Check for YYYYMMDD format (8 digits)
                     if v_str.isdigit() and len(v_str) == 8:
                         try:
@@ -914,9 +944,9 @@ class HRTimelineAnalyzer:
                         return True
                 
                 # Check for string date formats
-                parsed = pd.to_datetime(sample, errors="coerce")
+                parsed = pd.to_datetime(sample_norm, errors="coerce")
                 parseable_count = parsed.notna().sum()
-                parseable_ratio = parseable_count / len(sample) if len(sample) > 0 else 0
+                parseable_ratio = parseable_count / len(sample_norm) if len(sample_norm) > 0 else 0
                 
                 # More lenient: accept if at least 30% are parseable (was 50%)
                 if parseable_ratio >= 0.3:
@@ -1092,7 +1122,11 @@ class HRTimelineAnalyzer:
                 sample = df[col].dropna().head(20)
                 if len(sample) == 0:
                     return False
-                parsed = pd.to_datetime(sample, errors="coerce")
+                sample_norm = sample.astype(str).map(_normalize_datetime_text)
+                sample_norm = sample_norm[sample_norm != ""]
+                if len(sample_norm) == 0:
+                    return False
+                parsed = pd.to_datetime(sample_norm, errors="coerce")
                 return parsed.notna().sum() >= max(1, int(len(sample) * 0.3))
             except Exception:
                 return False
@@ -1125,8 +1159,9 @@ class HRTimelineAnalyzer:
         raw_record: Dict[str, Any],
     ) -> str:
         """Build explanation for each event step."""
+        safe_event = event_name or "Event"
         mapping = {ev: ev.lower() for ev in HR_EVENT_DISPLAY}
-        core = mapping.get(event_name, event_name.replace("_", " ").lower())
+        core = mapping.get(safe_event, safe_event.replace("_", " ").lower())
         parts = [p for p in [table_name or "", file_name or "", f"row {source_row_display}" if source_row_display else ""] if p]
         origin = f" [{' · '.join(parts)}]" if parts else ""
         return f"{core}{origin}"
@@ -1805,7 +1840,9 @@ class HRTimelineAnalyzer:
             """Parse various date formats including numeric ones."""
             if pd.isna(val):
                 return pd.NaT
-            val_str = str(val).strip()
+            val_str = _normalize_datetime_text(val)
+            if not val_str:
+                return pd.NaT
             # Try YYYYMMDD format (8 digits)
             if val_str.isdigit() and len(val_str) == 8:
                 try:
@@ -1918,6 +1955,11 @@ class HRTimelineAnalyzer:
                     if not event_name:
                         event_name = self._time_column_to_hr_event(time_col_name)
                         source = "column_name"
+
+                    # Absolute safety: never allow None event name (prevents crashes and keeps timeline usable)
+                    if not event_name:
+                        event_name = "Employee profile creation"
+                        source = "fallback_default"
 
                     confidence = self._calculate_event_confidence(event_name, source, event_name_col, time_col_name, raw_record)
                     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if hasattr(ts, "strftime") else str(ts)
@@ -2168,6 +2210,9 @@ class HRTimelineAnalyzer:
                     source = "table_name_fallback"
             
             # Calculate confidence
+            if not event_name:
+                event_name = "Employee profile creation"
+                source = "fallback_default"
             confidence = self._calculate_event_confidence(event_name, source, event_name_col, event_time_col, raw_record)
 
             user_id = None

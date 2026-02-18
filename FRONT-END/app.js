@@ -6466,6 +6466,19 @@ function showHRAnalysisResults(profile) {
     const hrData = profile.hr_analysis;
 
     if (!hrData || !hrData.success) {
+        const diag = (hrData && Array.isArray(hrData.diagnostics) && hrData.diagnostics.length)
+            ? `
+                <div style="text-align:left; margin: 1rem auto 0; max-width: 760px; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 1rem;">
+                    <div style="font-weight: 800; color: var(--text-primary); margin-bottom: 0.5rem;">Diagnostics (why events were not detected)</div>
+                    <ul style="margin:0; padding-left: 1.2rem; color: var(--text-secondary); line-height: 1.6; font-size: 0.9rem;">
+                        ${hrData.diagnostics.map(d => `<li><strong>${d.table}</strong>: ${d.reason || 'No usable timestamp/event columns found.'}</li>`).join('')}
+                    </ul>
+                    <div style="margin-top: 0.75rem; color: var(--text-muted); font-size: 0.85rem;">
+                        Tip: ensure at least one timestamp column has parseable values (examples: <code>2026-01-08 12:45:53</code> or <code>2023-10-25 | 10:48:35</code>).
+                    </div>
+                </div>
+            `
+            : '';
         mainContent.innerHTML = `
             <div style="max-width: 700px; margin: 0 auto; padding: 3rem; text-align: center;">
                 <div style="font-size: 4rem; margin-bottom: 1.5rem;">👥</div>
@@ -6473,6 +6486,7 @@ function showHRAnalysisResults(profile) {
                 <p style="color: var(--text-secondary); margin-bottom: 2rem;">
                     ${hrData?.error || 'No HR events with usable timestamps found across tables. We look for event/date columns and row data matching the 92 HR events across 7 categories (Recruitment, Onboarding, Attendance, Payroll, Performance, Training, Exit).'}
                 </p>
+                ${diag}
                 <button class="btn-secondary" onclick="showDomainSplitView()">← Back to Database List</button>
             </div>
         `;

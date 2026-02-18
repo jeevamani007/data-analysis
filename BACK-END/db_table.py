@@ -65,6 +65,26 @@ class EmailVerificationToken(Base):
         return f"<EmailVerificationToken(id={self.id}, user_id={self.user_id}, is_used={self.is_used})>"
 
 
+class EmailOTPToken(Base):
+    """
+    Stores short OTP codes for email verification (e.g. 6 digits).
+    This is optional and can be used alongside the verification link token.
+    """
+    __tablename__ = "email_otp_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False, index=True)  # sha256 hex
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    is_used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self):
+        return f"<EmailOTPToken(id={self.id}, user_id={self.user_id}, is_used={self.is_used})>"
+
+
 # Create all tables
 def create_tables():
     """Create all database tables"""

@@ -480,7 +480,7 @@
 
                 if (response.ok && data) {
                     // Successful signup
-                    showSuccess(data.message || 'Account created. Verification email sent. Please verify before login.');
+                    showSuccess(data.message || 'Account created. Verification email sent (link + OTP). Please verify before login.');
                     
                     // Redirect to login page after short delay
                     setTimeout(() => {

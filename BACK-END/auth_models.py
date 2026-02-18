@@ -20,12 +20,19 @@ class UserSignupRequest(BaseModel):
 class UserLoginRequest(BaseModel):
     """User login request model"""
     email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., description="User password")
+    # Keep consistent with signup / UI (4-digit PIN)
+    password: str = Field(..., min_length=4, max_length=4, description="Password (exactly 4 digits: 0-9 only)")
 
 
 class ResendVerificationRequest(BaseModel):
     """Request to resend email verification"""
     email: EmailStr = Field(..., description="User email address")
+
+
+class VerifyOtpRequest(BaseModel):
+    """Verify email with an OTP code"""
+    email: EmailStr = Field(..., description="User email address")
+    otp: str = Field(..., pattern=r"^\d{6}$", description="6-digit OTP code")
 
 
 class TokenResponse(BaseModel):
