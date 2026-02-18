@@ -55,25 +55,26 @@ def admin_dashboard(
     """
     Aggregated admin dashboard data.
 
-    NOTE: This endpoint currently allows any authenticated user.
-    If you need strict admin-only access, extend the `User` model
-    with an `is_admin` flag and enforce it here.
+    Access rules:
+    - New world: any user with `users.role == 'admin'` (e.g. Google OAuth admin)
+    - Legacy world: any user that has a matching row in `admins` table
     """
-    # Restrict dashboard to legacy admins:
-    # Only allow if current_user matches a row in the `admins` table
-    legacy_admin = (
-        db.query(Admin)
-        .filter(
-            (Admin.email == current_user.email)
-            | (Admin.userid == current_user.username)
+    # Allow if the authenticated user has role='admin' (set by google_oauth_routes.py)
+    if getattr(current_user, "role", None) != "admin":
+        # Fallback to legacy admin check (for old databases)
+        legacy_admin = (
+            db.query(Admin)
+            .filter(
+                (Admin.email == current_user.email)
+                | (Admin.userid == current_user.username)
+            )
+            .first()
         )
-        .first()
-    )
-    if not legacy_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+        if not legacy_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required",
+            )
     # --- Build helper lookup: active plan per user ---
     plan_rows: List[UserPlanSubscription] = (
         db.query(UserPlanSubscription)
@@ -275,20 +276,24 @@ def admin_ping(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
         )
-    # Only treat as admin if this user exists in legacy `admins` table
-    legacy_admin = (
-        db.query(Admin)
-        .filter(
-            (Admin.email == current_user.email)
-            | (Admin.userid == current_user.username)
+    # Treat as admin if either:
+    # - User has role='admin' (new model), OR
+    # - User exists in legacy `admins` table
+    is_role_admin = getattr(current_user, "role", None) == "admin"
+    if not is_role_admin:
+        legacy_admin = (
+            db.query(Admin)
+            .filter(
+                (Admin.email == current_user.email)
+                | (Admin.userid == current_user.username)
+            )
+            .first()
         )
-        .first()
-    )
-    if not legacy_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+        if not legacy_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required",
+            )
     return {
         "success": True,
         "message": "Admin API is alive",

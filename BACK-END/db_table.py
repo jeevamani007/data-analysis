@@ -10,11 +10,24 @@ from database import Base
 
 
 class User(Base):
-    """User table for storing encrypted user credentials"""
+    """
+    Users table.
+
+    Beginner notes:
+    - This project started with "email/username + password" login.
+    - Google OAuth users still need a row in this same table so the rest of the
+      app (uploads, plans, admin dashboard) can reference `users.id`.
+    - For Google users we generate a unique `username` and store a random
+      (unknown) password hash so local-password login is effectively disabled.
+    """
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    # Google OAuth requirement field:
+    name = Column(String(200), nullable=True)
+    # Google OAuth requirement field: "user" or "admin"
+    role = Column(String(20), nullable=False, default="user", index=True)
     username = Column(String(100), unique=True, index=True, nullable=False)
     # Password will be stored as hashed (encrypted)
     password_hash = Column(String(255), nullable=False)
@@ -25,7 +38,7 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     def __repr__(self):
-        return f"<User(id={self.id}, email={self.email}, username={self.username})>"
+        return f"<User(id={self.id}, email={self.email}, username={self.username}, role={self.role})>"
 
 
 class Admin(Base):
@@ -212,6 +225,7 @@ class UploadFile(Base):
 def create_tables():
     """Create all database tables"""
     from database import engine
+    from sqlalchemy import text
     # Ensure subscription models are registered in SQLAlchemy metadata
     try:
         import subscription_tables  # noqa: F401
@@ -219,4 +233,17 @@ def create_tables():
         # Do not prevent app startup; tables can still be created on first successful import
         print(f"[DB] Warning: failed to import subscription_tables: {e}")
     Base.metadata.create_all(bind=engine)
+
+    # --- Beginner-friendly migration helpers (Postgres) ---
+    # If you already had a `users` table, SQLAlchemy's create_all() will NOT add
+    # new columns automatically. Since this project uses Postgres (pgAdmin),
+    # we safely "ALTER TABLE ... ADD COLUMN IF NOT EXISTS" for Google OAuth fields.
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(200)"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user'"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_role ON users (role)"))
+    except Exception as e:
+        # Do not break app startup if running against an older / different DB.
+        print(f"[DB] Warning: failed to ensure Google OAuth columns on users table: {e}")
 

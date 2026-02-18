@@ -322,6 +322,38 @@
             return localStorage.getItem('auth_token');
         }
 
+        /**
+         * OAuth Cookie-to-LocalStorage Sync
+         * 
+         * After Google OAuth login, the backend sets an HttpOnly cookie with the JWT token.
+         * This script syncs that cookie to localStorage so the rest of the app can use it.
+         * Always tries to sync from cookie first (even if token exists) to handle OAuth redirects.
+         */
+        async function syncOAuthTokenIfNeeded() {
+            try {
+                const syncResponse = await fetch(`${API_BASE}/api/auth/oauth-sync`, {
+                    method: 'GET',
+                    credentials: 'include', // Important: sends cookies
+                });
+
+                if (syncResponse.ok) {
+                    const syncData = await syncResponse.json();
+                    if (syncData.access_token) {
+                        // Always update localStorage with fresh token from cookie (OAuth login)
+                        localStorage.setItem('auth_token', syncData.access_token);
+                        localStorage.setItem('user_email', syncData.email || '');
+                        localStorage.setItem('user_username', syncData.username || syncData.name || 'user');
+                        localStorage.setItem('user_id', syncData.user_id || '');
+                        return true; // Successfully synced
+                    }
+                }
+            } catch (error) {
+                // Silently fail - user might not be using OAuth
+                console.debug('OAuth sync skipped:', error.message);
+            }
+            return false; // No sync happened
+        }
+
         async function requireAuth() {
             const token = getToken();
             if (!token) {
@@ -500,6 +532,9 @@
         });
 
         (async () => {
+            // Sync OAuth token from cookie to localStorage if needed
+            await syncOAuthTokenIfNeeded();
+            
             const ok = await requireAuth();
             if (!ok) return;
             try {

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import List, Any
+from starlette.middleware.sessions import SessionMiddleware
 import os
 import pandas as pd
 from pathlib import Path
@@ -41,11 +42,13 @@ from relationship_detector import RelationshipDetector
 from auth_routes import router as auth_router, get_current_user
 from plan_routes import router as plan_router
 from admin_routes import router as admin_router
+from google_oauth_routes import router as google_oauth_router, callback_router as google_oauth_callback_router
 from plan_service import assert_can_upload, increment_upload_usage
 from midnight_reset import midnight_reset_loop
 from db_table import create_tables, UploadSession, UploadFile as UploadFileModel, User
 from database import engine, SessionLocal
 from datetime import datetime
+from config import JWT_SECRET_KEY
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -58,7 +61,32 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event():
     """Create database tables on application startup"""
-    create_tables()
+    try:
+        create_tables()
+        print("[Startup] Database tables created/verified successfully")
+    except Exception as e:
+        error_msg = str(e)
+        if "password authentication failed" in error_msg.lower() or "operationalerror" in error_msg.lower():
+            print("\n" + "="*70)
+            print("ERROR: Database connection failed!")
+            print("="*70)
+            print("The PostgreSQL password in your .env file doesn't match your PostgreSQL setup.")
+            print("\nTo fix this:")
+            print("1. Open: data-analysis/BACK-END/.env")
+            print("2. Update DB_PASS with your actual PostgreSQL password")
+            print("3. Restart the application")
+            print("\nCurrent DB config:")
+            from config import DB_USER, DB_HOST, DB_PORT, DB_NAME
+            print(f"   User: {DB_USER}")
+            print(f"   Host: {DB_HOST}")
+            print(f"   Port: {DB_PORT}")
+            print(f"   Database: {DB_NAME}")
+            print("="*70 + "\n")
+        else:
+            print(f"[Startup] Warning: Failed to create tables: {e}")
+        # Don't crash the app - let it start but warn about DB issues
+        # Some endpoints might still work if DB is fixed later
+    
     # Start midnight reset loop for daily upload tokens
     try:
         import asyncio
@@ -70,14 +98,28 @@ async def startup_event():
 app.include_router(auth_router)
 app.include_router(plan_router)
 app.include_router(admin_router)
+app.include_router(google_oauth_router)
+app.include_router(google_oauth_callback_router)  # For /callback route (matches Google Cloud Console config)
 
-# Configure CORS
+# Configure CORS FIRST (before SessionMiddleware)
+# This ensures CORS headers are set correctly for OAuth redirects
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=True,  # Important: allows cookies to be sent/received
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Authlib (Google OAuth) needs server-side sessions to store state/nonce.
+# SessionMiddleware MUST come after CORS middleware.
+# Use a stable secret key - if JWT_SECRET_KEY is still default, generate a proper one
+session_secret = JWT_SECRET_KEY if JWT_SECRET_KEY != "CHANGE_ME_IN_.env" else "dev-session-secret-change-in-production-32chars-min"
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret,
+    max_age=3600,  # 1 hour session timeout
+    same_site="lax",  # Allows cookies to be sent on OAuth redirects
 )
 
 # Create upload directory

@@ -75,4 +75,13 @@ if (not SMTP_USER) and SMTP_FROM:
 if SMTP_PASS and not SMTP_USER:
     print("[Config] Warning: SMTP_PASS is set but SMTP_USER is missing. SMTP login will fail.")
 
+# -------- Google OAuth 2.0 --------
+# These MUST be set in environment variables / BACK-END/.env
+# Create them in Google Cloud Console -> APIs & Services -> Credentials (OAuth 2.0 Client ID).
+GOOGLE_CLIENT_ID = _get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = _get("GOOGLE_CLIENT_SECRET")
+
+# Optional: the email that should be treated as admin after Google login
+GOOGLE_ADMIN_EMAIL = _get("GOOGLE_ADMIN_EMAIL", "ponjeevabsccs@gmail.com")
+
 
