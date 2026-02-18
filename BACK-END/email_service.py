@@ -123,3 +123,28 @@ def send_password_reset_email(*, to_email: str, otp_code: str) -> None:
         print(f"[Email] Password reset OTP for {to_email}: {otp_code}")
 
 
+def send_login_otp_email(*, to_email: str, otp_code: str) -> None:
+    """
+    Send a one-time code as a LOGIN notification.
+    This is informational (no extra verification step required).
+    """
+    subject = "Login notification code"
+    html = f"""
+    <div style="font-family: Inter, Arial, sans-serif; background:#F1F5F9; padding:24px;">
+      <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:16px; padding:24px;">
+        <h2 style="margin:0 0 8px; color:#0F172A;">You just signed in</h2>
+        <p style="margin:0 0 12px; color:#334155;">Here is your login notification code. If this wasn't you, please change your PIN.</p>
+        <div style="margin:16px 0 0; padding:12px; background:#F8FAFC; border:1px dashed #CBD5E1; border-radius:12px;">
+          <div style="font-size:22px; letter-spacing:4px; font-weight:800; color:#0F172A;">{otp_code}</div>
+        </div>
+        <p style="margin:16px 0 0; color:#64748B; font-size:13px;">
+          This code is for your records only (no extra step required inside the app).
+        </p>
+      </div>
+    </div>
+    """.strip()
+    text = f"You just signed in.\nYour login notification code is: {otp_code}\nIf this wasn’t you, please change your PIN."
+    sent = send_email_smtp(to_email=to_email, subject=subject, html_body=html, text_body=text)
+    if not sent:
+        print(f"[Email] Login notification OTP for {to_email}: {otp_code}")
+

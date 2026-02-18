@@ -248,7 +248,7 @@
                 <div class="auth-header">
                     <div class="auth-icon">🔐</div>
                     <h1>Welcome Back</h1>
-                    <p>Sign in to your account to continue</p>
+                    <p>Sign in with your email or username</p>
                 </div>
 
                 <div id="errorMessage" class="error-message"></div>
@@ -256,12 +256,12 @@
 
                 <form id="loginForm">
                     <div class="form-group">
-                        <label for="email" class="form-label">Email Address</label>
+                        <label for="email" class="form-label">Email or Username</label>
                         <input 
-                            type="email" 
+                            type="text" 
                             id="email" 
                             class="form-input" 
-                            placeholder="your.email@example.com"
+                            placeholder="your.email@example.com or username"
                             required
                             autocomplete="email"
                         >
@@ -492,7 +492,7 @@
                     })
                 });
 
-                const data = await response.json();
+                const data = await response.json().catch(() => ({}));
 
                 if (response.ok) {
                     // Store token in localStorage
@@ -508,8 +508,13 @@
                         window.location.href = 'index.html';
                     }, 1000);
                 } else {
-                    showError(data.detail || 'Login failed. Please check your credentials.');
-                    const detail = (data && data.detail) ? String(data.detail) : '';
+                    let friendly = '';
+                    // Handle FastAPI 422 validation error: detail is a list of {loc,msg,...}
+                    if (response.status === 422 && Array.isArray(data?.detail)) {
+                        friendly = data.detail.map(d => d.msg).join(' / ');
+                    }
+                    showError(friendly || data.detail || 'Login failed. Please check your credentials.');
+                    const detail = (data && typeof data.detail === 'string') ? data.detail : '';
                     if (detail.toLowerCase().includes('not verified') && verifyHint) {
                         verifyHint.style.display = 'block';
                     }

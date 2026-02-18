@@ -34,7 +34,7 @@ from auth_utils import (
     generate_email_verification_token,
 )
 from config import APP_BASE_URL
-from email_service import send_verification_email, send_password_reset_email
+from email_service import send_verification_email, send_password_reset_email, send_login_otp_email
 import hashlib
 import secrets
 
@@ -230,13 +230,18 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """
-    Login with email and password
-    
-    - **email**: User email
-    - **password**: User password
+    Login with email or username and password.
+
+    Frontend sends the value in the "email" field; if it looks like an email
+    (contains "@") we match by email, otherwise we match by username.
     """
-    # Find user by email
-    user = db.query(User).filter(User.email == login_data.email).first()
+    identifier = login_data.email.strip()
+
+    # Find user by email OR username
+    if "@" in identifier:
+        user = db.query(User).filter(User.email == identifier).first()
+    else:
+        user = db.query(User).filter(User.username == identifier).first()
     
     if not user:
         # Log failed login attempt
@@ -244,7 +249,7 @@ async def login(
         user_agent = request.headers.get("user-agent", "unknown")
         failed_log = LoginLog(
             user_id=0,  # No user ID for failed login
-            email=login_data.email,
+            email=identifier,
             ip_address=ip_address,
             user_agent=user_agent,
             login_status="failed"
@@ -254,7 +259,7 @@ async def login(
         
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+            detail="Invalid email/username or password"
         )
     
     # Verify password
@@ -275,7 +280,7 @@ async def login(
         
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+            detail="Invalid email/username or password"
         )
     
     # Check if user is active
@@ -307,7 +312,7 @@ async def login(
     access_token = create_access_token(
         data={"user_id": user.id, "email": user.email, "username": user.username}
     )
-    
+
     # Log successful login
     ip_address = get_client_ip(request)
     user_agent = request.headers.get("user-agent", "unknown")
@@ -321,7 +326,15 @@ async def login(
     )
     db.add(login_log)
     db.commit()
-    
+
+    # Send a one-time login notification OTP to the user's email (non-blocking from the client's perspective)
+    try:
+        otp_code = f"{secrets.randbelow(1_000_000):06d}"
+        send_login_otp_email(to_email=user.email, otp_code=otp_code)
+    except Exception as e:
+        # Never fail login because of notification
+        print(f"Login OTP notification failed: {e}")
+
     return TokenResponse(
         access_token=access_token,
         user_id=user.id,
@@ -338,9 +351,13 @@ async def resend_verification(
     db: Session = Depends(get_db),
 ):
     """
-    Resend email verification link (safe response to prevent email enumeration).
+    Resend email verification link (safe response to prevent email/username enumeration).
     """
-    user = db.query(User).filter(User.email == req.email).first()
+    identifier = req.email.strip()
+    if "@" in identifier:
+        user = db.query(User).filter(User.email == identifier).first()
+    else:
+        user = db.query(User).filter(User.username == identifier).first()
     if user and user.is_active and not user.is_verified:
         token = generate_email_verification_token()
         expires_at = _utcnow() + timedelta(hours=24)
@@ -386,8 +403,13 @@ async def resend_verification(
 async def verify_otp(req: VerifyOtpRequest, db: Session = Depends(get_db)):
     """
     Verify an email using a short OTP code (6 digits).
+    The "email" field can be an email or username; we resolve to the user's email.
     """
-    user = db.query(User).filter(User.email == req.email).first()
+    identifier = req.email.strip()
+    if "@" in identifier:
+        user = db.query(User).filter(User.email == identifier).first()
+    else:
+        user = db.query(User).filter(User.username == identifier).first()
     if not user:
         # Avoid account enumeration
         return MessageResponse(success=True, message="If the account exists, it has been verified.")
@@ -442,9 +464,13 @@ async def forgot_password_request(
     """
     Request a password reset OTP (forgot password).
 
-    Response is always generic to avoid email enumeration.
+    "email" field can be email or username – server resolves real email.
     """
-    user = db.query(User).filter(User.email == req.email).first()
+    identifier = req.email.strip()
+    if "@" in identifier:
+        user = db.query(User).filter(User.email == identifier).first()
+    else:
+        user = db.query(User).filter(User.username == identifier).first()
     if not user:
         # Explicit feedback: email is not registered
         raise HTTPException(
@@ -517,8 +543,14 @@ async def forgot_password_reset(
 ):
     """
     Reset password using a valid OTP and immediately log the user in.
+
+    "email" field can be email or username – server resolves real email.
     """
-    user = db.query(User).filter(User.email == req.email).first()
+    identifier = req.email.strip()
+    if "@" in identifier:
+        user = db.query(User).filter(User.email == identifier).first()
+    else:
+        user = db.query(User).filter(User.username == identifier).first()
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

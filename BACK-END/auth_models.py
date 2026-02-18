@@ -18,37 +18,43 @@ class UserSignupRequest(BaseModel):
 
 
 class UserLoginRequest(BaseModel):
-    """User login request model"""
-    email: EmailStr = Field(..., description="User email address")
+    """User login request model (email or username + 4‑digit PIN)."""
+    # Frontend sends either an email or a username in this field.
+    email: str = Field(..., description="Email address or username")
     # Keep consistent with signup / UI (4-digit PIN)
     password: str = Field(..., min_length=4, max_length=4, description="Password (exactly 4 digits: 0-9 only)")
 
 
 class ResendVerificationRequest(BaseModel):
     """Request to resend email verification"""
-    email: EmailStr = Field(..., description="User email address")
+    # Accepts either email or username – backend will resolve real email.
+    email: str = Field(..., description="Email address or username")
 
 
 class VerifyOtpRequest(BaseModel):
     """Verify email with an OTP code"""
-    email: EmailStr = Field(..., description="User email address")
+    # Accepts either email or username – backend will resolve real email.
+    email: str = Field(..., description="Email address or username")
     otp: str = Field(..., pattern=r"^\d{6}$", description="6-digit OTP code")
 
 
 class ForgotPasswordRequest(BaseModel):
     """Request a password reset OTP (forgot password)"""
-    email: EmailStr = Field(..., description="User email address")
+    # Accepts either email or username – backend will resolve real email.
+    email: str = Field(..., description="Email address or username")
 
 
 class ForgotPasswordVerifyRequest(BaseModel):
     """Verify password reset OTP (forgot password)"""
-    email: EmailStr = Field(..., description="User email address")
+    # Accepts either email or username – backend will resolve real email.
+    email: str = Field(..., description="User email address or username")
     otp: str = Field(..., pattern=r"^\d{6}$", description="6-digit OTP code")
 
 
 class ForgotPasswordResetRequest(BaseModel):
     """Reset password using an OTP (forgot password)"""
-    email: EmailStr = Field(..., description="User email address")
+    # Accepts either email or username – backend will resolve real email.
+    email: str = Field(..., description="User email address or username")
     otp: str = Field(..., pattern=r"^\d{6}$", description="6-digit OTP code")
     # Keep consistent with signup/login: 4-digit PIN
     new_password: str = Field(..., min_length=4, max_length=4, description="New password (exactly 4 digits: 0-9 only)")
