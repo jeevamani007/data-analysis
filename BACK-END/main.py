@@ -38,6 +38,9 @@ def _to_native(x: Any) -> Any:
 from models import DatabaseProfile, UploadResponse, AnalysisResponse, TableAnalysis
 from csv_analyzer import CSVAnalyzer
 from relationship_detector import RelationshipDetector
+from auth_routes import router as auth_router
+from db_table import create_tables
+from database import engine
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -45,6 +48,15 @@ app = FastAPI(
     description="Analyze CSV files and generate comprehensive database profiles",
     version="1.0.0"
 )
+
+# Create database tables on startup
+@app.on_event("startup")
+async def startup_event():
+    """Create database tables on application startup"""
+    create_tables()
+
+# Include authentication routes
+app.include_router(auth_router)
 
 # Configure CORS
 app.add_middleware(

@@ -605,3 +605,14 @@ code {
 .open-date-node-selected .timeline-node-dot {
     box-shadow: 0 0 0 4px rgba(59,130,246,0.4) !important;
 }
+
+/* ===== Auth Header ===== */
+#authHeader {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+}
+
+#authHeader .btn-secondary {
+    margin: 0;
+}

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Domain Classification Model</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .auth-container {
+            max-width: 450px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .auth-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 3rem 2.5rem;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border);
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .auth-header h1 {
+            font-size: 2rem;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .auth-header p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .auth-icon {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 1rem;
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 4px var(--accent-primary-light);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .password-toggle {
+            position: relative;
+        }
+
+        .password-toggle-btn {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0.5rem;
+            transition: color 0.2s ease;
+        }
+
+        .password-toggle-btn:hover {
+            color: var(--accent-primary);
+        }
+
+        .form-input.password-input {
+            padding-right: 3.5rem;
+        }
+
+        .btn-auth {
+            width: 100%;
+            padding: 1.2rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-dark));
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
+            margin-top: 0.5rem;
+        }
+
+        .btn-auth:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(15, 118, 110, 0.4);
+        }
+
+        .btn-auth:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .auth-footer {
+            text-align: center;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .auth-footer p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .auth-footer a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s ease;
+        }
+
+        .auth-footer a:hover {
+            color: var(--accent-primary-dark);
+            text-decoration: underline;
+        }
+
+        .error-message {
+            background: var(--danger-light);
+            color: var(--danger);
+            padding: 1rem;
+            border-radius: var(--radius);
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--danger);
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .success-message {
+            background: var(--success-light);
+            color: var(--success);
+            padding: 1rem;
+            border-radius: var(--radius);
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--success);
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .loading-spinner-small {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            transition: color 0.2s ease;
+        }
+
+        .back-link:hover {
+            color: var(--accent-primary);
+        }
+
+        .back-link::before {
+            content: "←";
+            margin-right: 0.5rem;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+
+<body>
+    <section class="section active">
+        <div class="auth-container">
+            <a href="index.html" class="back-link">Back to Home</a>
+
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="auth-icon">🔐</div>
+                    <h1>Welcome Back</h1>
+                    <p>Sign in to your account to continue</p>
+                </div>
+
+                <div id="errorMessage" class="error-message"></div>
+                <div id="successMessage" class="success-message"></div>
+
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="email" class="form-label">Email Address</label>
+                        <input 
+                            type="email" 
+                            id="email" 
+                            class="form-input" 
+                            placeholder="your.email@example.com"
+                            required
+                            autocomplete="email"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password" class="form-label">Password</label>
+                        <div class="password-toggle">
+                            <input 
+                                type="password" 
+                                id="password" 
+                                class="form-input password-input" 
+                                placeholder="Enter 4-digit PIN (0-9)"
+                                required
+                                autocomplete="current-password"
+                                minlength="4"
+                                maxlength="4"
+                                pattern="[0-9]{4}"
+                                inputmode="numeric"
+                            >
+                            <button type="button" class="password-toggle-btn" id="togglePassword">
+                                👁️
+                            </button>
+                        </div>
+                        <div class="form-hint" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">Enter exactly 4 digits (numbers 0-9 only)</div>
+                    </div>
+
+                    <button type="submit" class="btn-auth" id="loginBtn">
+                        <span id="loginBtnText">Sign In</span>
+                    </button>
+                </form>
+
+                <div id="verifyHint" style="display:none; margin-top: 1rem; padding: 1rem; background: var(--info-light); border: 1px solid var(--info); border-radius: var(--radius); color: var(--text-secondary); font-size: 0.9rem;">
+                    <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">Email verification required</div>
+                    <div style="margin-bottom: 0.75rem;">Please verify your email to login. If you didn’t receive the email, resend it.</div>
+                    <button id="resendBtn" type="button" class="btn-secondary" style="padding: 0.7rem 1rem; font-size: 0.9rem;">Resend verification email</button>
+                </div>
+
+                <div class="auth-footer">
+                    <p>Don't have an account? <a href="signin.html">Sign up here</a></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const API_BASE_URL = window.location.origin;
+
+        // Password toggle functionality
+        const togglePassword = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('password');
+
+        togglePassword.addEventListener('click', () => {
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+            togglePassword.textContent = type === 'password' ? '👁️' : '🙈';
+        });
+
+        // Password validation: only allow digits, max 4 characters
+        passwordInput.addEventListener('input', (e) => {
+            let password = e.target.value;
+            // Remove any non-digit characters
+            password = password.replace(/[^0-9]/g, '');
+            // Limit to 4 digits
+            if (password.length > 4) {
+                password = password.substring(0, 4);
+            }
+            e.target.value = password;
+        });
+
+        // Prevent paste of non-numeric content
+        passwordInput.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+            const digitsOnly = pastedText.replace(/[^0-9]/g, '').substring(0, 4);
+            passwordInput.value = digitsOnly;
+        });
+
+        // Login form submission
+        const loginForm = document.getElementById('loginForm');
+        const loginBtn = document.getElementById('loginBtn');
+        const loginBtnText = document.getElementById('loginBtnText');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+        const verifyHint = document.getElementById('verifyHint');
+        const resendBtn = document.getElementById('resendBtn');
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+            successMessage.classList.remove('show');
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.classList.add('show');
+            errorMessage.classList.remove('show');
+        }
+
+        function hideMessages() {
+            errorMessage.classList.remove('show');
+            successMessage.classList.remove('show');
+            if (verifyHint) verifyHint.style.display = 'none';
+        }
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!email || !password) {
+                showError('Please fill in all fields');
+                return;
+            }
+
+            // Validate password: must be exactly 4 digits
+            if (!/^[0-9]{4}$/.test(password)) {
+                showError('Password must be exactly 4 digits (numbers 0-9 only)');
+                loginBtn.disabled = false;
+                loginBtnText.textContent = 'Sign In';
+                return;
+            }
+
+            // Disable button and show loading
+            loginBtn.disabled = true;
+            loginBtnText.innerHTML = '<span class="loading-spinner-small"></span>Signing in...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Store token in localStorage
+                    localStorage.setItem('auth_token', data.access_token);
+                    localStorage.setItem('user_email', data.email);
+                    localStorage.setItem('user_username', data.username);
+                    localStorage.setItem('user_id', data.user_id);
+
+                    showSuccess('Login successful! Redirecting...');
+                    
+                    // Redirect to main page after short delay
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 1000);
+                } else {
+                    showError(data.detail || 'Login failed. Please check your credentials.');
+                    const detail = (data && data.detail) ? String(data.detail) : '';
+                    if (detail.toLowerCase().includes('not verified') && verifyHint) {
+                        verifyHint.style.display = 'block';
+                    }
+                    loginBtn.disabled = false;
+                    loginBtnText.textContent = 'Sign In';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('Network error. Please try again.');
+                loginBtn.disabled = false;
+                loginBtnText.textContent = 'Sign In';
+            }
+        });
+
+        if (resendBtn) {
+            resendBtn.addEventListener('click', async () => {
+                const email = document.getElementById('email').value.trim();
+                if (!email) {
+                    showError('Enter your email first, then click resend.');
+                    return;
+                }
+                resendBtn.disabled = true;
+                resendBtn.textContent = 'Sending...';
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/auth/resend-verification`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+                    const payload = await res.json().catch(() => ({}));
+                    showSuccess(payload.message || 'If your account exists, a verification email has been sent.');
+                } catch (e) {
+                    showError('Failed to resend verification email. Please try again.');
+                } finally {
+                    resendBtn.disabled = false;
+                    resendBtn.textContent = 'Resend verification email';
+                }
+            });
+        }
+
+        // Check if user is already logged in
+        window.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                // Verify token is still valid
+                fetch(`${API_BASE_URL}/api/auth/verify`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // Token is valid, redirect to main page
+                        window.location.href = 'index.html';
+                    } else {
+                        // Token is invalid, clear it
+                        localStorage.removeItem('auth_token');
+                        localStorage.removeItem('user_email');
+                        localStorage.removeItem('user_username');
+                        localStorage.removeItem('user_id');
+                    }
+                })
+                .catch(() => {
+                    // Error checking token, clear it
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('user_email');
+                    localStorage.removeItem('user_username');
+                    localStorage.removeItem('user_id');
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>
+

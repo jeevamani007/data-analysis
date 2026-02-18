@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Domain Classification Model</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .auth-container {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .auth-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 3rem 2.5rem;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border);
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .auth-header h1 {
+            font-size: 2rem;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .auth-header p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .auth-icon {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .form-label .required {
+            color: var(--danger);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 1rem;
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 4px var(--accent-primary-light);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .password-toggle {
+            position: relative;
+        }
+
+        .password-toggle-btn {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0.5rem;
+            transition: color 0.2s ease;
+        }
+
+        .password-toggle-btn:hover {
+            color: var(--accent-primary);
+        }
+
+        .form-input.password-input {
+            padding-right: 3.5rem;
+        }
+
+        .password-strength {
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .password-strength.weak {
+            color: var(--danger);
+        }
+
+        .password-strength.medium {
+            color: var(--warning);
+        }
+
+        .password-strength.strong {
+            color: var(--success);
+        }
+
+        .btn-auth {
+            width: 100%;
+            padding: 1.2rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-primary-dark));
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
+            margin-top: 0.5rem;
+        }
+
+        .btn-auth:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(15, 118, 110, 0.4);
+        }
+
+        .btn-auth:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .auth-footer {
+            text-align: center;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .auth-footer p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .auth-footer a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s ease;
+        }
+
+        .auth-footer a:hover {
+            color: var(--accent-primary-dark);
+            text-decoration: underline;
+        }
+
+        .error-message {
+            background: var(--danger-light);
+            color: var(--danger);
+            padding: 1rem;
+            border-radius: var(--radius);
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--danger);
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .success-message {
+            background: var(--success-light);
+            color: var(--success);
+            padding: 1rem;
+            border-radius: var(--radius);
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--success);
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .loading-spinner-small {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            transition: color 0.2s ease;
+        }
+
+        .back-link:hover {
+            color: var(--accent-primary);
+        }
+
+        .back-link::before {
+            content: "←";
+            margin-right: 0.5rem;
+            font-size: 1.2rem;
+        }
+
+        .form-hint {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+
+<body>
+    <section class="section active">
+        <div class="auth-container">
+            <a href="index.html" class="back-link">Back to Home</a>
+
+            <div class="auth-card">
+                <div class="auth-header">
+                    <div class="auth-icon">✨</div>
+                    <h1>Create Account</h1>
+                    <p>Sign up to start analyzing your databases</p>
+                </div>
+
+                <div id="errorMessage" class="error-message"></div>
+                <div id="successMessage" class="success-message"></div>
+
+                <form id="signupForm">
+                    <div class="form-group">
+                        <label for="fullName" class="form-label">Full Name <span class="required">(Optional)</span></label>
+                        <input 
+                            type="text" 
+                            id="fullName" 
+                            class="form-input" 
+                            placeholder="John Doe"
+                            autocomplete="name"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email" class="form-label">Email Address <span class="required">*</span></label>
+                        <input 
+                            type="email" 
+                            id="email" 
+                            class="form-input" 
+                            placeholder="your.email@example.com"
+                            required
+                            autocomplete="email"
+                        >
+                        <div class="form-hint">We'll never share your email with anyone</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="username" class="form-label">Username <span class="required">*</span></label>
+                        <input 
+                            type="text" 
+                            id="username" 
+                            class="form-input" 
+                            placeholder="johndoe"
+                            required
+                            autocomplete="username"
+                            minlength="3"
+                            maxlength="100"
+                        >
+                        <div class="form-hint">3-100 characters, letters/numbers plus <code>_</code> <code>.</code> <code>-</code></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password" class="form-label">Password <span class="required">*</span></label>
+                        <div class="password-toggle">
+                            <input 
+                                type="password" 
+                                id="password" 
+                                class="form-input password-input" 
+                                placeholder="Enter 4-digit PIN (0-9)"
+                                required
+                                autocomplete="new-password"
+                                minlength="4"
+                                maxlength="4"
+                                pattern="[0-9]{4}"
+                                inputmode="numeric"
+                            >
+                            <button type="button" class="password-toggle-btn" id="togglePassword">
+                                👁️
+                            </button>
+                        </div>
+                        <div id="passwordStrength" class="password-strength"></div>
+                        <div class="form-hint">Enter exactly 4 digits (numbers only: 0-9)</div>
+                    </div>
+
+                    <button type="submit" class="btn-auth" id="signupBtn">
+                        <span id="signupBtnText">Create Account</span>
+                    </button>
+                </form>
+
+                <div class="auth-footer">
+                    <p>Already have an account? <a href="login.html">Sign in here</a></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const API_BASE_URL = window.location.origin;
+
+        // Password toggle functionality
+        const togglePassword = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('password');
+        const passwordStrength = document.getElementById('passwordStrength');
+
+        togglePassword.addEventListener('click', () => {
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+            togglePassword.textContent = type === 'password' ? '👁️' : '🙈';
+        });
+
+        // Password validation: only allow digits, max 4 characters
+        passwordInput.addEventListener('input', (e) => {
+            let password = e.target.value;
+            // Remove any non-digit characters
+            password = password.replace(/[^0-9]/g, '');
+            // Limit to 4 digits
+            if (password.length > 4) {
+                password = password.substring(0, 4);
+            }
+            e.target.value = password;
+            
+            // Update strength indicator
+            if (password.length === 0) {
+                passwordStrength.textContent = '';
+                passwordStrength.className = '';
+            } else if (password.length < 4) {
+                passwordStrength.textContent = `Enter ${4 - password.length} more digit(s)`;
+                passwordStrength.className = 'password-strength weak';
+            } else if (password.length === 4) {
+                passwordStrength.textContent = '✓ 4-digit PIN ready';
+                passwordStrength.className = 'password-strength strong';
+            }
+        });
+
+        // Prevent paste of non-numeric content
+        passwordInput.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+            const digitsOnly = pastedText.replace(/[^0-9]/g, '').substring(0, 4);
+            passwordInput.value = digitsOnly;
+            passwordInput.dispatchEvent(new Event('input'));
+        });
+
+        // Signup form submission
+        const signupForm = document.getElementById('signupForm');
+        const signupBtn = document.getElementById('signupBtn');
+        const signupBtnText = document.getElementById('signupBtnText');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+            successMessage.classList.remove('show');
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.classList.add('show');
+            errorMessage.classList.remove('show');
+        }
+
+        function hideMessages() {
+            errorMessage.classList.remove('show');
+            successMessage.classList.remove('show');
+        }
+
+        signupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const email = document.getElementById('email').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const fullName = document.getElementById('fullName').value.trim();
+
+            // Validation
+            if (!email || !username || !password) {
+                showError('Please fill in all required fields');
+                return;
+            }
+
+            if (username.length < 3 || username.length > 100) {
+                showError('Username must be between 3 and 100 characters');
+                return;
+            }
+
+            // Validate password: must be exactly 4 digits
+            if (!/^[0-9]{4}$/.test(password)) {
+                showError('Password must be exactly 4 digits (numbers 0-9 only)');
+                return;
+            }
+
+            // Validate username format (letters, numbers, underscore, dot, hyphen)
+            if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+                showError('Username can only contain letters, numbers, underscore (_), dot (.), and hyphen (-)');
+                return;
+            }
+
+            // Disable button and show loading
+            signupBtn.disabled = true;
+            signupBtnText.innerHTML = '<span class="loading-spinner-small"></span>Creating account...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        username: username,
+                        password: password,
+                        full_name: fullName || null
+                    })
+                });
+
+                // Try to parse response as JSON, but handle non-JSON responses (like 500 errors)
+                let data;
+                let errorText = '';
+                try {
+                    const text = await response.text();
+                    errorText = text;
+                    if (text) {
+                        data = JSON.parse(text);
+                    } else {
+                        data = null;
+                    }
+                } catch (parseError) {
+                    // Response is not JSON (e.g., "Internal Server Error" plain text)
+                    console.error('Failed to parse response as JSON:', errorText);
+                    data = null;
+                }
+
+                if (response.ok && data) {
+                    // Successful signup
+                    showSuccess(data.message || 'Account created. Verification email sent. Please verify before login.');
+                    
+                    // Redirect to login page after short delay
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 1800);
+                } else {
+                    // Handle 400/422 validation errors more clearly
+                    let friendlyMessage = '';
+
+                    // FastAPI 422 validation error structure: { detail: [ { loc, msg, type }, ... ] }
+                    if (response.status === 422 && Array.isArray(data?.detail)) {
+                        const details = data.detail;
+                        const pwError = details.find(d => Array.isArray(d.loc) && d.loc.includes('password'));
+                        if (pwError && typeof pwError.msg === 'string') {
+                            if (pwError.msg.toLowerCase().includes('ensure this value has at least') || pwError.msg.toLowerCase().includes('ensure this value has at most')) {
+                                friendlyMessage = 'Password must be exactly 4 digits (numbers 0-9 only).';
+                            } else {
+                                friendlyMessage = pwError.msg;
+                            }
+                        } else {
+                            // Fallback: join all validation messages
+                            friendlyMessage = details.map(d => d.msg).join(' / ');
+                        }
+                    }
+
+                    // 400 errors from our backend (e.g., password too long, email/username exists)
+                    if (!friendlyMessage && response.status === 400) {
+                        if (typeof data?.detail === 'string') {
+                            friendlyMessage = data.detail;
+                        }
+                    }
+
+                    // Final fallback if still no message
+                    const errorMsg = friendlyMessage || data?.detail || data?.message || errorText || 'Signup failed. Please try again.';
+                    showError(errorMsg);
+                    signupBtn.disabled = false;
+                    signupBtnText.textContent = 'Create Account';
+                }
+            } catch (error) {
+                console.error('Signup error:', error);
+                showError('Network error. Please check your connection and try again.');
+                signupBtn.disabled = false;
+                signupBtnText.textContent = 'Create Account';
+            }
+        });
+
+        // Check if user is already logged in
+        window.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                // Verify token is still valid
+                fetch(`${API_BASE_URL}/api/auth/verify`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // Token is valid, redirect to main page
+                        window.location.href = 'index.html';
+                    } else {
+                        // Token is invalid, clear it
+                        localStorage.removeItem('auth_token');
+                        localStorage.removeItem('user_email');
+                        localStorage.removeItem('user_username');
+                        localStorage.removeItem('user_id');
+                    }
+                })
+                .catch(() => {
+                    // Error checking token, clear it
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('user_email');
+                    localStorage.removeItem('user_username');
+                    localStorage.removeItem('user_id');
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>
+

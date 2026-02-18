@@ -4,7 +4,120 @@
  */
 
 // API Configuration
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = window.location.origin + '/api';
+
+// Authentication Functions
+function getAuthToken() {
+    return localStorage.getItem('auth_token');
+}
+
+function isAuthenticated() {
+    return !!getAuthToken();
+}
+
+function getUserInfo() {
+    return {
+        email: localStorage.getItem('user_email'),
+        username: localStorage.getItem('user_username'),
+        userId: localStorage.getItem('user_id')
+    };
+}
+
+async function checkAuthAndRedirect() {
+    const token = getAuthToken();
+    if (!token) {
+        // Not authenticated, redirect to login
+        window.location.href = 'login.html';
+        return false;
+    }
+    
+    // Verify token is still valid
+    try {
+        const response = await fetch(`${window.location.origin}/api/auth/verify`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            // Token invalid, clear and redirect
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_email');
+            localStorage.removeItem('user_username');
+            localStorage.removeItem('user_id');
+            window.location.href = 'login.html';
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error('Auth check failed:', error);
+        // If we can't verify auth, treat as not authenticated to avoid exposing upload UI
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_email');
+        localStorage.removeItem('user_username');
+        localStorage.removeItem('user_id');
+        window.location.href = 'login.html';
+        return false;
+    }
+}
+
+function setupAuthUI() {
+    const authHeader = document.getElementById('authHeader');
+    const userInfo = document.getElementById('userInfo');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginLink = document.getElementById('loginLink');
+    
+    if (isAuthenticated()) {
+        if (authHeader && userInfo && logoutBtn) {
+            const user = getUserInfo();
+            authHeader.style.display = 'block';
+            userInfo.textContent = `👤 ${user.username || user.email}`;
+            
+            logoutBtn.addEventListener('click', async () => {
+                const token = getAuthToken();
+                if (token) {
+                    try {
+                        await fetch(`${window.location.origin}/api/auth/logout`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                    } catch (error) {
+                        console.error('Logout error:', error);
+                    }
+                }
+                
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user_email');
+                localStorage.removeItem('user_username');
+                localStorage.removeItem('user_id');
+                window.location.reload();
+            });
+        }
+        if (loginLink) {
+            loginLink.style.display = 'none';
+        }
+    } else {
+        if (authHeader) {
+            authHeader.style.display = 'none';
+        }
+        if (loginLink) {
+            loginLink.style.display = 'block';
+        }
+    }
+}
+
+function getAuthHeaders() {
+    const token = getAuthToken();
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+}
 
 // Format 24h "HH:MM:SS" or "HH:MM" to readable "10:30 AM" / "10:30:45 AM"
 function formatTimeReadable(str) {
@@ -3366,8 +3479,21 @@ window.toggleTimelineFeatures = function (contentId) {
 };
 
 // Initialize Event Listeners
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Require authentication on the main (upload) page
+    const ok = await checkAuthAndRedirect();
+    if (!ok) return; // redirected to login
+
+    // Hide auth gate now that token is verified
+    const authLoading = document.getElementById('authLoading');
+    if (authLoading) authLoading.style.display = 'none';
+
+    // Setup auth UI (logout button + user info)
+    setupAuthUI();
+
+    // Initialize event listeners and show upload UI
     initializeEventListeners();
+    resetToUpload();
 });
 
 function initializeEventListeners() {
@@ -3457,6 +3583,10 @@ function formatFileSize(bytes) {
 
 // Upload and Analysis
 async function analyzeDatabase() {
+    // Ensure user is still authenticated before allowing uploads/analysis
+    const ok = await checkAuthAndRedirect();
+    if (!ok) return;
+
     if (uploadedFiles.length === 0) {
         alert('Please upload at least one CSV file');
         return;
@@ -3472,8 +3602,15 @@ async function analyzeDatabase() {
             formData.append('files', file);
         });
 
+        const uploadHeaders = {};
+        const token = getAuthToken();
+        if (token) {
+            uploadHeaders['Authorization'] = `Bearer ${token}`;
+        }
+        
         const uploadResponse = await fetch(`${API_BASE_URL}/upload`, {
             method: 'POST',
+            headers: uploadHeaders,
             body: formData
         });
 
@@ -3486,6 +3623,7 @@ async function analyzeDatabase() {
 
         // Step 2: Analyze database
         const analyzeResponse = await fetch(`${API_BASE_URL}/analyze/${sessionId}`, {
+            headers: getAuthHeaders(),
             method: 'POST'
         });
 

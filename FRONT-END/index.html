@@ -11,8 +11,26 @@
 </head>
 
 <body>
+    <!-- Auth Header -->
+    <div id="authHeader" style="position: fixed; top: 0; right: 0; padding: 1rem; z-index: 1000; display: none;">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <span id="userInfo" style="color: var(--text-secondary); font-size: 0.9rem;"></span>
+            <button id="logoutBtn" class="btn-secondary" style="padding: 0.6rem 1.2rem; font-size: 0.9rem;">Logout</button>
+        </div>
+    </div>
+    
+    <!-- Login Link (shown when not authenticated) -->
+    <div id="loginLink" style="position: fixed; top: 0; right: 0; padding: 1rem; z-index: 1000; display: none;">
+        <a href="login.html" class="btn-secondary" style="padding: 0.6rem 1.2rem; font-size: 0.9rem; text-decoration: none;">Login / Sign Up</a>
+    </div>
+
+    <!-- Auth gate (prevents showing upload UI before verification completes) -->
+    <div id="authLoading" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; color: var(--text-secondary);">
+        Checking login...
+    </div>
+
     <!-- Upload Section -->
-    <section id="uploadSection" class="section active">
+    <section id="uploadSection" class="section active" style="display: none;">
         <div class="upload-container">
             <div class="header">
                 <h1>Domain Classification Model</h1>
