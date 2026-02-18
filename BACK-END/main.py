@@ -40,6 +40,7 @@ from csv_analyzer import CSVAnalyzer
 from relationship_detector import RelationshipDetector
 from auth_routes import router as auth_router, get_current_user
 from plan_routes import router as plan_router
+from admin_routes import router as admin_router
 from plan_service import assert_can_upload, increment_upload_usage
 from midnight_reset import midnight_reset_loop
 from db_table import create_tables, UploadSession, UploadFile as UploadFileModel, User
@@ -68,6 +69,7 @@ async def startup_event():
 # Include authentication routes
 app.include_router(auth_router)
 app.include_router(plan_router)
+app.include_router(admin_router)
 
 # Configure CORS
 app.add_middleware(

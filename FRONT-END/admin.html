@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Domain Classification Model</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .admin-wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        .admin-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .admin-title {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .admin-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .admin-grid {
+            display: grid;
+            grid-template-columns: 1.4fr 1.1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 1000px) {
+            .admin-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .card-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+        }
+
+        .card-header h3 {
+            margin: 0;
+            font-size: 1.05rem;
+        }
+
+        .card-body {
+            padding: 0.9rem 1.25rem 1.1rem;
+        }
+
+        .muted {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--bg-page);
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .pill strong {
+            color: var(--text-primary);
+        }
+
+        .stats-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .section-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 1000px) {
+            .section-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .data-table th,
+        .data-table td {
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0.4rem 0.5rem;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .data-table th {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .data-table tbody tr:nth-child(even) {
+            background: var(--bg-elevated);
+        }
+
+        .badge {
+            display: inline-flex;
+            padding: 0.15rem 0.45rem;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: var(--success-light);
+            color: var(--success);
+        }
+
+        .badge-failed {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+
+        .scroll-x {
+            overflow-x: auto;
+        }
+
+        .notice {
+            margin-bottom: 1rem;
+            padding: 0.9rem 1rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            background: var(--bg-page);
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .notice.ok {
+            border-color: rgba(5, 150, 105, 0.35);
+            background: var(--success-light);
+            color: #065f46;
+        }
+
+        .notice.err {
+            border-color: rgba(220, 38, 38, 0.35);
+            background: var(--danger-light);
+            color: #7f1d1d;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="admin-wrap">
+        <div class="admin-topbar">
+            <div>
+                <div class="admin-title">Admin Dashboard</div>
+                <div class="admin-subtitle">View user logins, plans, upload tokens, payments, and upload sessions.</div>
+            </div>
+            <div style="display:flex; gap:0.75rem; align-items:center;">
+                <button id="backBtn" class="btn-secondary">← Back to Upload</button>
+                <button id="logoutBtn" class="btn-secondary">Logout</button>
+            </div>
+        </div>
+
+        <div id="adminNotice" class="notice"></div>
+
+        <div class="card" style="margin-bottom:1.5rem;">
+            <div class="card-header">
+                <h3>Summary</h3>
+                <div id="adminUserLine" class="muted"></div>
+            </div>
+            <div class="card-body">
+                <div class="stats-row">
+                    <div class="pill">Users: <strong id="statTotalUsers">—</strong></div>
+                    <div class="pill">Logins: <strong id="statTotalLogins">—</strong></div>
+                    <div class="pill">Upload Sessions: <strong id="statTotalUploads">—</strong></div>
+                    <div class="pill">Payments: <strong id="statTotalPayments">—</strong></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h3>User Login Timeline</h3>
+                    <span class="muted">Latest 200 entries · sorted by login time (newest first)</span>
+                </div>
+                <div class="card-body scroll-x">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Plan</th>
+                                <th>Login Time</th>
+                                <th>Logout Time</th>
+                                <th>Status</th>
+                                <th>Session (min)</th>
+                                <th>IP</th>
+                            </tr>
+                        </thead>
+                        <tbody id="loginTimelineBody">
+                            <tr><td colspan="7" class="muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Daily Upload Tokens & Plans</h3>
+                    <span class="muted">Per-day usage per user (descending by date)</span>
+                </div>
+                <div class="card-body scroll-x">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>User</th>
+                                <th>Plan</th>
+                                <th>Used</th>
+                                <th>Remaining</th>
+                                <th>Daily Limit</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tokenUsageBody">
+                            <tr><td colspan="6" class="muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Payments</h3>
+                    <span class="muted">Latest 200 dummy payment transactions</span>
+                </div>
+                <div class="card-body scroll-x">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>User</th>
+                                <th>Plan</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Reference</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentsBody">
+                            <tr><td colspan="7" class="muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Upload Sessions & Domains</h3>
+                    <span class="muted">User uploads, detected domain & CSV files</span>
+                </div>
+                <div class="card-body scroll-x">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Session</th>
+                                <th>User</th>
+                                <th>Upload Name</th>
+                                <th>Domain</th>
+                                <th>Files</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody id="uploadsBody">
+                            <tr><td colspan="6" class="muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        function getToken() {
+            return localStorage.getItem('auth_token');
+        }
+
+        async function requireAuth() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = 'login.html';
+                return false;
+            }
+            const res = await fetch(`${API_BASE}/api/auth/verify`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user_email');
+                localStorage.removeItem('user_username');
+                localStorage.removeItem('user_id');
+                window.location.href = 'login.html';
+                return false;
+            }
+            return true;
+        }
+
+        function showNotice(msg, kind = '') {
+            const el = document.getElementById('adminNotice');
+            if (!el) return;
+            el.className = 'notice' + (kind ? (' ' + kind) : '');
+            el.textContent = msg || '';
+            el.style.display = msg ? 'block' : 'none';
+        }
+
+        async function fetchDashboard() {
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/api/admin/dashboard`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                throw new Error(data.detail || data.message || 'Failed to load admin dashboard');
+            }
+            return data;
+        }
+
+        function renderLoginTimeline(rows) {
+            const body = document.getElementById('loginTimelineBody');
+            if (!body) return;
+            if (!rows || rows.length === 0) {
+                body.innerHTML = `<tr><td colspan="7" class="muted">No login logs yet.</td></tr>`;
+                return;
+            }
+            body.innerHTML = rows.map(r => {
+                const userLabel = (r.username || r.email || 'Unknown');
+                const loginAt = r.login_time ? new Date(r.login_time).toLocaleString() : '';
+                const logoutAt = r.logout_time ? new Date(r.logout_time).toLocaleString() : '';
+                const statusClass = r.status === 'success' ? 'badge badge-success' : 'badge badge-failed';
+                const statusLabel = r.status === 'success' ? 'Success' : 'Failed';
+                return `
+                    <tr>
+                        <td>${userLabel}</td>
+                        <td>${r.plan_name || '—'}</td>
+                        <td>${loginAt}</td>
+                        <td>${logoutAt || '—'}</td>
+                        <td><span class="${statusClass}">${statusLabel}</span></td>
+                        <td>${r.session_minutes != null ? r.session_minutes : ''}</td>
+                        <td>${r.ip_address || ''}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderTokenUsage(rows) {
+            const body = document.getElementById('tokenUsageBody');
+            if (!body) return;
+            if (!rows || rows.length === 0) {
+                body.innerHTML = `<tr><td colspan="6" class="muted">No token usage yet.</td></tr>`;
+                return;
+            }
+            body.innerHTML = rows.map(r => `
+                <tr>
+                    <td>${r.usage_date}</td>
+                    <td>${r.username || r.email || r.user_id}</td>
+                    <td>${r.plan_name || '—'}</td>
+                    <td>${r.used_uploads}</td>
+                    <td>${r.remaining_uploads}</td>
+                    <td>${r.daily_limit}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderPayments(rows) {
+            const body = document.getElementById('paymentsBody');
+            if (!body) return;
+            if (!rows || rows.length === 0) {
+                body.innerHTML = `<tr><td colspan="7" class="muted">No payments yet.</td></tr>`;
+                return;
+            }
+            body.innerHTML = rows.map(p => `
+                <tr>
+                    <td>${p.id}</td>
+                    <td>${p.username || p.email || p.user_id}</td>
+                    <td>${p.plan_name}</td>
+                    <td>${p.amount} ${p.currency}</td>
+                    <td>${p.status}</td>
+                    <td>${p.reference || ''}</td>
+                    <td>${p.created_at ? new Date(p.created_at).toLocaleString() : ''}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderUploads(rows) {
+            const body = document.getElementById('uploadsBody');
+            if (!body) return;
+            if (!rows || rows.length === 0) {
+                body.innerHTML = `<tr><td colspan="6" class="muted">No upload sessions yet.</td></tr>`;
+                return;
+            }
+            body.innerHTML = rows.map(u => {
+                const userLabel = u.username || u.email || u.user_id;
+                const created = u.created_at ? new Date(u.created_at).toLocaleString() : '';
+                const domainLabel = u.domain_name
+                    ? `${u.domain_name}${u.domain_confidence != null ? ' (' + u.domain_confidence + '%)' : ''}`
+                    : '—';
+                const files = (u.files || []).map(f => `${f.file_name} (${f.file_extension || 'csv'})`).join('<br>');
+                return `
+                    <tr>
+                        <td>${u.session_id}</td>
+                        <td>${userLabel}</td>
+                        <td>${u.upload_name}</td>
+                        <td>${domainLabel}</td>
+                        <td>${files || u.file_count + ' file(s)'}</td>
+                        <td>${created}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateSummary(data) {
+            const logins = data.login_timeline || [];
+            const uploads = data.uploads || [];
+            const payments = data.payments || [];
+
+            const userIds = new Set();
+            logins.forEach(r => { if (r.user_id != null) userIds.add(r.user_id); });
+            uploads.forEach(u => { if (u.user_id != null) userIds.add(u.user_id); });
+            payments.forEach(p => { if (p.user_id != null) userIds.add(p.user_id); });
+
+            document.getElementById('statTotalUsers').textContent = userIds.size || '0';
+            document.getElementById('statTotalLogins').textContent = logins.length || '0';
+            document.getElementById('statTotalUploads').textContent = uploads.length || '0';
+            document.getElementById('statTotalPayments').textContent = payments.length || '0';
+
+            const email = localStorage.getItem('user_email') || '';
+            const username = localStorage.getItem('user_username') || '';
+            const line = document.getElementById('adminUserLine');
+            if (line) {
+                line.textContent = username ? `Logged in as ${username} (${email})` : (email ? `Logged in as ${email}` : '');
+            }
+        }
+
+        document.getElementById('backBtn').addEventListener('click', () => {
+            window.location.href = 'index.html';
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            const token = getToken();
+            if (token) {
+                try {
+                    await fetch(`${API_BASE}/api/auth/logout`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (e) { }
+            }
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_email');
+            localStorage.removeItem('user_username');
+            localStorage.removeItem('user_id');
+            window.location.href = 'login.html';
+        });
+
+        (async () => {
+            const ok = await requireAuth();
+            if (!ok) return;
+            try {
+                showNotice('', '');
+                const data = await fetchDashboard();
+                renderLoginTimeline(data.login_timeline);
+                renderTokenUsage(data.token_usage);
+                renderPayments(data.payments);
+                renderUploads(data.uploads);
+                updateSummary(data);
+            } catch (e) {
+                showNotice(e.message || String(e), 'err');
+            }
+        })();
+    </script>
+</body>
+
+</html>
+
+

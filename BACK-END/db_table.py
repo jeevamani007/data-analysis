@@ -28,6 +28,29 @@ class User(Base):
         return f"<User(id={self.id}, email={self.email}, username={self.username})>"
 
 
+class Admin(Base):
+    """
+    Legacy admins table (existing in your Postgres DB).
+ 
+    Matches:
+        CREATE TABLE admins (
+            id      SERIAL PRIMARY KEY,
+            userid  VARCHAR(50),
+            password TEXT,
+            email   VARCHAR(50) UNIQUE
+        );
+    """
+    __tablename__ = "admins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    userid = Column(String(50), nullable=True, index=True)
+    password = Column(Text, nullable=True)
+    email = Column(String(50), unique=True, nullable=True, index=True)
+
+    def __repr__(self):
+        return f"<Admin(id={self.id}, userid={self.userid}, email={self.email})>"
+
+
 class LoginLog(Base):
     """Login logs table for tracking user login timestamps and activities"""
     __tablename__ = "login_logs"

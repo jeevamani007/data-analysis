@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from database import SessionLocal
-from db_table import User, LoginLog, EmailVerificationToken, PasswordResetOTPToken
+from db_table import User, LoginLog, EmailVerificationToken, PasswordResetOTPToken, Admin
 from auth_models import (
     UserSignupRequest,
     UserLoginRequest,
@@ -237,14 +237,86 @@ async def login(
     """
     identifier = login_data.email.strip()
 
-    # Find user by email OR username
+    # Find user by email OR username in main users table
     if "@" in identifier:
         user = db.query(User).filter(User.email == identifier).first()
     else:
         user = db.query(User).filter(User.username == identifier).first()
-    
+
+    # If not found in `users`, try legacy `admins` table and sync into `users`
     if not user:
-        # Log failed login attempt
+        legacy_admin = None
+        if "@" in identifier:
+            legacy_admin = db.query(Admin).filter(Admin.email == identifier).first()
+        else:
+            legacy_admin = db.query(Admin).filter(Admin.userid == identifier).first()
+
+        if legacy_admin:
+            # We expect `admins.password` to usually be a bcrypt hash, but in some
+            # older databases it may still be stored as plain 4‑digit PIN.
+            # 1) Try bcrypt verify first.
+            raw_admin_password = legacy_admin.password or ""
+            password_hash_to_use = raw_admin_password
+
+            # 1) Try bcrypt verify against pgcrypto/crypt('1234', gen_salt('bf')) value.
+            #    Those hashes are bcrypt-compatible, so passlib's verify works.
+            if not raw_admin_password or not verify_password(login_data.password, raw_admin_password):
+                # 2) If bcrypt verification fails, fall back to plain-text match for
+                #    legacy rows, and immediately upgrade to a hashed value.
+                if raw_admin_password == login_data.password:
+                    password_hash_to_use = hash_password(login_data.password)
+                    legacy_admin.password = password_hash_to_use
+                else:
+                    # Log failed login attempt against legacy admin identity
+                    ip_address = get_client_ip(request)
+                    user_agent = request.headers.get("user-agent", "unknown")
+                    failed_log = LoginLog(
+                        user_id=0,
+                        email=legacy_admin.email or identifier,
+                        ip_address=ip_address,
+                        user_agent=user_agent,
+                        login_status="failed",
+                    )
+                    db.add(failed_log)
+                    db.commit()
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid email/username or password",
+                    )
+
+            # Either find or create a corresponding `User` row so the rest of the app
+            # (plans, uploads, login logs, admin dashboard) can work as before.
+            email_value = (legacy_admin.email or "").strip()
+            username_value = (legacy_admin.userid or "").strip() or email_value.split("@")[0] or "admin"
+
+            existing = None
+            if email_value:
+                existing = db.query(User).filter(User.email == email_value).first()
+            if not existing:
+                existing = db.query(User).filter(User.username == username_value).first()
+
+            if existing:
+                user = existing
+                # Keep password and flags in sync with legacy admins table
+                user.password_hash = password_hash_to_use
+                user.is_active = True
+                user.is_verified = True
+            else:
+                user = User(
+                    email=email_value or f"{username_value}@example.com",
+                    username=username_value,
+                    password_hash=password_hash_to_use,
+                    full_name=None,
+                    is_active=True,
+                    is_verified=True,  # legacy admins are treated as verified
+                )
+                db.add(user)
+
+            db.commit()
+            db.refresh(user)
+
+    if not user:
+        # Still no user (not in users or admins) -> invalid credentials
         ip_address = get_client_ip(request)
         user_agent = request.headers.get("user-agent", "unknown")
         failed_log = LoginLog(
@@ -256,7 +328,7 @@ async def login(
         )
         db.add(failed_log)
         db.commit()
-        
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email/username or password"
