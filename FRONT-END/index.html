@@ -38,6 +38,23 @@
                     users</p>
             </div>
 
+            <!-- Upload Name / Label (user-provided) -->
+            <div class="upload-name-group" style="margin-bottom: 1.5rem;">
+                <label for="uploadName" style="display: block; margin-bottom: 0.4rem; font-weight: 500; color: var(--text-primary);">
+                    Upload Name / Description
+                </label>
+                <input
+                    type="text"
+                    id="uploadName"
+                    name="uploadName"
+                    placeholder="e.g. Jan 2024 Banking CSVs"
+                    style="width: 100%; padding: 0.7rem 0.9rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(10, 10, 20, 0.85); color: var(--text-primary);"
+                />
+                <p class="hint" style="margin-top: 0.35rem; font-size: 0.85rem; color: var(--text-secondary);">
+                    This name will be saved together with your files so you can find this upload later.
+                </p>
+            </div>
+
             <div id="dropZone" class="drop-zone">
                 <div class="drop-zone-content">
                     <div class="upload-icon">📁</div>

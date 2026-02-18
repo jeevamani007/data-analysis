@@ -3,7 +3,7 @@ FastAPI Application for Database Profile Generator
 Handles file uploads and generates comprehensive database profiles
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -39,8 +39,9 @@ from models import DatabaseProfile, UploadResponse, AnalysisResponse, TableAnaly
 from csv_analyzer import CSVAnalyzer
 from relationship_detector import RelationshipDetector
 from auth_routes import router as auth_router
-from db_table import create_tables
-from database import engine
+from db_table import create_tables, UploadSession, UploadFile as UploadFileModel
+from database import engine, SessionLocal
+from datetime import datetime
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -123,7 +124,10 @@ def _ensure_session_loaded(session_id: str) -> None:
 
 
 @app.post("/api/upload", response_model=UploadResponse)
-async def upload_files(files: List[UploadFile] = File(...)):
+async def upload_files(
+    files: List[UploadFile] = File(...),
+    upload_name: str = Form(..., description="User-provided upload name/label"),
+):
     """
     Upload CSV files for analysis
     
@@ -140,31 +144,69 @@ async def upload_files(files: List[UploadFile] = File(...)):
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_DIR / session_id
     session_dir.mkdir(exist_ok=True)
-    
-    uploaded_files = []
-    
-    # Save each file
+
+    uploaded_files: list[str] = []
+
+    # Save each file and record metadata
     for file in files:
         if not file.filename.endswith('.csv'):
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"File {file.filename} is not a CSV file"
             )
-        
+
         file_path = session_dir / file.filename
-        
-        # Save file
+
+        # Save file to disk
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
+
         uploaded_files.append(file.filename)
-    
-    # Store session info
+
+    # Store session info in in-memory map (existing behaviour)
     sessions[session_id] = {
         "files": uploaded_files,
         "directory": str(session_dir)
     }
-    
+
+    # Persist upload session + files metadata to the database
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+
+        upload_session = UploadSession(
+            session_id=session_id,
+            upload_name=upload_name.strip() if upload_name else session_id,
+            file_count=len(uploaded_files),
+            # created_at will default in DB, but storing an explicit UTC value is also fine
+            created_at=now,
+        )
+        db.add(upload_session)
+        db.flush()  # get upload_session.id
+
+        for file in files:
+            # Derive simple file extension (type) from filename
+            name = file.filename or ""
+            ext = ""
+            if "." in name:
+                ext = name.rsplit(".", 1)[-1].lower()
+
+            file_row = UploadFileModel(
+                session_id=upload_session.id,
+                file_name=name,
+                file_extension=ext,
+                content_type=getattr(file, "content_type", None),
+            )
+            db.add(file_row)
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # Log internally; do not break upload flow for DB issues
+        print(f"[Upload Session DB Error] {e}")
+    finally:
+        db.close()
+
     # Return session ID in the message for frontend to extract
     return UploadResponse(
         success=True,
@@ -282,6 +324,28 @@ async def analyze_database(session_id: str):
                 db_name = f"Banking Database ({domain_result.get('confidence', 0):.1f}%)"
                 if len(clusters) > 1:
                     db_name += f" {i+1}"
+
+            # Persist domain classification for this upload session (first cluster only)
+            try:
+                if i == 0:
+                    db = SessionLocal()
+                    try:
+                        upload_session = db.query(UploadSession).filter(UploadSession.session_id == session_id).first()
+                        if upload_session:
+                            primary_domain = domain_result.get('primary_domain')
+                            confidence = domain_result.get('confidence')
+                            upload_session.domain_name = primary_domain
+                            # Store confidence as rounded integer percentage if available
+                            if isinstance(confidence, (int, float)):
+                                upload_session.domain_confidence = int(round(confidence))
+                            upload_session.domain_detected_at = datetime.utcnow()
+                            upload_session.last_analyzed_at = datetime.utcnow()
+                            db.commit()
+                    finally:
+                        db.close()
+            except Exception as e:
+                # Do not fail analysis because of DB persistence failures
+                print(f"[Domain Persist Error] {e}")
             
             # --- Single Pass Analysis per DB Cluster ---
             # Rules: Healthcare domain ONLY runs new healthcare analyzer. Others (Banking, General) do NOT run old features.

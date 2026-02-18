@@ -162,6 +162,7 @@ let uploadedFiles = [];
 let sessionId = null;
 let analysisResults = null;
 let dateColumnInfo = null;
+let uploadNameInput = null;
 
 // ---------------------------------------------------------------------------
 // Event explanation helpers (NO hardcoded domain event lists).
@@ -3491,6 +3492,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Setup auth UI (logout button + user info)
     setupAuthUI();
 
+    // Cache upload name input
+    uploadNameInput = document.getElementById('uploadName');
+
     // Initialize event listeners and show upload UI
     initializeEventListeners();
     resetToUpload();
@@ -3592,12 +3596,23 @@ async function analyzeDatabase() {
         return;
     }
 
+    // Simple required check for upload name (user-provided label)
+    const uploadNameValue = (uploadNameInput && uploadNameInput.value || '').trim();
+    if (!uploadNameValue) {
+        alert('Please enter an upload name/description so we can save this upload in history.');
+        if (uploadNameInput) {
+            uploadNameInput.focus();
+        }
+        return;
+    }
+
     try {
         showLoadingSection();
         animateLoadingSteps();
 
         // Step 1: Upload files
         const formData = new FormData();
+        formData.append('upload_name', uploadNameValue);
         uploadedFiles.forEach(file => {
             formData.append('files', file);
         });
