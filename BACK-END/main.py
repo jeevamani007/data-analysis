@@ -3,7 +3,7 @@ FastAPI Application for Database Profile Generator
 Handles file uploads and generates comprehensive database profiles
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -38,8 +38,11 @@ def _to_native(x: Any) -> Any:
 from models import DatabaseProfile, UploadResponse, AnalysisResponse, TableAnalysis
 from csv_analyzer import CSVAnalyzer
 from relationship_detector import RelationshipDetector
-from auth_routes import router as auth_router
-from db_table import create_tables, UploadSession, UploadFile as UploadFileModel
+from auth_routes import router as auth_router, get_current_user
+from plan_routes import router as plan_router
+from plan_service import assert_can_upload, increment_upload_usage
+from midnight_reset import midnight_reset_loop
+from db_table import create_tables, UploadSession, UploadFile as UploadFileModel, User
 from database import engine, SessionLocal
 from datetime import datetime
 
@@ -55,9 +58,16 @@ app = FastAPI(
 async def startup_event():
     """Create database tables on application startup"""
     create_tables()
+    # Start midnight reset loop for daily upload tokens
+    try:
+        import asyncio
+        asyncio.create_task(midnight_reset_loop())
+    except Exception as e:
+        print(f"[Plans] Warning: failed to start midnight reset loop: {e}")
 
 # Include authentication routes
 app.include_router(auth_router)
+app.include_router(plan_router)
 
 # Configure CORS
 app.add_middleware(
@@ -127,6 +137,7 @@ def _ensure_session_loaded(session_id: str) -> None:
 async def upload_files(
     files: List[UploadFile] = File(...),
     upload_name: str = Form(..., description="User-provided upload name/label"),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Upload CSV files for analysis
@@ -140,6 +151,13 @@ async def upload_files(
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
+    # Enforce plan usage limits (1 upload action per /api/upload call)
+    db = SessionLocal()
+    try:
+        assert_can_upload(db, current_user.id)
+    finally:
+        db.close()
+
     # Create session
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_DIR / session_id
@@ -178,6 +196,7 @@ async def upload_files(
             session_id=session_id,
             upload_name=upload_name.strip() if upload_name else session_id,
             file_count=len(uploaded_files),
+            user_id=current_user.id,
             # created_at will default in DB, but storing an explicit UTC value is also fine
             created_at=now,
         )
@@ -204,6 +223,13 @@ async def upload_files(
         db.rollback()
         # Log internally; do not break upload flow for DB issues
         print(f"[Upload Session DB Error] {e}")
+    finally:
+        db.close()
+
+    # Increment daily usage AFTER successful upload processing
+    db = SessionLocal()
+    try:
+        increment_upload_usage(db, current_user.id, count=1)
     finally:
         db.close()
 

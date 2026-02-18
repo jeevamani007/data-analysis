@@ -65,6 +65,7 @@ function setupAuthUI() {
     const authHeader = document.getElementById('authHeader');
     const userInfo = document.getElementById('userInfo');
     const logoutBtn = document.getElementById('logoutBtn');
+    const plansBtn = document.getElementById('plansBtn');
     const loginLink = document.getElementById('loginLink');
     
     if (isAuthenticated()) {
@@ -72,6 +73,22 @@ function setupAuthUI() {
             const user = getUserInfo();
             authHeader.style.display = 'block';
             userInfo.textContent = `👤 ${user.username || user.email}`;
+
+            // Show plan tokens in header
+            (async () => {
+                try {
+                    const token = getAuthToken();
+                    if (!token) return;
+                    const res = await fetch(`${window.location.origin}/api/plans/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data && data.success) {
+                        userInfo.textContent =
+                            `👤 ${user.username || user.email} | Plan: ${data.plan_name} | Remaining: ${data.remaining_uploads}/${data.daily_limit}`;
+                    }
+                } catch (e) { }
+            })();
             
             logoutBtn.addEventListener('click', async () => {
                 const token = getAuthToken();
@@ -93,6 +110,11 @@ function setupAuthUI() {
                 localStorage.removeItem('user_username');
                 localStorage.removeItem('user_id');
                 window.location.reload();
+            });
+        }
+        if (plansBtn) {
+            plansBtn.addEventListener('click', () => {
+                window.location.href = 'range-users.html';
             });
         }
         if (loginLink) {
@@ -3630,7 +3652,13 @@ async function analyzeDatabase() {
         });
 
         if (!uploadResponse.ok) {
-            throw new Error(`Upload failed: ${uploadResponse.status}`);
+            // Try to surface backend detail (e.g. 429 daily limit reached)
+            let detail = '';
+            try {
+                const err = await uploadResponse.json();
+                detail = err.detail || err.message || err.error || '';
+            } catch (e) { }
+            throw new Error(detail ? `Upload failed: ${detail}` : `Upload failed: ${uploadResponse.status}`);
         }
 
         const uploadData = await uploadResponse.json();

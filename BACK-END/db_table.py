@@ -134,6 +134,9 @@ class UploadSession(Base):
     # UUID string used by existing /api/upload + /api/analyze endpoints
     session_id = Column(String(64), unique=True, index=True, nullable=False)
 
+    # Who uploaded (authenticated user)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
     # Name / label entered by the user on the upload page
     upload_name = Column(String(255), nullable=False)
 
@@ -186,5 +189,11 @@ class UploadFile(Base):
 def create_tables():
     """Create all database tables"""
     from database import engine
+    # Ensure subscription models are registered in SQLAlchemy metadata
+    try:
+        import subscription_tables  # noqa: F401
+    except Exception as e:
+        # Do not prevent app startup; tables can still be created on first successful import
+        print(f"[DB] Warning: failed to import subscription_tables: {e}")
     Base.metadata.create_all(bind=engine)
 

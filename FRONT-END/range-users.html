@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plans - Domain Classification Model</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+        .plans-wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .topbar .left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .title {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle2 {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .status-card {
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--bg-page);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .pill strong {
+            color: var(--text-primary);
+        }
+
+        .plans-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+            .plans-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .plan-card {
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .plan-card .badge {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 0.35rem 0.6rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--bg-page);
+            color: var(--text-secondary);
+            display: none;
+        }
+
+        .plan-card.active {
+            border-color: rgba(15, 118, 110, 0.35);
+            box-shadow: var(--shadow-md);
+        }
+
+        .plan-card.active .badge {
+            display: inline-flex;
+        }
+
+        .plan-name {
+            font-size: 1.35rem;
+            font-weight: 800;
+            margin-bottom: 0.3rem;
+        }
+
+        .plan-price {
+            color: var(--text-secondary);
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .plan-features {
+            margin-top: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .plan-features div {
+            display: flex;
+            gap: 0.6rem;
+            align-items: center;
+        }
+
+        .plan-features span {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        @media (max-width: 900px) {
+            .row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .payments {
+            padding: 1.25rem 1.5rem;
+        }
+
+        .payments h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1.1rem;
+        }
+
+        .muted {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .notice {
+            margin-top: 0.75rem;
+            padding: 0.9rem 1rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            background: var(--bg-page);
+            color: var(--text-secondary);
+            display: none;
+        }
+
+        .notice.ok {
+            border-color: rgba(5, 150, 105, 0.35);
+            background: var(--success-light);
+            color: #065f46;
+        }
+
+        .notice.err {
+            border-color: rgba(220, 38, 38, 0.35);
+            background: var(--danger-light);
+            color: #7f1d1d;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="plans-wrap">
+        <div class="topbar">
+            <div class="left">
+                <div class="title">Plans</div>
+                <div class="subtitle2">Choose a plan to control your daily upload tokens.</div>
+            </div>
+            <div style="display:flex; gap:0.75rem; align-items:center;">
+                <button id="backBtn" class="btn-secondary">← Back to Upload</button>
+                <button id="logoutBtn" class="btn-secondary">Logout</button>
+            </div>
+        </div>
+
+        <div id="statusCard" class="card status-card">
+            <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                <div class="muted">Logged in as</div>
+                <div id="userLine" style="font-weight:800; font-size:1.05rem;"></div>
+            </div>
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+                <div class="pill">Plan: <strong id="planName">—</strong></div>
+                <div class="pill">Today used: <strong id="usedCount">—</strong></div>
+                <div class="pill">Remaining: <strong id="remainingCount">—</strong></div>
+                <div class="pill">Daily limit: <strong id="limitCount">—</strong></div>
+            </div>
+        </div>
+
+        <div id="notice" class="notice"></div>
+
+        <div class="plans-grid">
+            <div class="card plan-card" data-plan="FREE_TRIAL">
+                <div class="badge">Current</div>
+                <div class="plan-name">Free Trial</div>
+                <div class="plan-price">$0 / month</div>
+                <div class="plan-features">
+                    <div>• <span>6</span> uploads per day</div>
+                    <div>• Best for testing</div>
+                    <div>• No payment required</div>
+                </div>
+                <button class="btn-primary selectBtn" style="margin-top:1.25rem;">Select Free Trial</button>
+            </div>
+
+            <div class="card plan-card" data-plan="PLATINUM">
+                <div class="badge">Current</div>
+                <div class="plan-name">Platinum</div>
+                <div class="plan-price">$9.99 / month</div>
+                <div class="plan-features">
+                    <div>• <span>20</span> uploads per day</div>
+                    <div>• For daily usage</div>
+                    <div>• Dummy payment transaction</div>
+                </div>
+                <button class="btn-primary selectBtn" style="margin-top:1.25rem;">Select Platinum</button>
+            </div>
+
+            <div class="card plan-card" data-plan="PREMIUM">
+                <div class="badge">Current</div>
+                <div class="plan-name">Premium</div>
+                <div class="plan-price">$19.99 / month</div>
+                <div class="plan-features">
+                    <div>• <span>50</span> uploads per day</div>
+                    <div>• For heavy usage</div>
+                    <div>• Dummy payment transaction</div>
+                </div>
+                <button class="btn-primary selectBtn" style="margin-top:1.25rem;">Select Premium</button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="card payments">
+                <h3>Dummy Payments</h3>
+                <div class="muted" style="margin-bottom:0.75rem;">Each plan selection creates a small dummy transaction record.</div>
+                <div style="overflow:auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Plan</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Reference</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentsBody">
+                            <tr><td colspan="6" class="muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card payments">
+                <h3>How tokens work</h3>
+                <div class="muted">
+                    - 1 upload token is consumed per successful upload action.<br />
+                    - Tokens reset every day at <strong>12:00 AM</strong> (server time).<br />
+                    - If the server is restarted, the system still “lazy resets” when you make a request.<br />
+                </div>
+                <div style="margin-top:1rem;">
+                    <a href="index.html" class="btn-secondary" style="text-decoration:none; display:inline-block;">Go to Upload</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        function getToken() {
+            return localStorage.getItem('auth_token');
+        }
+
+        async function requireAuth() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = 'login.html';
+                return false;
+            }
+            const res = await fetch(`${API_BASE}/api/auth/verify`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user_email');
+                localStorage.removeItem('user_username');
+                localStorage.removeItem('user_id');
+                window.location.href = 'login.html';
+                return false;
+            }
+            return true;
+        }
+
+        function showNotice(msg, kind, targetId) {
+            const el = targetId ? document.getElementById(targetId) : document.getElementById('notice');
+            if (!el) return;
+            el.className = 'notice' + (kind ? (' ' + kind) : '');
+            el.textContent = msg || '';
+            el.style.display = msg ? 'block' : 'none';
+        }
+
+        function setActivePlan(planName) {
+            document.querySelectorAll('.plan-card').forEach(card => {
+                const p = card.getAttribute('data-plan');
+                card.classList.toggle('active', (p === planName));
+            });
+        }
+
+        async function fetchMyPlan() {
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/api/plans/me`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Failed to load plan');
+            return await res.json();
+        }
+
+        async function fetchPayments() {
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/api/plans/payments`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Failed to load payments');
+            return await res.json();
+        }
+
+        function renderPayments(payments) {
+            const body = document.getElementById('paymentsBody');
+            if (!body) return;
+            if (!payments || payments.length === 0) {
+                body.innerHTML = `<tr><td colspan="6" class="muted">No payments yet.</td></tr>`;
+                return;
+            }
+            body.innerHTML = payments.map(p => `
+                <tr>
+                    <td>${p.id}</td>
+                    <td>${p.plan_name}</td>
+                    <td>${p.amount} ${p.currency}</td>
+                    <td>${p.status}</td>
+                    <td>${p.reference || ''}</td>
+                    <td>${p.created_at ? new Date(p.created_at).toLocaleString() : ''}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function selectPlan(planName) {
+            const token = getToken();
+            const res = await fetch(`${API_BASE}/api/plans/select`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ plan_name: planName })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                throw new Error(data.detail || data.message || 'Plan selection failed');
+            }
+            return data;
+        }
+
+        async function refreshAll() {
+            const userLine = document.getElementById('userLine');
+            const userEmail = localStorage.getItem('user_email');
+            const userUsername = localStorage.getItem('user_username');
+            userLine.textContent = userUsername ? `${userUsername} (${userEmail || ''})` : (userEmail || 'User');
+
+            const plan = await fetchMyPlan();
+            document.getElementById('planName').textContent = plan.plan_name || '—';
+            document.getElementById('usedCount').textContent = `${plan.used_uploads}`;
+            document.getElementById('remainingCount').textContent = `${plan.remaining_uploads}`;
+            document.getElementById('limitCount').textContent = `${plan.daily_limit}`;
+            setActivePlan(plan.plan_name);
+
+            // Show explanation for today plan changes (if any)
+            if (plan.today_explanation) {
+                showNotice(plan.today_explanation, 'ok', 'notice');
+            }
+
+            const pay = await fetchPayments();
+            renderPayments(pay.payments || []);
+        }
+
+        document.getElementById('backBtn').addEventListener('click', () => {
+            window.location.href = 'index.html';
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            const token = getToken();
+            if (token) {
+                try {
+                    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                } catch (e) { }
+            }
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_email');
+            localStorage.removeItem('user_username');
+            localStorage.removeItem('user_id');
+            window.location.href = 'login.html';
+        });
+
+        document.querySelectorAll('.selectBtn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const card = e.target.closest('.plan-card');
+                const planName = card.getAttribute('data-plan');
+                try {
+                    showNotice('', '');
+                    btn.disabled = true;
+                    btn.textContent = 'Processing...';
+                    const r = await selectPlan(planName);
+                    showNotice(r.message || 'Plan updated', 'ok', 'notice');
+                    await refreshAll();
+                } catch (err) {
+                    showNotice(err.message || String(err), 'err', 'notice');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = card.getAttribute('data-plan') === 'FREE_TRIAL'
+                        ? 'Select Free Trial'
+                        : (card.getAttribute('data-plan') === 'PLATINUM' ? 'Select Platinum' : 'Select Premium');
+                }
+            });
+        });
+
+        (async () => {
+            const ok = await requireAuth();
+            if (!ok) return;
+            try {
+                await refreshAll();
+            } catch (e) {
+                showNotice(e.message || String(e), 'err');
+            }
+        })();
+    </script>
+</body>
+
+</html>
