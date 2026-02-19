@@ -150,10 +150,18 @@ def get_current_user_from_jwt(request: Request, db: Session = Depends(get_db)) -
 async def login_google(request: Request):
     """
     Step 1: redirect the browser to Google login page.
-    
-    Note: redirect_uri must match what's configured in Google Cloud Console.
-    Based on your Google OAuth config, it's set to: http://localhost:8000/callback
+
+    Supports two flows:
+    - flow=login   (default)  -> existing user login
+    - flow=signup           -> signup only; if account exists, show \"already exists\" message
     """
+    # Remember which flow started OAuth so callback can behave differently
+    flow = request.query_params.get("flow") or "login"
+    try:
+        request.session["oauth_flow"] = flow
+    except Exception as e:
+        # If SessionMiddleware is missing or misconfigured, log but don't crash
+        print(f"[OAuth] Failed to store oauth_flow in session: {e}")
     # IMPORTANT:
     # Build redirect_uri from the incoming request host (localhost vs 127.0.0.1).
     # If these don't match, the session cookie won't be sent to /callback and
@@ -218,6 +226,13 @@ async def _handle_auth_callback(request: Request, db: Session = Depends(get_db))
             )
         raise HTTPException(status_code=400, detail=f"Google OAuth failed: {error_msg}")
 
+    # Determine original flow (login vs signup) from session
+    try:
+        flow = request.session.pop("oauth_flow", "login")
+    except Exception:
+        flow = "login"
+    print(f"[OAuth Callback] Flow detected: {flow}")
+
     # The token may include userinfo; if not, parse it from id_token.
     userinfo = token.get("userinfo")
     if not userinfo:
@@ -229,11 +244,18 @@ async def _handle_auth_callback(request: Request, db: Session = Depends(get_db))
     if not email:
         raise HTTPException(status_code=400, detail="Google did not return an email address")
 
-    # Step 3: login or signup
+    # Step 3: login or signup based on flow
     user = db.query(User).filter(User.email == email).first()
     role = _role_for_email(email)
 
     if user:
+        if flow == "signup":
+            # User clicked \"Sign up with Google\" but account already exists.
+            # Do NOT log them in – send them back to signup page with a clear message.
+            redirect_to = "/signin.html?error=account_exists"
+            print(f"[OAuth Callback] Existing user during signup flow, redirecting to {redirect_to}")
+            return RedirectResponse(url=redirect_to, status_code=302)
+
         # Login existing user; keep name/role fresh.
         user.name = name or user.name
         user.full_name = name or user.full_name

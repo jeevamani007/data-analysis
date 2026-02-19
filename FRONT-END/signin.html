@@ -563,13 +563,22 @@
         const googleSignupBtn = document.getElementById('googleSignupBtn');
         if (googleSignupBtn) {
             googleSignupBtn.addEventListener('click', () => {
-                // Redirect to backend Google OAuth endpoint (same as login - backend handles signup automatically)
-                window.location.href = `${API_BASE_URL}/api/auth/login/google`;
+                // Redirect to backend Google OAuth endpoint, marking this as a signup flow.
+                // Backend will prevent auto-login if the account already exists.
+                window.location.href = `${API_BASE_URL}/api/auth/login/google?flow=signup`;
             });
         }
 
-        // Check if user is already logged in
+        // Check if user is already logged in + show any OAuth signup errors
         window.addEventListener('DOMContentLoaded', () => {
+            // If we were redirected back from Google signup and account exists,
+            // show a friendly message instead of logging in.
+            const params = new URLSearchParams(window.location.search);
+            const errorParam = params.get('error');
+            if (errorParam === 'account_exists') {
+                showError('This email is already registered. Please login instead.');
+            }
+
             const token = localStorage.getItem('auth_token');
             if (token) {
                 // Verify token is still valid
