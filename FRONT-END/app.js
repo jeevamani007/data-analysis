@@ -3663,6 +3663,8 @@ async function analyzeDatabase() {
 
         const uploadData = await uploadResponse.json();
         sessionId = uploadData.message.split('SESSION_ID:')[1];
+        // Keep a stable reference so other screens (Banking results) can fetch session-based APIs
+        try { window.currentSessionId = sessionId; } catch (e) { }
 
         // Step 2: Analyze database
         const analyzeResponse = await fetch(`${API_BASE_URL}/analyze/${sessionId}`, {
@@ -4810,6 +4812,261 @@ function showBankingAnalysisResults(profile) {
     const BANK_BG = 'rgba(15,118,110,0.08)';
     const BANK_BORDER = 'rgba(15,118,110,0.3)';
 
+    function _escapeHtml(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function shouldShowBusinessRulesButton() {
+        const domainData = profile?.domain_analysis || {};
+        const pctRaw = domainData?.percentages?.Banking ?? 0;
+        const pct = Number(pctRaw) || 0;
+        const primary = String(domainData?.primary_domain || '').trim().toLowerCase();
+        // Practical gating: show whenever the detected primary domain is Banking.
+        // (Percentages can vary by dataset and may be formatted differently.)
+        return primary === 'banking' || pct >= 50;
+    }
+
+    function renderRulesStatusPill(status) {
+        const s = String(status || 'UNKNOWN').toUpperCase();
+        const map = {
+            PASS: { bg: 'rgba(34,197,94,0.10)', bd: 'rgba(34,197,94,0.35)', tx: '#166534', label: 'PASS' },
+            FAIL: { bg: 'rgba(239,68,68,0.10)', bd: 'rgba(239,68,68,0.35)', tx: '#991b1b', label: 'FAIL' },
+            UNKNOWN: { bg: 'rgba(100,116,139,0.10)', bd: 'rgba(100,116,139,0.35)', tx: '#0f172a', label: 'UNKNOWN' },
+        };
+        const c = map[s] || map.UNKNOWN;
+        return `<span style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.18rem 0.55rem; border-radius:999px; background:${c.bg}; border:1px solid ${c.bd}; color:${c.tx}; font-size:0.78rem; font-weight:800; letter-spacing:0.02em;">${c.label}</span>`;
+    }
+
+    function renderBusinessRulesUI(data) {
+        const tables = Array.isArray(data?.tables) ? data.tables : [];
+        if (!tables.length) {
+            return `
+                <div style="background: rgba(100,116,139,0.06); border: 1px solid rgba(100,116,139,0.25); border-radius: 14px; padding: 1rem;">
+                    <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">No rules generated</div>
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">We couldn’t generate a business rules report from your files.</div>
+                </div>
+            `;
+        }
+
+        const config = data?.config || {};
+        const dailyLimit = config.daily_limit_amount != null ? Number(config.daily_limit_amount) : 20000;
+        const minBal = config.min_balance_amount != null ? Number(config.min_balance_amount) : 1000;
+
+        // Full-screen layout: left file list + right rules grid (no giant page scroll)
+        const safeTables = tables.map(t => ({
+            table_name: String(t.table_name || 'Unknown File'),
+            row_count: Number(t.row_count || 0),
+            column_count: Number(t.column_count || 0),
+            rules: Array.isArray(t.rules) ? t.rules : [],
+            matched_rule_count: Number(t.matched_rule_count || (Array.isArray(t.rules) ? t.rules.length : 0)),
+            valid_count: Number(t.valid_count || 0),
+            invalid_count: Number(t.invalid_count || 0),
+        }));
+        const firstKey = _escapeHtml(safeTables[0].table_name);
+
+        function renderRuleCard(r, idx) {
+            const cols = Array.isArray(r.observed_columns) ? r.observed_columns : [];
+            const pat = r.observed_pattern || {};
+            const patStr = _escapeHtml(JSON.stringify(pat, null, 2));
+            const ruleTxt = _escapeHtml(String(r.rule || r.title || `Rule ${idx + 1}`));
+            const obsTxt = _escapeHtml(String(r.observation || ''));
+            const impactTxt = _escapeHtml(String(r.impact || ''));
+            const resultTxt = (String(r.status || '')).toUpperCase() === 'PASS' ? 'PASS' : 'FAIL';
+            return `
+                <div style="background:#ffffff; border:1px solid rgba(15,118,110,0.18); border-radius:16px; padding:0.9rem; box-shadow:0 1px 2px rgba(15,23,42,0.06);">
+                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:0.8rem;">
+                        <div style="min-width:0;">
+                            <div style="font-weight: 900; color: var(--text-primary); font-size: 0.98rem; line-height: 1.25;">
+                                ${_escapeHtml(String(r.title || `Rule ${idx + 1}`))}
+                            </div>
+                            <div style="margin-top:0.55rem; display:grid; grid-template-columns: 1fr; gap:0.45rem;">
+                                <div style="font-size:0.86rem; color:#0f172a; line-height:1.45;"><strong>Rule:</strong> ${ruleTxt}</div>
+                                <div style="font-size:0.86rem; color:#0f172a; line-height:1.45;"><strong>Observation:</strong> ${obsTxt}</div>
+                                <div style="font-size:0.86rem; color:#0f172a; line-height:1.45;"><strong>Impact:</strong> ${impactTxt}</div>
+                                <div style="font-size:0.86rem; color:#0f172a; line-height:1.45;"><strong>Result:</strong> ${_escapeHtml(resultTxt)}</div>
+                            </div>
+                        </div>
+                        <div style="flex-shrink:0;">
+                            ${renderRulesStatusPill(r.status)}
+                        </div>
+                    </div>
+
+                    <details style="margin-top:0.65rem;">
+                        <summary style="cursor:pointer; color:${BANK_COLOR}; font-weight:800; font-size:0.85rem;">Observed columns & data</summary>
+                        <div style="margin-top:0.55rem; display:grid; grid-template-columns: 1fr; gap:0.55rem;">
+                            <div style="background: rgba(15,118,110,0.06); border: 1px solid rgba(15,118,110,0.16); border-radius: 12px; padding: 0.65rem;">
+                                <div style="font-weight: 800; color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.35rem;">Columns</div>
+                                <div style="color: var(--text-muted); font-size: 0.82rem; line-height: 1.45;">
+                                    ${cols.length ? cols.map(c => `<div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${_escapeHtml(c)}"><code style="background:#f1f5f9; padding:0.12rem 0.35rem; border-radius:6px; border:1px solid #e2e8f0;">${_escapeHtml(c)}</code></div>`).join('') : '<span>Not detected</span>'}
+                                </div>
+                            </div>
+                            <div style="background: rgba(100,116,139,0.06); border: 1px solid rgba(100,116,139,0.18); border-radius: 12px; padding: 0.65rem;">
+                                <div style="font-weight: 800; color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.35rem;">Observed data (ranges/top-values + row examples)</div>
+                                <pre style="margin:0; white-space:pre-wrap; word-break:break-word; font-size:0.78rem; color:#0f172a; background:#f8fafc; border:1px solid #e2e8f0; padding:0.55rem; border-radius:10px; max-height: 220px; overflow:auto;">${patStr}</pre>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            `;
+        }
+
+        return `
+            <div id="br-fullscreen" style="position: fixed; inset: 0; background: rgba(2,6,23,0.55); z-index: 99999; display: flex; align-items: stretch; justify-content: center; padding: 1.25rem;">
+                <div style="width: min(1400px, 98vw); height: min(92vh, 980px); background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 30px 80px rgba(2,6,23,0.35); display: flex; flex-direction: column;">
+                    <div style="padding: 0.9rem 1rem; border-bottom: 1px solid rgba(15,118,110,0.18); display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+                        <div style="min-width:0;">
+                            <div style="font-size: 1.15rem; font-weight: 900; color: #0f172a;">🏦 Banking Business Rules (Observed per file)</div>
+                            <div style="color: #64748b; font-size: 0.9rem; margin-top: 0.1rem;">
+                                Daily limit ≤ <strong>${dailyLimit.toFixed(0)}</strong>/day • Minimum balance ≥ <strong>${minBal.toFixed(0)}</strong>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <button type="button" onclick="window.closeBusinessRulesPanel && window.closeBusinessRulesPanel()"
+                                    style="cursor:pointer; border-radius:10px; border:1px solid rgba(15,118,110,0.25); background:#ffffff; padding:0.55rem 0.85rem; font-weight:900; color:${BANK_COLOR};">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="flex: 1; display: grid; grid-template-columns: 320px 1fr; min-height: 0;">
+                        <!-- Left: file list -->
+                        <div style="border-right: 1px solid rgba(15,118,110,0.14); background: #f8fafc; overflow: auto;">
+                            <div style="padding: 0.85rem 0.85rem 0.6rem; font-weight: 900; color: #0f172a;">Files</div>
+                            <div style="padding: 0 0.6rem 0.85rem;">
+                                ${safeTables.map((t, i) => `
+                                    <button type="button"
+                                            onclick="window._brSelectTable && window._brSelectTable('${_escapeHtml(t.table_name)}')"
+                                            style="width:100%; text-align:left; cursor:pointer; border-radius:14px; border:1px solid rgba(15,118,110,0.16); background:#ffffff; padding:0.75rem 0.75rem; margin:0.5rem 0; box-shadow:0 1px 2px rgba(15,23,42,0.05);">
+                                        <div style="font-weight: 900; color: #0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${_escapeHtml(t.table_name)}">${_escapeHtml(t.table_name)}</div>
+                                        <div style="margin-top:0.25rem; color:#64748b; font-size:0.82rem;">
+                                            ${t.row_count} rows • ${t.column_count} columns • <strong>${t.matched_rule_count}</strong> matched rules
+                                            <span style="margin-left:0.35rem; color:#166534; font-weight:900;">${t.valid_count} valid</span>
+                                            <span style="margin-left:0.35rem; color:#991b1b; font-weight:900;">${t.invalid_count} invalid</span>
+                                        </div>
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Right: rules for selected file -->
+                        <div style="min-width:0; min-height:0; overflow: hidden;">
+                            <div id=\"br-table-title\" style=\"padding: 0.85rem 1rem; border-bottom: 1px solid rgba(15,118,110,0.12); font-weight: 900; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;\" title=\"${firstKey}\">
+                                ${firstKey}
+                            </div>
+                            <div id=\"br-table-body\" style=\"padding: 1rem; overflow: auto; height: calc(100% - 52px);\">
+                                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 0.9rem;">
+                                    ${(safeTables[0].rules || []).map((r, idx) => renderRuleCard(r, idx)).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    window.closeBusinessRulesPanel = function () {
+        const panel = document.getElementById('bank-business-rules-panel');
+        if (panel) panel.style.display = 'none';
+        // Remove fullscreen overlay if present
+        const fs = document.getElementById('br-fullscreen');
+        if (fs && fs.parentNode) fs.parentNode.removeChild(fs);
+    };
+
+    window.openBusinessRulesPanel = async function () {
+        const panel = document.getElementById('bank-business-rules-panel');
+        if (!panel) return;
+        // keep legacy panel hidden; we now render a fullscreen overlay
+        panel.style.display = 'none';
+        try {
+            const sid = (window.currentSessionId || sessionId || '').trim();
+            if (!sid) {
+                throw new Error('Session ID not found. Please upload and analyze again (do not refresh after upload).');
+            }
+            const res = await fetch(`${API_BASE_URL}/banking/business-rules/${sid}`, {
+                method: 'GET',
+                headers: getAuthHeaders(),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data?.success === false) {
+                const msg = data?.detail || data?.error || `HTTP ${res.status}`;
+                throw new Error(msg);
+            }
+            // Render fullscreen overlay
+            const overlayHtml = renderBusinessRulesUI(data);
+            document.body.insertAdjacentHTML('beforeend', overlayHtml);
+
+            // Hook up file switching
+            window._brSelectTable = function (tableName) {
+                try {
+                    const tables = Array.isArray(data?.tables) ? data.tables : [];
+                    const t = tables.find(x => String(x.table_name || '') === String(tableName || '')) || tables[0];
+                    const titleEl = document.getElementById('br-table-title');
+                    const bodyEl = document.getElementById('br-table-body');
+                    if (!t || !titleEl || !bodyEl) return;
+                    titleEl.textContent = String(t.table_name || '');
+                    titleEl.title = String(t.table_name || '');
+                    const rules = Array.isArray(t.rules) ? t.rules : [];
+                    bodyEl.innerHTML = `
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 0.9rem;">
+                            ${rules.map((r, idx) => (function(){ 
+                                const cols = Array.isArray(r.observed_columns) ? r.observed_columns : [];
+                                const pat = r.observed_pattern || {};
+                                const patStr = _escapeHtml(JSON.stringify(pat, null, 2));
+                                const ruleTxt = _escapeHtml(String(r.rule || r.title || `Rule ${idx + 1}`));
+                                const obsTxt = _escapeHtml(String(r.observation || ''));
+                                const impactTxt = _escapeHtml(String(r.impact || ''));
+                                const resultTxt = (String(r.status || '')).toUpperCase() === 'PASS' ? 'PASS' : 'FAIL';
+                                return `
+                                    <div style="background:#ffffff; border:1px solid rgba(15,118,110,0.18); border-radius:16px; padding:0.9rem; box-shadow:0 1px 2px rgba(15,23,42,0.06);">
+                                        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:0.8rem;">
+                                            <div style="min-width:0;">
+                                                <div style="font-weight: 900; color: var(--text-primary); font-size: 0.98rem; line-height: 1.25;">
+                                                    ${_escapeHtml(String(r.title || `Rule ${idx + 1}`))}
+                                                </div>
+                                                <div style="margin-top:0.55rem; display:grid; grid-template-columns: 1fr; gap:0.45rem;">
+                                                    <div style="font-size:0.86rem; color:#0f172a; line-height:1.45;"><strong>Rule:</strong> ${ruleTxt}</div>
+                                                    <div style="font-size:0.86rem; color:#0f172a; line-height:1.45;"><strong>Observation:</strong> ${obsTxt}</div>
+                                                    <div style="font-size:0.86rem; color:#0f172a; line-height:1.45;"><strong>Impact:</strong> ${impactTxt}</div>
+                                                    <div style="font-size:0.86rem; color:#0f172a; line-height:1.45;"><strong>Result:</strong> ${_escapeHtml(resultTxt)}</div>
+                                                </div>
+                                            </div>
+                                            <div style="flex-shrink:0;">
+                                                ${renderRulesStatusPill(r.status)}
+                                            </div>
+                                        </div>
+                                        <details style="margin-top:0.65rem;">
+                                            <summary style="cursor:pointer; color:${BANK_COLOR}; font-weight:800; font-size:0.85rem;">Observed columns & data</summary>
+                                            <div style="margin-top:0.55rem; display:grid; grid-template-columns: 1fr; gap:0.55rem;">
+                                                <div style="background: rgba(15,118,110,0.06); border: 1px solid rgba(15,118,110,0.16); border-radius: 12px; padding: 0.65rem;">
+                                                    <div style="font-weight: 800; color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.35rem;">Columns</div>
+                                                    <div style="color: var(--text-muted); font-size: 0.82rem; line-height: 1.45;">
+                                                        ${cols.length ? cols.map(c => `<div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${_escapeHtml(c)}"><code style="background:#f1f5f9; padding:0.12rem 0.35rem; border-radius:6px; border:1px solid #e2e8f0;">${_escapeHtml(c)}</code></div>`).join('') : '<span>Not detected</span>'}
+                                                    </div>
+                                                </div>
+                                                <div style="background: rgba(100,116,139,0.06); border: 1px solid rgba(100,116,139,0.18); border-radius: 12px; padding: 0.65rem;">
+                                                    <div style="font-weight: 800; color: var(--text-primary); font-size: 0.85rem; margin-bottom: 0.35rem;">Observed data (ranges/top-values + row examples)</div>
+                                                    <pre style="margin:0; white-space:pre-wrap; word-break:break-word; font-size:0.78rem; color:#0f172a; background:#f8fafc; border:1px solid #e2e8f0; padding:0.55rem; border-radius:10px; max-height: 220px; overflow:auto;">${patStr}</pre>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
+                                `;
+                            })()).join('')}
+                        </div>
+                    `;
+                } catch (e) { }
+            };
+        } catch (e) {
+            alert(`Business Rules Error: ${e?.message || 'Unknown error'}`);
+        }
+    };
+
     let html = `
         <div style="padding: 2rem; overflow-y: auto; height: 100%;">
             <button class="btn-secondary" onclick="showDomainSplitView()" style="margin-bottom: 1rem;">â† Back</button>
@@ -4819,13 +5076,25 @@ function showBankingAnalysisResults(profile) {
                 ${profile.database_name} â€¢ ${totalCases} Case ID(s) â€¢ ${totalUsers} user(s) â€¢ ${totalActivities} activities
             </p>
 
-            <div style="margin-bottom: 2rem;">
+            <div style="margin-bottom: 1.25rem; display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
                 <button type="button" onclick="showSankeyDiagramFromWindow('Banking', '${BANK_COLOR}')" 
                         style="cursor: pointer; border-radius: 10px; border: 2px solid ${BANK_COLOR}; padding: 0.75rem 1.5rem; font-size: 1rem; background: linear-gradient(135deg, ${BANK_COLOR}, #0D5C54); color: white; font-weight: 700; box-shadow: 0 2px 8px rgba(15,118,110,0.3); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem;">
                     <span style="font-size: 1.2rem;">📊</span>
                     <span>View Sankey Diagram</span>
                 </button>
+
+                ${(shouldShowBusinessRulesButton()) ? `
+                <button type="button" onclick="window.openBusinessRulesPanel && window.openBusinessRulesPanel()"
+                        style="cursor: pointer; border-radius: 10px; border: 2px solid ${BANK_COLOR}; padding: 0.75rem 1.25rem; font-size: 1rem; background: #ffffff; color: ${BANK_COLOR}; font-weight: 900; box-shadow: 0 2px 8px rgba(15,118,110,0.12); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.55rem;">
+                    <span style="font-size: 1.1rem;">📜</span>
+                    <span>Business Rules</span>
+                </button>` : `
+                <span style="color: var(--text-muted); font-size: 0.9rem;">
+                    Business Rules appears when Banking % is high.
+                </span>`}
             </div>
+
+            <div id="bank-business-rules-panel" style="display:none; margin-bottom: 1.75rem;"></div>
 
             <section style="margin-bottom: 1.75rem;">
                 <h2 style="font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--text-primary);">Case Flow Filter (Single Case Diagram)</h2>

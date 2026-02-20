@@ -85,3 +85,12 @@ GOOGLE_CLIENT_SECRET = _get("GOOGLE_CLIENT_SECRET")
 GOOGLE_ADMIN_EMAIL = _get("GOOGLE_ADMIN_EMAIL", "ponjeevabsccs@gmail.com")
 
 
+# -------- GitHub OAuth 2.0 --------
+# These are used when enabling "Login with GitHub" alongside Google OAuth.
+# Create them in: https://github.com/settings/developers -> OAuth Apps.
+GITHUB_CLIENT_ID = _get("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = _get("GITHUB_CLIENT_SECRET")
+# Optional explicit redirect URI; if not set, backend will construct from request.base_url.
+GITHUB_REDIRECT_URI = _get("GITHUB_REDIRECT_URI")
+
+

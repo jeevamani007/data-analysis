@@ -43,6 +43,7 @@ from auth_routes import router as auth_router, get_current_user
 from plan_routes import router as plan_router
 from admin_routes import router as admin_router
 from google_oauth_routes import router as google_oauth_router, callback_router as google_oauth_callback_router
+from github_oauth_routes import router as github_oauth_router
 from plan_service import assert_can_upload, increment_upload_usage
 from midnight_reset import midnight_reset_loop
 from db_table import create_tables, UploadSession, UploadFile as UploadFileModel, User
@@ -100,6 +101,7 @@ app.include_router(plan_router)
 app.include_router(admin_router)
 app.include_router(google_oauth_router)
 app.include_router(google_oauth_callback_router)  # For /callback route (matches Google Cloud Console config)
+app.include_router(github_oauth_router)
 
 # Configure CORS FIRST (before SessionMiddleware)
 # This ensures CORS headers are set correctly for OAuth redirects
@@ -133,10 +135,18 @@ from customer_linker import CustomerLinker
 from db_grouping_engine import DBGroupingEngine
 from login_analyzer import LoginWorkflowAnalyzer
 import importlib.util
+import sys
 spec = importlib.util.spec_from_file_location("data_synthesis", Path(__file__).parent / "data-synthesis.py")
 data_synthesis_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(data_synthesis_module)
 DataSynthesisEngine = data_synthesis_module.DataSynthesisEngine
+
+# bank-rules.py uses a hyphen, so we must load it via importlib (like data-synthesis.py)
+bank_rules_spec = importlib.util.spec_from_file_location("bank_rules", Path(__file__).parent / "bank-rules.py")
+bank_rules_module = importlib.util.module_from_spec(bank_rules_spec)
+sys.modules["bank_rules"] = bank_rules_module  # required for dataclasses on Python 3.13+
+bank_rules_spec.loader.exec_module(bank_rules_module)
+evaluate_banking_business_rules = bank_rules_module.evaluate_banking_business_rules
 
 # Initialize analyzers
 csv_analyzer = CSVAnalyzer()
@@ -284,6 +294,43 @@ async def upload_files(
         file_count=len(uploaded_files),
         files=uploaded_files
     )
+
+
+@app.get("/api/banking/business-rules/{session_id}")
+async def banking_business_rules(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Evaluate Top 10 banking business rules (without KYC) from the user's uploaded CSVs.
+    Returns PASS/FAIL/UNKNOWN + one-line explanations + observed columns/patterns.
+    """
+    _ensure_session_loaded(session_id)
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = sessions[session_id]
+    session_dir = Path(session["directory"])
+
+    dataframes: dict[str, pd.DataFrame] = {}
+    for filename in session.get("files", []):
+        if not str(filename).lower().endswith(".csv"):
+            continue
+        file_path = session_dir / filename
+        try:
+            df = pd.read_csv(file_path)
+        except Exception:
+            continue
+        table_name = filename.replace(".csv", "").replace("_", " ").title()
+        dataframes[table_name] = df
+
+    if not dataframes:
+        return {"success": False, "error": "No readable CSV tables found for this session."}
+
+    out = evaluate_banking_business_rules(dataframes=dataframes)
+    out["session_id"] = session_id
+    out["tables_checked"] = list(dataframes.keys())
+    return _to_native(out)
 
 
 @app.post("/api/analyze/{session_id}", response_model=AnalysisResponse)

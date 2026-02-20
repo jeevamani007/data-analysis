@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from auth_utils import create_access_token, hash_password, verify_token
 from config import APP_BASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ADMIN_EMAIL
 from database import SessionLocal
-from db_table import User
+from db_table import User, LoginLog
 
 
 # Main OAuth router with /api/auth prefix
@@ -146,6 +146,13 @@ def get_current_user_from_jwt(request: Request, db: Session = Depends(get_db)) -
     return user
 
 
+def _get_client_ip(request: Request) -> str:
+    """Extract client IP address for LoginLog."""
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
 @router.get("/login/google")
 async def login_google(request: Request):
     """
@@ -248,12 +255,31 @@ async def _handle_auth_callback(request: Request, db: Session = Depends(get_db))
     user = db.query(User).filter(User.email == email).first()
     role = _role_for_email(email)
 
+    # Log helper
+    def _log_login(status: str, user_id: int = 0):
+        try:
+            ip_address = _get_client_ip(request)
+            user_agent = request.headers.get("user-agent", "unknown")
+            log = LoginLog(
+                user_id=user_id,
+                email=email,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                login_status=status,
+            )
+            db.add(log)
+            db.commit()
+        except Exception as log_err:
+            db.rollback()
+            print(f"[Google OAuth] Failed to write LoginLog: {log_err}")
+
     if user:
         if flow == "signup":
             # User clicked \"Sign up with Google\" but account already exists.
             # Do NOT log them in – send them back to signup page with a clear message.
             redirect_to = "/signin.html?error=account_exists"
             print(f"[OAuth Callback] Existing user during signup flow, redirecting to {redirect_to}")
+            _log_login("failed", user_id=user.id)
             return RedirectResponse(url=redirect_to, status_code=302)
 
         # Login existing user; keep name/role fresh.
@@ -296,6 +322,8 @@ async def _handle_auth_callback(request: Request, db: Session = Depends(get_db))
             "role": user.role,
         }
     )
+
+    _log_login("success", user_id=user.id)
 
     # Redirect to frontend HTML pages (admin.html for admins, user.html for regular users)
     redirect_to = "/admin.html" if user.role == "admin" else "/user.html"
